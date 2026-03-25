@@ -812,4 +812,25 @@ A grade without evidence is not a grade — it's a guess.
 
 This reminder is placed at the end of the file because context compaction tends to preserve the beginning and end. If you are unsure whether to print the banner, **print it**.
 
-**NEVER simplify the Issue Rating Table.** Every finding shown to the user MUST use the full table format with ALL columns (Confidence, Urgency, Risk: Fix, Risk: No Fix, ROI, Blast Radius, Fix Effort). No abbreviated tables for summaries, progress updates, or layer transitions. If you are presenting findings, use the full table.
+**⚠️ TABLE FORMAT GATE (MANDATORY — pre-output check before EVERY table):**
+
+Before outputting ANY table that contains findings, issues, deferred items, or rated items, run this mechanical check:
+
+1. Count the columns. If fewer than 8, STOP and rebuild.
+2. Verify ALL of these columns exist: **Finding | Confidence | Urgency | Risk: Fix | Risk: No Fix | ROI | Blast Radius | Fix Effort**
+3. If any column is missing, add it before displaying.
+
+This applies to ALL tables — no exceptions:
+- Findings tables, fix plan tables, batch decision tables
+- Summary tables, progress update tables, pattern sweep tables
+- Deferred item tables, resolution tables, comparison tables
+- ANY table where items have severity, urgency, or effort ratings
+
+Common rationalizations that are NOT valid exceptions:
+- "This is just a summary" → still needs all 8 columns
+- "This is a decision prompt" → still needs all 8 columns
+- "This is a quick list" → still needs all 8 columns
+- "I'm showing recommendations, not findings" → still needs all 8 columns
+- "The table would be too wide" → still needs all 8 columns (see terminal note below)
+
+**Terminal width reminder:** If the 8-column table renders as a vertical stack of items instead of horizontal rows, tell the user: "The table may appear stacked. Widen your terminal window or use full-screen mode for the intended horizontal layout."
