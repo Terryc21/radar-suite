@@ -679,6 +679,9 @@ Capstone owns the DEFERRED.md file. On every run:
 3. **Add** newly planned items from this session
 4. **Remove** items that were fixed (check if finding still exists in code)
 5. **Flag** overdue items (review_by date passed)
+6. **Sync back to handoff YAMLs** — for every item added to DEFERRED.md, move it from `findings_deferred` to `findings_planned` in the source handoff YAML. This prevents the next capstone run from seeing the same item as both deferred (YAML) and planned (DEFERRED.md).
+
+**Handoff YAML sync rule:** After ANY write to DEFERRED.md, re-read the source handoff YAML for each newly planned item, move the entry from `findings_deferred[]` to `findings_planned[]` (adding `deferred_md_row: true` and `release_gate`), and write the updated YAML. This is not optional — desync between DEFERRED.md and handoff YAMLs causes double-counting in future runs.
 
 DEFERRED.md format:
 
@@ -1032,6 +1035,10 @@ Review your own output from this session and fill in each row:
 
 This reminder is placed at the end of the file because context compaction tends to preserve the beginning and end. If you are unsure whether to print the banner, **print it**.
 
+**⚠️ CONTEXT EXHAUSTION GUARD:**
+
+Track tool calls during the session. After **50 tool calls**, auto-downgrade new findings from `verified` to `probable (long context)`. Print a warning suggesting the user split the session. Tag findings with `confidence_note`. In the handoff YAML, add `context_exhaustion_after: [N]`. On session split, the next session re-verifies those findings FIRST and upgrades to `verified` if confirmed. See data-model-radar SKILL.md for full context exhaustion logic.
+
 **⚠️ TABLE FORMAT GATE (MANDATORY — pre-output check before EVERY table):**
 
 Before outputting ANY table that contains findings, issues, deferred items, or rated items, run this mechanical check:
@@ -1061,7 +1068,8 @@ Before committing ANY fix, run this mechanical check:
 
 1. Is there a test for this fix? If no, STOP.
 2. Write the test BEFORE or ALONGSIDE the fix — not "later."
-3. If the fix is not unit-testable (pure visual, singleton dependency, view-layer), document WHY in a code comment and note it in the commit message.
+3. Run the tests: `xcodebuild test -scheme [TestScheme] -destination [simulator] -only-testing:[TestClass]` (or full test suite if quick). If any fail, fix before committing.
+4. If the fix is not unit-testable (pure visual, singleton dependency, view-layer), document WHY in a code comment and note it in the commit message.
 
 **What needs tests:**
 - Any logic change (math, conditionals, data flow)

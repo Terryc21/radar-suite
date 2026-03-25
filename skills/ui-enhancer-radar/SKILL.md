@@ -41,6 +41,7 @@ You are performing a systematic UI enhancement on a specific iOS/SwiftUI view, a
 | `/ui-enhancer-radar --capture` | Capture screenshot from running simulator (optional) |
 | `/ui-enhancer-radar --devices` | Analyze layout across device sizes (optional) |
 | `/ui-enhancer-radar fix-deferred` | Resolve items deferred from a previous run |
+| `/ui-enhancer-radar verify` | Re-check previous findings without full re-audit (~5 min) |
 
 ---
 
@@ -2183,10 +2184,32 @@ Audit all views in a directory, build the View Profile in one pass, then rank vi
 Run `/ui-enhancer-radar` on any view above for a full audit.
 ```
 
+**After presenting the ranked list, offer a seamless transition:**
+
+```
+questions:
+[
+  {
+    "question": "[ViewName] scored lowest ([score]/10). Start a deep audit on it now?",
+    "header": "Next",
+    "options": [
+      {"label": "Deep audit worst view (Recommended)", "description": "Open [ViewName] in Canvas/simulator, then walk through findings visually"},
+      {"label": "Pick a different view", "description": "Choose which view to audit from the ranked list"},
+      {"label": "Done for now", "description": "Save batch results to handoff, audit views later"},
+      {"label": "Explain more", "description": "What does a deep audit do that batch scan doesn't?"}
+    ],
+    "multiSelect": false
+  }
+]
+```
+
+**If user selects a view:** Transition directly into the full audit flow (Phase 1 interview → Phase 7 implementation). Do NOT require the user to re-invoke the skill — continue in the same session. The batch scan findings for that view become the starting point for Phase 5 (Domain Analysis), pre-populated with what the batch already found.
+
 **Batch mode limitations:**
 - No interview — uses defaults. Run individual audits for design-intent-aware analysis.
 - No screenshot analysis — code-only. Provide screenshots for visual domains.
 - No implementation — findings only. Run individual audits to apply fixes.
+- **Transition to individual audit is seamless** — no need to re-invoke the skill.
 
 ---
 
@@ -2339,6 +2362,10 @@ When invoked via `/ui-enhancer-radar fix-deferred`:
 6. Fix items enter Phase 7 apply workflow. Plan items go to DEFERRED.md. Accept items go to `findings_accepted`.
 7. Update handoff YAML with resolved statuses
 
+### `verify` Subcommand (lightweight re-check)
+
+When invoked via `/ui-enhancer-radar verify`: Read own handoff YAML, grep for each finding's pattern in the codebase, classify as Still present / Resolved / Changed, update handoff accordingly. Print summary. Much faster than a full re-audit. See data-model-radar SKILL.md for full verify logic.
+
 ### Startup Check
 
 On every invocation, check for `DEFERRED.md` at the project root. If it exists and contains ui-enhancer-radar items:
@@ -2370,6 +2397,10 @@ Items intentionally deferred from radar audits. Review before each release.
 ## Cross-Skill Handoff
 
 UI Enhancer Radar complements **data-model-radar** (model layer), **ui-path-radar** (navigation paths), **roundtrip-radar** (data safety), and **capstone-radar** (ship readiness). Findings from one skill inform the others.
+
+### Cross-Skill Resolution (after fixing any finding)
+
+When a fix resolves a finding that originated from ANOTHER skill's handoff, update that skill's handoff YAML. Read the other skill's handoff, find the matching finding in `findings_deferred[]` or `for_capstone_radar.blockers[]`, move it to `findings_fixed[]` (or `resolved[]`) with the fix commit hash and `resolved_by: "ui-enhancer-radar"`. This prevents stale handoffs from blocking capstone's ship recommendation.
 
 ### On Completion — Write Handoff
 
@@ -2472,6 +2503,10 @@ Review your own output from this session and fill in each row:
 
 This reminder is placed at the end of the file because context compaction tends to preserve the beginning and end. If you are unsure whether to print the banner, **print it**.
 
+**⚠️ CONTEXT EXHAUSTION GUARD:**
+
+Track tool calls during the session. After **50 tool calls**, auto-downgrade new findings from `verified` to `probable (long context)`. Print a warning suggesting the user split the session. Tag findings with `confidence_note`. In the handoff YAML, add `context_exhaustion_after: [N]`. On session split, the next session re-verifies those findings FIRST and upgrades to `verified` if confirmed. See data-model-radar SKILL.md for full context exhaustion logic.
+
 **⚠️ TABLE FORMAT GATE (MANDATORY — pre-output check before EVERY table):**
 
 Before outputting ANY table that contains findings, issues, deferred items, or rated items, run this mechanical check:
@@ -2501,7 +2536,8 @@ Before committing ANY fix, run this mechanical check:
 
 1. Is there a test for this fix? If no, STOP.
 2. Write the test BEFORE or ALONGSIDE the fix — not "later."
-3. If the fix is not unit-testable (pure visual, singleton dependency, view-layer), document WHY in a code comment and note it in the commit message.
+3. Run the tests: `xcodebuild test -scheme [TestScheme] -destination [simulator] -only-testing:[TestClass]` (or full test suite if quick). If any fail, fix before committing.
+4. If the fix is not unit-testable (pure visual, singleton dependency, view-layer), document WHY in a code comment and note it in the commit message.
 
 **What needs tests:**
 - Any logic change (math, conditionals, data flow)

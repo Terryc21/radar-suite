@@ -24,6 +24,7 @@ problems, and data round-trip completeness. It operates in three steps:
 - `/workflow-code-audit rollup` — Run Step 2 after all individual audits
 - `/workflow-code-audit` (no args) — Start with Step 0, then prompt for Step 1
 - `/roundtrip-radar fix-deferred` — Resolve items deferred from a previous run
+- `/roundtrip-radar verify` — Re-check previous findings without full re-audit (~5 min vs ~1 hour)
 
 ---
 
@@ -749,6 +750,10 @@ When invoked via `/roundtrip-radar fix-deferred`:
 6. Fix items enter the wave workflow. Plan items go to DEFERRED.md. Accept items go to `findings_accepted`.
 7. Update handoff YAML with resolved statuses
 
+### `verify` Subcommand (lightweight re-check)
+
+When invoked via `/roundtrip-radar verify`: Read own handoff YAML, grep for each finding's pattern in the codebase, classify as Still present / Resolved / Changed, update handoff accordingly. Print summary. Much faster than a full re-audit. See data-model-radar SKILL.md for full verify logic.
+
 ### Startup Check
 
 On every invocation, check for `DEFERRED.md` at the project root. If it exists and contains roundtrip-radar items:
@@ -780,6 +785,23 @@ Items intentionally deferred from radar audits. Review before each release.
 ## Cross-Skill Handoff
 
 Roundtrip Radar complements **data-model-radar** (model layer), **ui-path-radar** (navigation paths), **ui-enhancer-radar** (visual quality), and **capstone-radar** (ship readiness). Findings from one skill inform the others.
+
+### Cross-Skill Resolution (after fixing any finding)
+
+When a fix resolves a finding that originated from ANOTHER skill's handoff, update that skill's handoff YAML:
+
+1. After applying a fix, check: does this fix address a finding listed in another skill's `for_capstone_radar.blockers[]` or `findings_deferred[]`?
+2. If yes, read that skill's handoff YAML
+3. Move the finding from `findings_deferred[]` (or `for_capstone_radar.blockers[]`) to `findings_fixed[]` with the fix commit hash
+4. Write the updated YAML
+
+**Example:** Roundtrip-radar fixes "InsuranceProfile missing from backup" which was flagged by data-model-radar. After committing the fix:
+- Read `.agents/ui-audit/data-model-radar-handoff.yaml`
+- Find the matching blocker in `for_capstone_radar.blockers[]`
+- Add to `resolved[]`: `finding: "...", fix_commit: "abc123", resolved_by: "roundtrip-radar"`
+- Write the updated YAML
+
+This prevents stale handoffs from blocking capstone's ship recommendation when the underlying issue has been fixed by a different skill.
 
 ### On Completion — Write Handoff
 
@@ -889,6 +911,10 @@ Review your own output from this session and fill in each row:
 
 This reminder is placed at the end of the file because context compaction tends to preserve the beginning and end. If you are unsure whether to print the banner, **print it**.
 
+**⚠️ CONTEXT EXHAUSTION GUARD:**
+
+Track tool calls during the session. After **50 tool calls**, auto-downgrade new findings from `verified` to `probable (long context)`. Print a warning suggesting the user split the session. Tag findings with `confidence_note`. In the handoff YAML, add `context_exhaustion_after: [N]`. On session split, the next session re-verifies those findings FIRST and upgrades to `verified` if confirmed. See data-model-radar SKILL.md for full context exhaustion logic.
+
 **⚠️ TABLE FORMAT GATE (MANDATORY — pre-output check before EVERY table):**
 
 Before outputting ANY table that contains findings, issues, deferred items, or rated items, run this mechanical check:
@@ -918,7 +944,8 @@ Before committing ANY fix, run this mechanical check:
 
 1. Is there a test for this fix? If no, STOP.
 2. Write the test BEFORE or ALONGSIDE the fix — not "later."
-3. If the fix is not unit-testable (pure visual, singleton dependency, view-layer), document WHY in a code comment and note it in the commit message.
+3. Run the tests: `xcodebuild test -scheme [TestScheme] -destination [simulator] -only-testing:[TestClass]` (or full test suite if quick). If any fail, fix before committing.
+4. If the fix is not unit-testable (pure visual, singleton dependency, view-layer), document WHY in a code comment and note it in the commit message.
 
 **What needs tests:**
 - Any logic change (math, conditionals, data flow)

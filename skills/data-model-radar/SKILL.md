@@ -30,6 +30,7 @@ metadata:
 | `/data-model-radar dead-fields` | Domain 5 only — unused model fields |
 | `/data-model-radar status` | Show audit progress |
 | `/data-model-radar fix-deferred` | Resolve items deferred from a previous run |
+| `/data-model-radar verify` | Re-check previous findings without full re-audit (~5 min vs ~30 min) |
 
 ## Overview
 
@@ -646,6 +647,23 @@ When invoked via `/data-model-radar fix-deferred`:
 6. Fix items enter the wave workflow. Plan items go to DEFERRED.md. Accept items go to `findings_accepted`.
 7. Update handoff YAML with resolved statuses
 
+### `verify` Subcommand (lightweight re-check)
+
+When invoked via `/data-model-radar verify`:
+
+1. Read own handoff YAML (`.agents/ui-audit/data-model-radar-handoff.yaml`)
+2. If no handoff exists → "No previous audit to verify. Run `/data-model-radar` first."
+3. For each finding in `findings_fixed[]`, `findings_deferred[]`, and `for_capstone_radar.blockers[]`:
+   - Grep the codebase for the pattern the finding describes
+   - Classify: **Still present** / **Resolved** (code changed) / **Changed** (different issue now)
+4. Update the handoff YAML:
+   - Resolved findings → move to `findings_fixed[]` with note "verified resolved by code change"
+   - Changed findings → update description, re-rate severity
+   - Still present → no change
+5. Print summary: "[N] verified, [M] resolved since last audit, [K] still present, [J] changed"
+
+**When to use:** After another skill fixes issues that touch your domain (e.g., roundtrip-radar fixes backup gaps that data-model-radar flagged). Much faster than a full re-audit (~5 min vs ~30 min).
+
 ### Startup Check
 
 On every invocation, check for `DEFERRED.md` at the project root. If it exists and contains data-model-radar items:
@@ -681,6 +699,10 @@ Items intentionally deferred from radar audits. Review before each release.
 ## Cross-Skill Handoff
 
 Data Model Radar is the **foundation layer** of the radar family. Run it first — its findings feed every other skill.
+
+### Cross-Skill Resolution (after fixing any finding)
+
+When a fix resolves a finding that originated from ANOTHER skill's handoff, update that skill's handoff YAML. Read the other skill's handoff, find the matching finding in `findings_deferred[]` or `for_capstone_radar.blockers[]`, move it to `findings_fixed[]` (or `resolved[]`) with the fix commit hash and `resolved_by: "data-model-radar"`. This prevents stale handoffs from blocking capstone's ship recommendation.
 
 ### On Completion — Write Handoff
 
@@ -859,6 +881,21 @@ Then fix the gap:
 2. Immediately `AskUserQuestion` for the next step
 3. NEVER leave a blank prompt
 
+**⚠️ CONTEXT EXHAUSTION GUARD:**
+
+Track tool calls during the session. After **50 tool calls**, apply these rules:
+1. Auto-downgrade new findings from `verified` to `probable (long context)` — LLM reasoning degrades over long conversations
+2. Print: "This session has used [N] tool calls. Findings after this point are marked `probable (long context)`. Consider splitting the remaining work to a new session for full verification accuracy."
+3. Tag all subsequent findings with `confidence_note: "assessed after 50+ tool calls — re-verify in fresh session"`
+4. In the handoff YAML, add `context_exhaustion_after: [N]` so the next session knows which findings need re-verification
+
+**On session split (new conversation picking up from handoff):**
+- Read the handoff YAML
+- If `context_exhaustion_after` is set, identify findings tagged `probable (long context)`
+- Re-verify those findings FIRST (grep + read actual code) and upgrade to `verified` if confirmed
+- Remove the `probable (long context)` tag after re-verification
+- Print: "Re-verified [N] findings from previous session's long-context zone. [M] confirmed, [K] retracted."
+
 **ANTI-SHORTCUT:** Do not hand-wave Domain 2 (Serialization) or Domain 5 (Field Usage). These are the two highest-value domains. If you find yourself writing "looks complete" or "no dead fields" without having grepped, stop and do the work.
 
 This reminder is placed at the end of the file because context compaction tends to preserve the beginning and end. If you are unsure whether to print the banner, **print it**.
@@ -892,7 +929,8 @@ Before committing ANY fix, run this mechanical check:
 
 1. Is there a test for this fix? If no, STOP.
 2. Write the test BEFORE or ALONGSIDE the fix — not "later."
-3. If the fix is not unit-testable (pure visual, singleton dependency, view-layer), document WHY in a code comment and note it in the commit message.
+3. Run the tests: `xcodebuild test -scheme [TestScheme] -destination [simulator] -only-testing:[TestClass]` (or full test suite if quick). If any fail, fix before committing.
+4. If the fix is not unit-testable (pure visual, singleton dependency, view-layer), document WHY in a code comment and note it in the commit message.
 
 **What needs tests:**
 - Any logic change (math, conditionals, data flow)

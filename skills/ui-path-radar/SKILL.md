@@ -33,6 +33,7 @@ You are performing a systematic UI path audit on this SwiftUI application.
 | `/ui-path-radar fix` | Generate fixes for found issues |
 | `/ui-path-radar status` | Show audit progress and remaining issues |
 | `/ui-path-radar fix-deferred` | Resolve items deferred from a previous run |
+| `/ui-path-radar verify` | Re-check previous findings without full re-audit (~5 min) |
 
 ## Overview
 
@@ -968,6 +969,10 @@ When invoked via `/ui-path-radar fix-deferred`:
 6. Fix items enter the wave workflow. Plan items go to DEFERRED.md. Accept items go to `findings_accepted`.
 7. Update handoff YAML with resolved statuses
 
+### `verify` Subcommand (lightweight re-check)
+
+When invoked via `/ui-path-radar verify`: Read own handoff YAML, grep for each finding's pattern in the codebase, classify as Still present / Resolved / Changed, update handoff accordingly. Print summary. Much faster than a full re-audit. See data-model-radar SKILL.md for full verify logic.
+
 ### Startup Check
 
 On every invocation, check for `DEFERRED.md` at the project root. If it exists and contains ui-path-radar items:
@@ -999,6 +1004,10 @@ Items intentionally deferred from radar audits. Review before each release.
 ## Cross-Skill Handoff
 
 UI Path Radar complements **data-model-radar** (model layer), **roundtrip-radar** (data safety), **ui-enhancer-radar** (visual quality), and **capstone-radar** (ship readiness). Findings from one skill inform the others.
+
+### Cross-Skill Resolution (after fixing any finding)
+
+When a fix resolves a finding that originated from ANOTHER skill's handoff, update that skill's handoff YAML. Read the other skill's handoff, find the matching finding in `findings_deferred[]` or `for_capstone_radar.blockers[]`, move it to `findings_fixed[]` (or `resolved[]`) with the fix commit hash and `resolved_by: "ui-path-radar"`. This prevents stale handoffs from blocking capstone's ship recommendation.
 
 ### On Completion — Write Handoff
 
@@ -1095,6 +1104,10 @@ Review your own output from this session and fill in each row:
 
 This reminder is placed at the end of the file because context compaction tends to preserve the beginning and end. If you are unsure whether to print the banner, **print it**.
 
+**⚠️ CONTEXT EXHAUSTION GUARD:**
+
+Track tool calls during the session. After **50 tool calls**, auto-downgrade new findings from `verified` to `probable (long context)`. Print a warning suggesting the user split the session. Tag findings with `confidence_note`. In the handoff YAML, add `context_exhaustion_after: [N]`. On session split, the next session re-verifies those findings FIRST and upgrades to `verified` if confirmed. See data-model-radar SKILL.md for full context exhaustion logic.
+
 **⚠️ TABLE FORMAT GATE (MANDATORY — pre-output check before EVERY table):**
 
 Before outputting ANY table that contains findings, issues, deferred items, or rated items, run this mechanical check:
@@ -1124,7 +1137,8 @@ Before committing ANY fix, run this mechanical check:
 
 1. Is there a test for this fix? If no, STOP.
 2. Write the test BEFORE or ALONGSIDE the fix — not "later."
-3. If the fix is not unit-testable (pure visual, singleton dependency, view-layer), document WHY in a code comment and note it in the commit message.
+3. Run the tests: `xcodebuild test -scheme [TestScheme] -destination [simulator] -only-testing:[TestClass]` (or full test suite if quick). If any fail, fix before committing.
+4. If the fix is not unit-testable (pure visual, singleton dependency, view-layer), document WHY in a code comment and note it in the commit message.
 
 **What needs tests:**
 - Any logic change (math, conditionals, data flow)
