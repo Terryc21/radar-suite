@@ -132,6 +132,75 @@ You can:
 
 ---
 
+## Work Receipts (MANDATORY — every verified finding)
+
+Every finding tagged as `verified` must include a **work receipt** — proof of what was actually checked. No receipt = automatic downgrade to `probable`.
+
+A work receipt includes:
+- **File read:** the specific file path and line range that was read
+- **Pattern searched:** the grep pattern or search term used
+- **Evidence found:** the specific code that confirms the finding (quote 1-3 lines)
+
+**Example — with receipt (verified):**
+```
+Finding: Room column not imported in CSV
+Receipt: Read CSVImportManager.swift:420-447. Searched for `item.room =` — 0 matches.
+  Canonical mapping exists at line 45 (`"room": "Room"`) but createItemFromRow never sets item.room.
+Confidence: verified
+```
+
+**Example — without receipt (downgraded):**
+```
+Finding: Room column not imported in CSV
+Receipt: none (structural analysis only)
+Confidence: probable (no file evidence — upgrade to verified by reading CSVImportManager.swift)
+```
+
+**Rule:** If you catch yourself writing "verified" without having produced a receipt, stop and either produce the receipt or downgrade to "probable." The receipt is not documentation for the user — it is a structural constraint that prevents claiming depth you didn't achieve.
+
+---
+
+## Contradiction Detection (MANDATORY — before final grades)
+
+Before presenting any domain grade, run this mechanical check:
+
+1. **Findings vs grade:** If a domain has any CRITICAL findings, the grade cannot be above C. If it has any HIGH findings, the grade cannot be above B+. If the calculated score produces a higher grade than these caps allow, lower the grade to the cap and note: "Grade capped from [calculated] to [capped] due to [N] [severity] findings."
+
+2. **Cross-reference handoff vs grade:** If the handoff file for a domain lists blockers, the grade for that domain cannot be A. The handoff represents what was actually found — the grade must be consistent.
+
+3. **Self-consistency:** If two findings in the same report contradict each other (e.g., "backup is comprehensive" in Domain 2 but "InsuranceProfile missing from backup" in the findings table), flag the contradiction explicitly and resolve it before grading.
+
+These checks are mechanical — no judgment needed, just arithmetic and string matching. Run them automatically as the last step before presenting grades.
+
+---
+
+## Finding Classification (MANDATORY)
+
+Classify every finding into one of three categories. Do not report all findings as the same type.
+
+### 1. Bug
+Code does something wrong. The behavior contradicts the developer's intent.
+- Example: Edit form drops secondary categories on save
+
+### 2. Stale Code
+Code was correct when written but the codebase grew around it. Detectable via git history.
+- Check: `git log -1 -- <file>` for last modification date
+- Check: model/dependency field count at that date vs now
+- If the model grew significantly and the code didn't keep up → stale code
+- Example: CKRecordMapper mapped 36 of 40 fields when extracted. Model grew to 85+ fields. Mapper only grew to 39.
+- Present as: "This code was last updated [date] when [model] had [N] fields. [Model] now has [M] fields. [M-N] fields were added after this code was written. Was this intentional?"
+
+### 3. Design Choice
+Intentionally limited scope with documented evidence.
+- Requires: CLAUDE.md section, code comment explaining the limitation, or consistent pattern across the codebase
+- If no documentation exists, classify as Stale Code, not Design Choice
+- Present as: "Documented decision: [quote from docs]. If this no longer reflects your intent, reclassify as stale code."
+
+### Why This Matters
+"Design choice" is often a euphemism for "built under time pressure, never revisited." The distinction between categories 2 and 3 is the presence of evidence. Without evidence, assume stale — the developer can always correct you.
+
+---
+
 ## Step 0: Workflow Discovery
 
 Run first if workflows are unknown or have changed.
@@ -350,6 +419,24 @@ Example:
 6. **Round-trip completeness** — does data survive a full create → export → import/restore cycle?
 7. **Interruption paths** — dismiss mid-operation, app backgrounding, rotation, cancel
 8. **Tests** — update broken tests, add tests for P0-P1 fixes where logic is testable
+
+### Verification Template (MANDATORY per workflow)
+
+Before grading a workflow, produce this table showing what was actually traced:
+
+```
+| Step | Action | File Read | Lines | Receipt | Finding |
+|------|--------|-----------|-------|---------|---------|
+| 1. Create | [what happens] | [file:line] | [range] | [evidence] | [ok / issue] |
+| 2. Save | [what happens] | [file:line] | [range] | [evidence] | [ok / issue] |
+| 3. Export | [what happens] | [file:line] | [range] | [evidence] | [ok / issue] |
+| 4. Import | [what happens] | [file:line] | [range] | [evidence] | [ok / issue] |
+```
+
+Rules:
+- Every step in the workflow must have a File Read entry
+- Steps without a file read cannot produce findings tagged "verified"
+- The table IS the audit — the findings are just a summary of what the table reveals
 
 ### Issue Rating Criteria
 
@@ -570,7 +657,7 @@ Deliver results according to the user's output preference from Step 1.
 
 ## Cross-Skill Handoff
 
-Roundtrip Radar complements **data-model-radar** (model layer), **ui-path-radar** (navigation paths), **ui-enhancer** (visual quality), and **capstone-radar** (ship readiness). Findings from one skill inform the others.
+Roundtrip Radar complements **data-model-radar** (model layer), **ui-path-radar** (navigation paths), **ui-enhancer-radar** (visual quality), and **capstone-radar** (ship readiness). Findings from one skill inform the others.
 
 ### On Completion — Write Handoff
 
@@ -590,7 +677,7 @@ for_ui_path_radar:
       file: "<file:line>"
       question: "<does the UI reflect this data issue?>"
 
-for_ui_enhancer:
+for_ui_enhancer_radar:
   # Dead code, orphaned UI, or views with broken data backing
   suspects:
     - view: "<view file>"
@@ -617,7 +704,7 @@ cross_cutting_patterns:
 
 Before Step 0 (or Step 1 if skipping discovery), check for handoff files:
 - `.agents/ui-audit/ui-path-radar-handoff.yaml` — dead ends and broken promises suggest workflows to prioritize
-- `.agents/ui-audit/ui-enhancer-handoff.yaml` — visual issues in views that may have data backing problems
+- `.agents/ui-audit/ui-enhancer-radar-handoff.yaml` — visual issues in views that may have data backing problems
 
 If found, incorporate relevant items as **suspects** in the matching workflow's audit. Specifically:
 - Dead-end buttons from ui-path-radar → check the workflow behind that button

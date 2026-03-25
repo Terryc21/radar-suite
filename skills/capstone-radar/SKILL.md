@@ -46,7 +46,7 @@ On first invocation, ask the user two questions in a single `AskUserQuestion` ca
 
 - **Beginner**: "Capstone Radar is the final check before your app goes to the App Store. It combines results from 4 other audit tools (if you've run them) with its own security, testing, and code quality checks, then gives your whole app a letter grade and tells you if it's safe to ship. Think of it as the building inspector who reviews all the specialist reports plus checks the things no one else covered."
 
-- **Intermediate**: "Capstone Radar aggregates findings from 4 companion skills (data-model-radar, ui-path-radar, roundtrip-radar, ui-enhancer) and adds its own scans for security, test health, code hygiene, dependencies, and build health. It grades all 10 domains on one scale, tracks trends across runs, and makes a ship/no-ship recommendation."
+- **Intermediate**: "Capstone Radar aggregates findings from 4 companion skills (data-model-radar, ui-path-radar, roundtrip-radar, ui-enhancer-radar) and adds its own scans for security, test health, code hygiene, dependencies, and build health. It grades all 10 domains on one scale, tracks trends across runs, and makes a ship/no-ship recommendation."
 
 - **Experienced**: "Aggregator + gap filler for the radar family. Consumes 4 companion handoffs, owns 5 grep-reliable domains, unified A-F grading, velocity tracking, risk heatmap, ship/no-ship decision."
 
@@ -89,6 +89,75 @@ You can:
 2. **Start fixing critical issues** — [one-line description of what gets fixed first]
 3. **Explain more** — I'll walk through what each grade means
 ```
+
+---
+
+## Work Receipts (MANDATORY — every verified finding)
+
+Every finding tagged as `verified` must include a **work receipt** — proof of what was actually checked. No receipt = automatic downgrade to `probable`.
+
+A work receipt includes:
+- **File read:** the specific file path and line range that was read
+- **Pattern searched:** the grep pattern or search term used
+- **Evidence found:** the specific code that confirms the finding (quote 1-3 lines)
+
+**Example — with receipt (verified):**
+```
+Finding: Room column not imported in CSV
+Receipt: Read CSVImportManager.swift:420-447. Searched for `item.room =` — 0 matches.
+  Canonical mapping exists at line 45 (`"room": "Room"`) but createItemFromRow never sets item.room.
+Confidence: verified
+```
+
+**Example — without receipt (downgraded):**
+```
+Finding: Room column not imported in CSV
+Receipt: none (structural analysis only)
+Confidence: probable (no file evidence — upgrade to verified by reading CSVImportManager.swift)
+```
+
+**Rule:** If you catch yourself writing "verified" without having produced a receipt, stop and either produce the receipt or downgrade to "probable." The receipt is not documentation for the user — it is a structural constraint that prevents claiming depth you didn't achieve.
+
+---
+
+## Contradiction Detection (MANDATORY — before final grades)
+
+Before presenting any domain grade, run this mechanical check:
+
+1. **Findings vs grade:** If a domain has any CRITICAL findings, the grade cannot be above C. If it has any HIGH findings, the grade cannot be above B+. If the calculated score produces a higher grade than these caps allow, lower the grade to the cap and note: "Grade capped from [calculated] to [capped] due to [N] [severity] findings."
+
+2. **Cross-reference handoff vs grade:** If the handoff file for a domain lists blockers, the grade for that domain cannot be A. The handoff represents what was actually found — the grade must be consistent.
+
+3. **Self-consistency:** If two findings in the same report contradict each other (e.g., "backup is comprehensive" in Domain 2 but "InsuranceProfile missing from backup" in the findings table), flag the contradiction explicitly and resolve it before grading.
+
+These checks are mechanical — no judgment needed, just arithmetic and string matching. Run them automatically as the last step before presenting grades.
+
+---
+
+## Finding Classification (MANDATORY)
+
+Classify every finding into one of three categories. Do not report all findings as the same type.
+
+### 1. Bug
+Code does something wrong. The behavior contradicts the developer's intent.
+- Example: Edit form drops secondary categories on save
+
+### 2. Stale Code
+Code was correct when written but the codebase grew around it. Detectable via git history.
+- Check: `git log -1 -- <file>` for last modification date
+- Check: model/dependency field count at that date vs now
+- If the model grew significantly and the code didn't keep up → stale code
+- Example: CKRecordMapper mapped 36 of 40 fields when extracted. Model grew to 85+ fields. Mapper only grew to 39.
+- Present as: "This code was last updated [date] when [model] had [N] fields. [Model] now has [M] fields. [M-N] fields were added after this code was written. Was this intentional?"
+
+### 3. Design Choice
+Intentionally limited scope with documented evidence.
+- Requires: CLAUDE.md section, code comment explaining the limitation, or consistent pattern across the codebase
+- If no documentation exists, classify as Stale Code, not Design Choice
+- Present as: "Documented decision: [quote from docs]. If this no longer reflects your intent, reclassify as stale code."
+
+### Why This Matters
+"Design choice" is often a euphemism for "built under time pressure, never revisited." The distinction between categories 2 and 3 is the presence of evidence. Without evidence, assume stale — the developer can always correct you.
 
 ---
 
@@ -165,7 +234,7 @@ Read handoff files from all 4 companion skills:
 Read .agents/ui-audit/data-model-radar-handoff.yaml (if exists)
 Read .agents/ui-audit/ui-path-radar-handoff.yaml (if exists)
 Read .agents/ui-audit/roundtrip-radar-handoff.yaml (if exists)
-Read .agents/ui-audit/ui-enhancer-handoff.yaml (if exists)
+Read .agents/ui-audit/ui-enhancer-radar-handoff.yaml (if exists)
 ```
 
 For each handoff found:
@@ -185,7 +254,7 @@ For each handoff found:
 
 Print companion status:
 ```
-Companions: data-model-radar [found/missing] | ui-path-radar [found/missing] | roundtrip-radar [found/missing] | ui-enhancer [found/missing]
+Companions: data-model-radar [found/missing] | ui-path-radar [found/missing] | roundtrip-radar [found/missing] | ui-enhancer-radar [found/missing]
 ```
 
 **Skip this step if mode = Quick.**
@@ -289,6 +358,27 @@ find . -name "*.xcscheme" -not -path "*/.build/*" | wc -l
 Grep pattern="targets?:" path="Package.swift" output_mode="content"
 ```
 
+### Verification Template (MANDATORY for own domain scans)
+
+Before grading each owned domain, produce this table:
+
+```
+| Pattern | Grep Run? | Hits | Classified | Confirmed | False Positive | Receipt |
+|---------|-----------|------|------------|-----------|----------------|---------|
+| TODO/FIXME | ? | | | | | |
+| try! | ? | | | | | |
+| as! | ? | | | | | |
+| hardcoded secrets | ? | | | | | |
+| http:// URLs | ? | | | | | |
+```
+
+Rules:
+- Every pattern in the scan list must appear in this table
+- `?` means the grep wasn't run yet — cannot grade until all are filled
+- Hits ≠ Findings. Every hit must be classified (Confirmed / False Positive / Intentional)
+- The grade comes from Confirmed count, not Hits count
+- If Hits > 0 but Classified = 0, the domain was not actually audited
+
 ### Per-Domain Scoring
 
 Start at **100 points**. Deduct per CONFIRMED finding:
@@ -362,7 +452,7 @@ If roundtrip-radar handoff includes `cross_cutting_patterns[]`, incorporate them
 | Model Layer | data-model-radar handoff | 10% |
 | Navigation/UX | ui-path-radar handoff | 10% |
 | Data Safety | roundtrip-radar handoff | 15% |
-| Visual Quality | ui-enhancer handoff | 10% |
+| Visual Quality | ui-enhancer-radar handoff | 10% |
 | Cross-Domain Risk | Correlation analysis | 5% |
 
 **Weight redistribution:** When domains are unaudited (missing companion handoff), divide their total weight proportionally among audited domains. Example: if Data Safety (15%) and Visual Quality (10%) are missing, remaining 75% becomes 100%. Code Hygiene's 10% becomes 10/75 = 13.3%.
@@ -649,7 +739,7 @@ for_ui_path_radar:
       grade: "<letter>"
       reason: "<specific issues found>"
 
-for_ui_enhancer:
+for_ui_enhancer_radar:
   priority_views:
     - domain: "<e.g., Visual Quality>"
       grade: "<letter>"
@@ -739,14 +829,14 @@ Step time estimates:
 | data-model-radar | Are your @Model definitions correct? |
 | ui-path-radar | Can users reach every feature? |
 | roundtrip-radar | Does data survive the full journey? |
-| ui-enhancer | Does it look and feel right? |
+| ui-enhancer-radar | Does it look and feel right? |
 | **capstone-radar** (this skill) | Can you ship? Unified grade + decision. |
 
 **Recommended audit order:**
 1. data-model-radar (foundation — model layer)
 2. ui-path-radar (navigation paths)
 3. roundtrip-radar (data flows)
-4. ui-enhancer (visual quality)
+4. ui-enhancer-radar (visual quality)
 5. capstone-radar (unified grade + ship decision)
 
 Capstone is both the **entry point** ("what should I audit?") and the **exit point** ("can I ship?"). The other radars are the deep work in between.

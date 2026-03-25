@@ -1,6 +1,6 @@
 ---
-name: ui-enhancer
-description: 'Systematic iOS/SwiftUI UI audit with design intent interview, 11-domain analysis (including Color Audit with adaptive Color Profile), element compaction, cross-view consistency checks, layout reorganization, design-aware push-back, App Store guardrails, and incremental apply with revert safety. 17 subcommands. Run /ui-enhancer help for all commands. Triggers: "enhance this UI", "ui enhancer", "improve this view", "screen review", "ux audit".'
+name: ui-enhancer-radar
+description: 'Systematic iOS/SwiftUI UI audit with design intent interview, 11-domain analysis (including Color Audit with adaptive Color Profile), element compaction, cross-view consistency checks, layout reorganization, design-aware push-back, App Store guardrails, and incremental apply with revert safety. 17 subcommands. Run /ui-enhancer-radar help for all commands. Triggers: "enhance this UI", "ui enhancer radar", "improve this view", "screen review", "ux audit".'
 version: 3.1.0
 author: Terry Nyberg
 license: MIT
@@ -10,11 +10,11 @@ metadata:
   category: ux
 ---
 
-# UI Enhancer
+# UI Enhancer Radar
 
 > **Quick Ref:** Screenshot + code analysis of any iOS/SwiftUI view. Design intent interview (sacred elements, aggressiveness), 11-domain analysis with layout reorganization and Color Audit (adaptive Color Profile), element compaction (compact vs remove vs keep), cross-view consistency checks, design-aware refinement with push-back and App Store guardrails, incremental apply with revert safety (git or file backup), visual verification guidance, and files-changed summary.
 
-<ui-enhancer>
+<ui-enhancer-radar>
 
 You are performing a systematic UI enhancement on a specific iOS/SwiftUI view, analyzing both the visual screenshot and the underlying code, then implementing improvements with tests.
 
@@ -24,52 +24,52 @@ You are performing a systematic UI enhancement on a specific iOS/SwiftUI view, a
 
 | Command | Description |
 |---------|-------------|
-| `/ui-enhancer` | Full audit with interview |
-| `/ui-enhancer space` | Space efficiency analysis only |
-| `/ui-enhancer hierarchy` | Visual hierarchy analysis only |
-| `/ui-enhancer density` | Information density analysis only |
-| `/ui-enhancer interaction` | Interaction patterns analysis only |
-| `/ui-enhancer accessibility` | Accessibility audit only |
-| `/ui-enhancer hig` | HIG compliance check only |
-| `/ui-enhancer dark-mode` | Dark mode audit only |
-| `/ui-enhancer performance` | Performance impact analysis only |
-| `/ui-enhancer design-system` | Design system compliance only |
-| `/ui-enhancer color` | Color audit only (inventory, flatness, consistency) |
-| `/ui-enhancer compare` | Compare before/after screenshots for progress |
-| `/ui-enhancer revert` | Undo all changes back to last checkpoint |
-| `/ui-enhancer batch [path]` | Audit all views in a directory, rank by severity |
-| `/ui-enhancer --capture` | Capture screenshot from running simulator (optional) |
-| `/ui-enhancer --devices` | Analyze layout across device sizes (optional) |
+| `/ui-enhancer-radar` | Full audit with interview |
+| `/ui-enhancer-radar space` | Space efficiency analysis only |
+| `/ui-enhancer-radar hierarchy` | Visual hierarchy analysis only |
+| `/ui-enhancer-radar density` | Information density analysis only |
+| `/ui-enhancer-radar interaction` | Interaction patterns analysis only |
+| `/ui-enhancer-radar accessibility` | Accessibility audit only |
+| `/ui-enhancer-radar hig` | HIG compliance check only |
+| `/ui-enhancer-radar dark-mode` | Dark mode audit only |
+| `/ui-enhancer-radar performance` | Performance impact analysis only |
+| `/ui-enhancer-radar design-system` | Design system compliance only |
+| `/ui-enhancer-radar color` | Color audit only (inventory, flatness, consistency) |
+| `/ui-enhancer-radar compare` | Compare before/after screenshots for progress |
+| `/ui-enhancer-radar revert` | Undo all changes back to last checkpoint |
+| `/ui-enhancer-radar batch [path]` | Audit all views in a directory, rank by severity |
+| `/ui-enhancer-radar --capture` | Capture screenshot from running simulator (optional) |
+| `/ui-enhancer-radar --devices` | Analyze layout across device sizes (optional) |
 
 ---
 
 ## Help Command
 
-**If the user runs `/ui-enhancer help`**, display this command reference and stop (do not start an audit):
+**If the user runs `/ui-enhancer-radar help`**, display this command reference and stop (do not start an audit):
 
 ```
 UI Enhancer — Available Commands
 
 FULL AUDIT
-  /ui-enhancer              Full 11-domain audit with interview
+  /ui-enhancer-radar              Full 11-domain audit with interview
 
 SINGLE DOMAIN (skip interview, run one domain)
-  /ui-enhancer space        Space efficiency analysis
-  /ui-enhancer hierarchy    Visual hierarchy analysis
-  /ui-enhancer density      Information density analysis
-  /ui-enhancer interaction  Interaction patterns analysis
-  /ui-enhancer accessibility  Accessibility audit
-  /ui-enhancer hig          HIG compliance check
-  /ui-enhancer dark-mode    Dark mode audit
-  /ui-enhancer performance  Performance impact analysis
-  /ui-enhancer design-system  Design system compliance
-  /ui-enhancer color        Color audit (inventory, flatness, consistency)
+  /ui-enhancer-radar space        Space efficiency analysis
+  /ui-enhancer-radar hierarchy    Visual hierarchy analysis
+  /ui-enhancer-radar density      Information density analysis
+  /ui-enhancer-radar interaction  Interaction patterns analysis
+  /ui-enhancer-radar accessibility  Accessibility audit
+  /ui-enhancer-radar hig          HIG compliance check
+  /ui-enhancer-radar dark-mode    Dark mode audit
+  /ui-enhancer-radar performance  Performance impact analysis
+  /ui-enhancer-radar design-system  Design system compliance
+  /ui-enhancer-radar color        Color audit (inventory, flatness, consistency)
 
 UTILITIES
-  /ui-enhancer compare      Compare before/after screenshots
-  /ui-enhancer revert       Undo all changes back to checkpoint
-  /ui-enhancer batch [path] Audit all views in a directory
-  /ui-enhancer help         Show this command list
+  /ui-enhancer-radar compare      Compare before/after screenshots
+  /ui-enhancer-radar revert       Undo all changes back to checkpoint
+  /ui-enhancer-radar batch [path] Audit all views in a directory
+  /ui-enhancer-radar help         Show this command list
 
 OPTIONS (combine with any command)
   --capture                 Capture screenshot from running simulator
@@ -80,9 +80,9 @@ OPTIONS (combine with any command)
 
 ## First-Run Hint
 
-When `/ui-enhancer` is invoked with no subcommand, display this hint **once** before the Phase 1 interview (not on subsequent runs in the same session):
+When `/ui-enhancer-radar` is invoked with no subcommand, display this hint **once** before the Phase 1 interview (not on subsequent runs in the same session):
 
-> Tip: Run `/ui-enhancer help` to see all available commands, or continue for a full audit.
+> Tip: Run `/ui-enhancer-radar help` to see all available commands, or continue for a full audit.
 
 Then proceed directly to Phase 1.
 
@@ -180,6 +180,75 @@ You can:
 3. **Keep auditing other areas first** — I'll check [plain description] next
 4. **Explain more** — I'll walk through what each improvement does
 ```
+
+---
+
+## Work Receipts (MANDATORY — every verified finding)
+
+Every finding tagged as `verified` must include a **work receipt** — proof of what was actually checked. No receipt = automatic downgrade to `probable`.
+
+A work receipt includes:
+- **File read:** the specific file path and line range that was read
+- **Pattern searched:** the grep pattern or search term used
+- **Evidence found:** the specific code that confirms the finding (quote 1-3 lines)
+
+**Example — with receipt (verified):**
+```
+Finding: Room column not imported in CSV
+Receipt: Read CSVImportManager.swift:420-447. Searched for `item.room =` — 0 matches.
+  Canonical mapping exists at line 45 (`"room": "Room"`) but createItemFromRow never sets item.room.
+Confidence: verified
+```
+
+**Example — without receipt (downgraded):**
+```
+Finding: Room column not imported in CSV
+Receipt: none (structural analysis only)
+Confidence: probable (no file evidence — upgrade to verified by reading CSVImportManager.swift)
+```
+
+**Rule:** If you catch yourself writing "verified" without having produced a receipt, stop and either produce the receipt or downgrade to "probable." The receipt is not documentation for the user — it is a structural constraint that prevents claiming depth you didn't achieve.
+
+---
+
+## Contradiction Detection (MANDATORY — before final grades)
+
+Before presenting any domain grade, run this mechanical check:
+
+1. **Findings vs grade:** If a domain has any CRITICAL findings, the grade cannot be above C. If it has any HIGH findings, the grade cannot be above B+. If the calculated score produces a higher grade than these caps allow, lower the grade to the cap and note: "Grade capped from [calculated] to [capped] due to [N] [severity] findings."
+
+2. **Cross-reference handoff vs grade:** If the handoff file for a domain lists blockers, the grade for that domain cannot be A. The handoff represents what was actually found — the grade must be consistent.
+
+3. **Self-consistency:** If two findings in the same report contradict each other (e.g., "backup is comprehensive" in Domain 2 but "InsuranceProfile missing from backup" in the findings table), flag the contradiction explicitly and resolve it before grading.
+
+These checks are mechanical — no judgment needed, just arithmetic and string matching. Run them automatically as the last step before presenting grades.
+
+---
+
+## Finding Classification (MANDATORY)
+
+Classify every finding into one of three categories. Do not report all findings as the same type.
+
+### 1. Bug
+Code does something wrong. The behavior contradicts the developer's intent.
+- Example: Edit form drops secondary categories on save
+
+### 2. Stale Code
+Code was correct when written but the codebase grew around it. Detectable via git history.
+- Check: `git log -1 -- <file>` for last modification date
+- Check: model/dependency field count at that date vs now
+- If the model grew significantly and the code didn't keep up → stale code
+- Example: CKRecordMapper mapped 36 of 40 fields when extracted. Model grew to 85+ fields. Mapper only grew to 39.
+- Present as: "This code was last updated [date] when [model] had [N] fields. [Model] now has [M] fields. [M-N] fields were added after this code was written. Was this intentional?"
+
+### 3. Design Choice
+Intentionally limited scope with documented evidence.
+- Requires: CLAUDE.md section, code comment explaining the limitation, or consistent pattern across the codebase
+- If no documentation exists, classify as Stale Code, not Design Choice
+- Present as: "Documented decision: [quote from docs]. If this no longer reflects your intent, reclassify as stale code."
+
+### Why This Matters
+"Design choice" is often a euphemism for "built under time pressure, never revisited." The distinction between categories 2 and 3 is the presence of evidence. Without evidence, assume stale — the developer can always correct you.
 
 ---
 
@@ -391,7 +460,7 @@ questions:
 
 **If "Capture from simulator"** (optional feature):
 ```bash
-xcrun simctl io booted screenshot /tmp/ui-enhancer-capture.png
+xcrun simctl io booted screenshot /tmp/ui-enhancer-radar-capture.png
 ```
 Then read the captured screenshot.
 
@@ -488,6 +557,24 @@ When a SwiftUI file is provided, read it and analyze:
 ## Phase 5: Domain Analysis
 
 Run the applicable domains based on the interview:
+
+### Verification Template (MANDATORY per view audit)
+
+Before grading a view, produce this checklist showing what was actually inspected:
+
+```
+| Domain | Checked? | Receipt | Findings |
+|--------|----------|---------|----------|
+| 1. Space Efficiency | ? | (file:line) | |
+| 2. Visual Hierarchy | ? | (file:line) | |
+| ... | | | |
+| 11. Color Audit | ? | (file:line) | |
+```
+
+Rules:
+- Every domain must be marked checked (yes) or skipped (no — with reason)
+- Skipped domains cannot contribute to the grade (positive or negative)
+- A grade cannot be produced while any domain has `?`
 
 ### Domain 1: Space Efficiency
 
@@ -746,7 +833,7 @@ Output as a side-by-side comparison table.
 
 **Goal:** Ensure intentional, consistent, and effective use of color throughout the view. Detect monochromatic flatness, semantic drift, opacity inconsistencies, and missing visual differentiation.
 
-**Adaptive Color Profile:** On first run, this domain reads CLAUDE.md and design system files to learn the project's palette rules. Findings are saved to `.agents/ui-enhancer/color-profile.md` so subsequent audits can compare views against established patterns.
+**Adaptive Color Profile:** On first run, this domain reads CLAUDE.md and design system files to learn the project's palette rules. Findings are saved to `.agents/ui-enhancer-radar/color-profile.md` so subsequent audits can compare views against established patterns.
 
 #### 11a. Color Inventory Table
 
@@ -878,11 +965,11 @@ Check text-on-background combinations:
 
 ### Adaptive View Profile
 
-The View Profile is a persistent file that grows with each audit, enabling cross-view consistency checks for both color (Domain 11) and component usage (Domain 9). Stored at `.agents/ui-enhancer/view-profile.md`.
+The View Profile is a persistent file that grows with each audit, enabling cross-view consistency checks for both color (Domain 11) and component usage (Domain 9). Stored at `.agents/ui-enhancer-radar/view-profile.md`.
 
 **On first audit of a project:**
 
-1. Check for `.agents/ui-enhancer/view-profile.md` — if it doesn't exist, create it
+1. Check for `.agents/ui-enhancer-radar/view-profile.md` — if it doesn't exist, create it
 2. Record the Color Inventory Table, opacity conventions, and semantic color map from this audit
 3. Record which shared components the view uses and which optional parameters it enables
 4. Note the project's palette rules from CLAUDE.md
@@ -895,7 +982,7 @@ The View Profile is a persistent file that grows with each audit, enabling cross
 4. Update the profile with any new patterns discovered
 5. If a previously recorded convention has changed in the majority of views, update the convention (not the outlier)
 
-**View Profile format (`.agents/ui-enhancer/view-profile.md`):**
+**View Profile format (`.agents/ui-enhancer-radar/view-profile.md`):**
 
 ```markdown
 # UI Enhancer View Profile
@@ -1353,7 +1440,7 @@ questions:
 
 **If "Commit first":**
 1. Run `git status` to show what will be committed
-2. Stage and commit with message: `chore: checkpoint before ui-enhancer changes`
+2. Stage and commit with message: `chore: checkpoint before ui-enhancer-radar changes`
 3. Confirm the commit hash to the user
 
 **If "Skip — working tree is clean":**
@@ -1452,7 +1539,7 @@ Then continue to the next fix.
 
 **If "Revert all":**
 ```bash
-git checkout -- [all files modified by ui-enhancer in this session]
+git checkout -- [all files modified by ui-enhancer-radar in this session]
 ```
 Report: "All UI Enhancer changes reverted."
 
@@ -1464,7 +1551,7 @@ Skip remaining fixes. Offer to save the remaining playbook entries to a file for
 Available anytime after an enhancement session:
 
 ```
-/ui-enhancer revert
+/ui-enhancer-radar revert
 ```
 
 This command:
@@ -1490,7 +1577,7 @@ questions:
 ### Safety Rules
 
 1. **Never force-push** — revert only affects local changes
-2. **Never revert past user commits** — only revert ui-enhancer edits
+2. **Never revert past user commits** — only revert ui-enhancer-radar edits
 3. **No revert if already pushed** — if changes were pushed to remote, warn and suggest `git revert` instead
 
 ---
@@ -1574,7 +1661,7 @@ This prevents infinite micro-adjustment loops while respecting the user's autono
 ### When to skip refinement
 
 - User chose "Done" — proceed to Phase 8 (Tests)
-- Single-domain audit (e.g., `/ui-enhancer space`) — refinement is less relevant for focused checks
+- Single-domain audit (e.g., `/ui-enhancer-radar space`) — refinement is less relevant for focused checks
 - No visual changes were made (e.g., only performance or accessibility fixes)
 
 ---
@@ -1751,7 +1838,7 @@ These features are available but not run by default. User must explicitly reques
 Analyze how the view behaves across device sizes by examining spacing, padding, and layout constraints in code.
 
 ```
-/ui-enhancer --devices
+/ui-enhancer-radar --devices
 ```
 
 | Device | Width | Check |
@@ -1766,7 +1853,7 @@ Analyze how the view behaves across device sizes by examining spacing, padding, 
 Automatically capture a screenshot from a running simulator.
 
 ```
-/ui-enhancer --capture
+/ui-enhancer-radar --capture
 ```
 
 ```bash
@@ -1774,17 +1861,17 @@ Automatically capture a screenshot from a running simulator.
 xcrun simctl list devices booted
 
 # Capture screenshot
-xcrun simctl io booted screenshot /tmp/ui-enhancer-capture.png
+xcrun simctl io booted screenshot /tmp/ui-enhancer-radar-capture.png
 ```
 
 ### Before/After Screenshot Comparison
 
-When `/ui-enhancer compare` is used, or when the user wants to see visual progress:
+When `/ui-enhancer-radar compare` is used, or when the user wants to see visual progress:
 
 **Automated workflow (if simulator is running):**
 ```bash
 # Capture "after" screenshot
-xcrun simctl io booted screenshot /tmp/ui-enhancer-after.png
+xcrun simctl io booted screenshot /tmp/ui-enhancer-radar-after.png
 ```
 Then read both the original screenshot (provided at start) and the new capture, comparing side by side.
 
@@ -1801,7 +1888,7 @@ Then read both the original screenshot (provided at start) and the new capture, 
 - Space recovery: is content visible that was previously below the fold?
 - Consistency: do the changes match the app's existing patterns?
 
-### Batch Mode (`/ui-enhancer batch [path]`)
+### Batch Mode (`/ui-enhancer-radar batch [path]`)
 
 Audit all views in a directory, build the View Profile in one pass, then rank views by severity.
 
@@ -1824,7 +1911,7 @@ Audit all views in a directory, build the View Profile in one pass, then rank vi
 | 3 | DashboardView | Dashboard | 6/10 | Sidebar-content redundancy (macOS) |
 | ... | ... | ... | ... | ... |
 
-Run `/ui-enhancer` on any view above for a full audit.
+Run `/ui-enhancer-radar` on any view above for a full audit.
 ```
 
 **Batch mode limitations:**
@@ -1923,14 +2010,14 @@ If chrome/status/badge scores highest → hierarchy issue.
 
 ## Cross-Skill Handoff
 
-UI Enhancer complements **data-model-radar** (model layer), **ui-path-radar** (navigation paths), **roundtrip-radar** (data safety), and **capstone-radar** (ship readiness). Findings from one skill inform the others.
+UI Enhancer Radar complements **data-model-radar** (model layer), **ui-path-radar** (navigation paths), **roundtrip-radar** (data safety), and **capstone-radar** (ship readiness). Findings from one skill inform the others.
 
 ### On Completion — Write Handoff
 
-After completing a view audit, write/update `.agents/ui-audit/ui-enhancer-handoff.yaml`:
+After completing a view audit, write/update `.agents/ui-audit/ui-enhancer-radar-handoff.yaml`:
 
 ```yaml
-source: ui-enhancer
+source: ui-enhancer-radar
 date: <ISO 8601>
 project: <project name>
 views_audited: <count>
@@ -1978,4 +2065,4 @@ If found, incorporate as context during the interview phase (e.g., "ui-path-rada
 
 This reminder is placed at the end of the file because context compaction tends to preserve the beginning and end. If you are unsure whether to print the banner, **print it**.
 
-</ui-enhancer>
+</ui-enhancer-radar>

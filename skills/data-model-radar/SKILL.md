@@ -130,6 +130,75 @@ You can:
 
 ---
 
+## Work Receipts (MANDATORY — every verified finding)
+
+Every finding tagged as `verified` must include a **work receipt** — proof of what was actually checked. No receipt = automatic downgrade to `probable`.
+
+A work receipt includes:
+- **File read:** the specific file path and line range that was read
+- **Pattern searched:** the grep pattern or search term used
+- **Evidence found:** the specific code that confirms the finding (quote 1-3 lines)
+
+**Example — with receipt (verified):**
+```
+Finding: Room column not imported in CSV
+Receipt: Read CSVImportManager.swift:420-447. Searched for `item.room =` — 0 matches.
+  Canonical mapping exists at line 45 (`"room": "Room"`) but createItemFromRow never sets item.room.
+Confidence: verified
+```
+
+**Example — without receipt (downgraded):**
+```
+Finding: Room column not imported in CSV
+Receipt: none (structural analysis only)
+Confidence: probable (no file evidence — upgrade to verified by reading CSVImportManager.swift)
+```
+
+**Rule:** If you catch yourself writing "verified" without having produced a receipt, stop and either produce the receipt or downgrade to "probable." The receipt is not documentation for the user — it is a structural constraint that prevents claiming depth you didn't achieve.
+
+---
+
+## Contradiction Detection (MANDATORY — before final grades)
+
+Before presenting any domain grade, run this mechanical check:
+
+1. **Findings vs grade:** If a domain has any CRITICAL findings, the grade cannot be above C. If it has any HIGH findings, the grade cannot be above B+. If the calculated score produces a higher grade than these caps allow, lower the grade to the cap and note: "Grade capped from [calculated] to [capped] due to [N] [severity] findings."
+
+2. **Cross-reference handoff vs grade:** If the handoff file for a domain lists blockers, the grade for that domain cannot be A. The handoff represents what was actually found — the grade must be consistent.
+
+3. **Self-consistency:** If two findings in the same report contradict each other (e.g., "backup is comprehensive" in Domain 2 but "InsuranceProfile missing from backup" in the findings table), flag the contradiction explicitly and resolve it before grading.
+
+These checks are mechanical — no judgment needed, just arithmetic and string matching. Run them automatically as the last step before presenting grades.
+
+---
+
+## Finding Classification (MANDATORY)
+
+Classify every finding into one of three categories. Do not report all findings as the same type.
+
+### 1. Bug
+Code does something wrong. The behavior contradicts the developer's intent.
+- Example: Edit form drops secondary categories on save
+
+### 2. Stale Code
+Code was correct when written but the codebase grew around it. Detectable via git history.
+- Check: `git log -1 -- <file>` for last modification date
+- Check: model/dependency field count at that date vs now
+- If the model grew significantly and the code didn't keep up → stale code
+- Example: CKRecordMapper mapped 36 of 40 fields when extracted. Model grew to 85+ fields. Mapper only grew to 39.
+- Present as: "This code was last updated [date] when [model] had [N] fields. [Model] now has [M] fields. [M-N] fields were added after this code was written. Was this intentional?"
+
+### 3. Design Choice
+Intentionally limited scope with documented evidence.
+- Requires: CLAUDE.md section, code comment explaining the limitation, or consistent pattern across the codebase
+- If no documentation exists, classify as Stale Code, not Design Choice
+- Present as: "Documented decision: [quote from docs]. If this no longer reflects your intent, reclassify as stale code."
+
+### Why This Matters
+"Design choice" is often a euphemism for "built under time pressure, never revisited." The distinction between categories 2 and 3 is the presence of evidence. Without evidence, assume stale — the developer can always correct you.
+
+---
+
 ## Audit Depth
 
 Each domain can be run at two depths:
@@ -287,6 +356,24 @@ For the model being audited, check ALL applicable serialization targets. Do not 
 ```
 
 Mark fields not checked with `?` instead of yes/no. The table must be honest about what was verified.
+
+### Verification Template (MANDATORY for Domain 2)
+
+Before grading serialization coverage, produce this pre-populated table. Read the model file first to get all stored properties, then fill in each cell by reading the actual serialization code.
+
+```
+| Field | Model | Backup | CSV Export | CSV Import | CloudKit | Receipt |
+|-------|:-----:|:------:|:---------:|:----------:|:--------:|---------|
+| [field1] | yes | ? | ? | ? | ? | (fill after reading each target) |
+| [field2] | yes | ? | ? | ? | ? | |
+```
+
+Rules:
+- `yes` = confirmed by reading the code (include file:line in Receipt column)
+- `no` = confirmed absent by reading the code
+- `?` = not yet checked
+- A domain grade CANNOT be produced while any cell contains `?` for a target you claimed to check
+- If you skip a target (e.g., don't read CloudKit), mark the entire column as `not checked` — don't fill in `?` and then grade as if you checked it
 
 ### Domain 3: Relationship Integrity
 
@@ -505,7 +592,7 @@ for_ui_path_radar:
     - view: "<view that might reference this field>"
       finding: "<e.g., field exists but no UI reads it>"
 
-for_ui_enhancer:
+for_ui_enhancer_radar:
   # Semantic ambiguity affects how fields should be displayed
   suspects:
     - view: "<view displaying this field>"

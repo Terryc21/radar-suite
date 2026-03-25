@@ -335,6 +335,75 @@ You can:
 
 ---
 
+## Work Receipts (MANDATORY — every verified finding)
+
+Every finding tagged as `verified` must include a **work receipt** — proof of what was actually checked. No receipt = automatic downgrade to `probable`.
+
+A work receipt includes:
+- **File read:** the specific file path and line range that was read
+- **Pattern searched:** the grep pattern or search term used
+- **Evidence found:** the specific code that confirms the finding (quote 1-3 lines)
+
+**Example — with receipt (verified):**
+```
+Finding: Room column not imported in CSV
+Receipt: Read CSVImportManager.swift:420-447. Searched for `item.room =` — 0 matches.
+  Canonical mapping exists at line 45 (`"room": "Room"`) but createItemFromRow never sets item.room.
+Confidence: verified
+```
+
+**Example — without receipt (downgraded):**
+```
+Finding: Room column not imported in CSV
+Receipt: none (structural analysis only)
+Confidence: probable (no file evidence — upgrade to verified by reading CSVImportManager.swift)
+```
+
+**Rule:** If you catch yourself writing "verified" without having produced a receipt, stop and either produce the receipt or downgrade to "probable." The receipt is not documentation for the user — it is a structural constraint that prevents claiming depth you didn't achieve.
+
+---
+
+## Contradiction Detection (MANDATORY — before final grades)
+
+Before presenting any domain grade, run this mechanical check:
+
+1. **Findings vs grade:** If a domain has any CRITICAL findings, the grade cannot be above C. If it has any HIGH findings, the grade cannot be above B+. If the calculated score produces a higher grade than these caps allow, lower the grade to the cap and note: "Grade capped from [calculated] to [capped] due to [N] [severity] findings."
+
+2. **Cross-reference handoff vs grade:** If the handoff file for a domain lists blockers, the grade for that domain cannot be A. The handoff represents what was actually found — the grade must be consistent.
+
+3. **Self-consistency:** If two findings in the same report contradict each other (e.g., "backup is comprehensive" in Domain 2 but "InsuranceProfile missing from backup" in the findings table), flag the contradiction explicitly and resolve it before grading.
+
+These checks are mechanical — no judgment needed, just arithmetic and string matching. Run them automatically as the last step before presenting grades.
+
+---
+
+## Finding Classification (MANDATORY)
+
+Classify every finding into one of three categories. Do not report all findings as the same type.
+
+### 1. Bug
+Code does something wrong. The behavior contradicts the developer's intent.
+- Example: Edit form drops secondary categories on save
+
+### 2. Stale Code
+Code was correct when written but the codebase grew around it. Detectable via git history.
+- Check: `git log -1 -- <file>` for last modification date
+- Check: model/dependency field count at that date vs now
+- If the model grew significantly and the code didn't keep up → stale code
+- Example: CKRecordMapper mapped 36 of 40 fields when extracted. Model grew to 85+ fields. Mapper only grew to 39.
+- Present as: "This code was last updated [date] when [model] had [N] fields. [Model] now has [M] fields. [M-N] fields were added after this code was written. Was this intentional?"
+
+### 3. Design Choice
+Intentionally limited scope with documented evidence.
+- Requires: CLAUDE.md section, code comment explaining the limitation, or consistent pattern across the codebase
+- If no documentation exists, classify as Stale Code, not Design Choice
+- Present as: "Documented decision: [quote from docs]. If this no longer reflects your intent, reclassify as stale code."
+
+### Why This Matters
+"Design choice" is often a euphemism for "built under time pressure, never revisited." The distinction between categories 2 and 3 is the presence of evidence. Without evidence, assume stale — the developer can always correct you.
+
+---
+
 When invoked, perform the audit:
 
 ### If no arguments or "full":
@@ -513,6 +582,22 @@ Before scanning for new issues, re-verify ALL flagged findings from Layer 1 and 
 4. Check for orphaned @State vars — but verify against extension files AND ViewModel bindings before flagging (see Step 0 methodology)
 5. Categorize by severity
 6. Output to `layer3-results.yaml`
+
+### Verification Template (MANDATORY for Layer 3)
+
+Before grading issues, produce this table for each flagged entry point from Layer 1:
+
+```
+| # | Entry Point | Flag | Verified? | Receipt | Status |
+|---|-------------|------|-----------|---------|--------|
+| 1 | [label] | [flag] | ? | (file:line checked) | confirmed / retracted / needs-runtime |
+```
+
+Rules:
+- Every flagged entry point from Layer 1 must appear in this table
+- `?` in the Verified column means the finding hasn't been checked in Layer 3 yet
+- Layer 3 cannot produce a grade while any flagged entry has `?` in Verified
+- Retracted findings stay in the table with strikethrough — they prove you checked, not just confirmed
 
 ### If "layer4" or "evaluate":
 
@@ -819,7 +904,7 @@ Optional field suggesting how planning skills might batch issues:
 
 ## Cross-Skill Handoff
 
-UI Path Radar complements **data-model-radar** (model layer), **roundtrip-radar** (data safety), **ui-enhancer** (visual quality), and **capstone-radar** (ship readiness). Findings from one skill inform the others.
+UI Path Radar complements **data-model-radar** (model layer), **roundtrip-radar** (data safety), **ui-enhancer-radar** (visual quality), and **capstone-radar** (ship readiness). Findings from one skill inform the others.
 
 ### On Completion — Write Handoff
 
@@ -838,7 +923,7 @@ for_roundtrip_radar:
       file: "<file:line>"
       question: "<specific question for roundtrip-radar to verify>"
 
-for_ui_enhancer:
+for_ui_enhancer_radar:
   # Dead buttons and orphaned views should be removed or fixed before visual audit
   suspects:
     - view: "<view file>"
@@ -858,7 +943,7 @@ for_capstone_radar:
 
 Before starting the audit, check for handoff files from other skills:
 - `.agents/ui-audit/roundtrip-radar-handoff.yaml` — data safety issues that may have UI implications
-- `.agents/ui-audit/ui-enhancer-handoff.yaml` — visual issues that may indicate structural problems
+- `.agents/ui-audit/ui-enhancer-radar-handoff.yaml` — visual issues that may indicate structural problems
 
 If found, incorporate relevant items as **suspects** in the appropriate layer. If not found, proceed normally — the other skills may not be installed or haven't been run yet.
 
