@@ -596,6 +596,24 @@ Skip empty waves (e.g., if no design decisions, go straight from Wave 2 to Wave 
 
 If a "cross-cutting fix" turns out to need a design decision during implementation, reclassify it — ask the user via `AskUserQuestion` with the options, don't proceed without input.
 
+### Wave 3: Design Decision Prompt Format (MANDATORY)
+
+Every design decision presented to the user MUST include an **"Explain pros/cons"** option. Use this template for each decision in the `AskUserQuestion`:
+
+```
+Options:
+- **[Recommended option] (Recommended)** — [one-line description]
+- **[Alternative option]** — [one-line description]
+- **Accept as-is** — [why this is safe to leave]
+- **Explain pros/cons** — Walk through the tradeoffs before deciding
+```
+
+If the user selects "Explain pros/cons":
+1. Present a brief pros/cons analysis (3-5 bullets total, not an essay)
+2. Re-prompt with the same options (minus "Explain pros/cons")
+
+**Never present a design decision without the "Explain pros/cons" option.** Users should be able to make informed decisions without feeling pressured by a recommendation.
+
 ### Wave 4: Pattern Sweep (after fixes, before commit)
 
 After fixing findings in a workflow, scan the entire codebase for the same anti-pattern. This catches all instances at once instead of rediscovering them workflow-by-workflow.
@@ -604,7 +622,19 @@ For each pattern found and fixed in this workflow:
 1. Build a grep query (e.g., `Double(` for raw price parsing, `hashValue` for unstable IDs)
 2. Search all Sources/ files
 3. Report: "Pattern X found in N additional files: [list]"
-4. If fixes are trivial and isolated, apply them now. Otherwise, note for the next workflow.
+
+**MANDATORY: Full rating table + decision prompt for every pattern found.**
+
+Do NOT silently note patterns "for future" or "for the next workflow." Every pattern instance found during the sweep must be:
+1. Presented in the full Issue Rating Table (all columns)
+2. Followed by an `AskUserQuestion` with these options:
+   - **Fix now (Recommended)** — if trivial and isolated
+   - **Fix now** — if feasible but non-trivial
+   - **Defer** — add to DEFERRED.md with release gate
+   - **Accept as-is** — intentional or too risky to change
+   - **Explain pros/cons** — walk through the tradeoffs before deciding
+
+Group related patterns into a single table + prompt when they share the same root cause (e.g., all `hashValue` usages in one table). But never skip the prompt.
 
 ### Progress Banner (CRITICAL — BLOCKING requirement)
 

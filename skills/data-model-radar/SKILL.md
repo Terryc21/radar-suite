@@ -544,6 +544,28 @@ Scale the number of waves to finding severity:
 
 **Every fix must have a test.** Do not move to the next wave until tests for the current wave's fixes are written and compiling. The test verifies the fix works; without it, the fix is unverified code.
 
+### Design Decision Prompt Format (MANDATORY — all waves)
+
+Every design decision presented to the user MUST include an **"Explain pros/cons"** option:
+
+```
+Options:
+- **[Recommended option] (Recommended)** — [one-line description]
+- **[Alternative option]** — [one-line description]
+- **Accept as-is** — [why this is safe to leave]
+- **Explain pros/cons** — Walk through the tradeoffs before deciding
+```
+
+If the user selects "Explain pros/cons": present a brief analysis (3-5 bullets), then re-prompt with the same options (minus "Explain pros/cons").
+
+### Wave 4: Pattern Sweep Rules
+
+Do NOT silently note patterns "for future" or "for the next workflow." Every pattern instance found during the sweep must be:
+1. Presented in the full Issue Rating Table (all columns)
+2. Followed by an `AskUserQuestion` with options: **Fix now** / **Defer** / **Accept as-is** / **Explain pros/cons**
+
+Group related patterns into a single table + prompt when they share the same root cause.
+
 ### Progress Banner (CRITICAL — BLOCKING requirement)
 
 **After EVERY wave and EVERY commit, your NEXT output MUST be the progress banner followed by the next-wave `AskUserQuestion`. Do not output anything else first. Do not leave a blank prompt.**

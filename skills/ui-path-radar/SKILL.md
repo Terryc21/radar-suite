@@ -719,6 +719,8 @@ Compare current codebase against the previous audit to show what changed:
    - **Requires design decision** — multiple valid approaches
    - **Deferred** — no action needed now
    - **Out of scope** — belongs to a different audit type
+5. **Design decisions MUST include "Explain pros/cons" option.** Every design decision prompt must offer: Recommended option, Alternative(s), Accept as-is, and **Explain pros/cons** (walks through tradeoffs before deciding). If user selects it, present brief analysis then re-prompt.
+6. **Pattern sweep findings MUST use full rating table + decision prompt.** Never silently note patterns "for future." Present in full Issue Rating Table, then ask: Fix now / Defer / Accept as-is / Explain pros/cons.
 
 ### If "status":
 1. Read existing audit files

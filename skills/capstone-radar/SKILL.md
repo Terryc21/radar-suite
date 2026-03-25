@@ -987,6 +987,21 @@ Capstone is both the **entry point** ("what should I audit?") and the **exit poi
 
 ---
 
+## Decision Prompt Rules (MANDATORY — all user-facing decisions)
+
+Every `AskUserQuestion` that presents a design decision, implementation choice, or finding resolution MUST include an **"Explain pros/cons"** option:
+
+- **[Recommended option] (Recommended)** — [one-line description]
+- **[Alternative(s)]** — [one-line description each]
+- **Accept as-is** — [why this is safe to leave] (where applicable)
+- **Explain pros/cons** — Walk through the tradeoffs before deciding
+
+If the user selects "Explain pros/cons": present a brief analysis (3-5 bullets), then re-prompt with the same options (minus "Explain pros/cons").
+
+**Never silently note findings "for future."** Every finding discovered during the audit must be presented with the full Issue Rating Table and a decision prompt (Fix / Defer / Accept / Explain pros/cons).
+
+---
+
 ## REMINDER (End-of-File — Survives Context Compaction)
 
 **CRITICAL:** After EVERY step, EVERY commit, and EVERY domain transition:
