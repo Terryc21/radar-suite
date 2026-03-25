@@ -1044,7 +1044,7 @@ The View Profile is a persistent file that grows with each audit, enabling cross
 | 2026-03-22 | DashboardView | Quick Stats collapsed padding -8pt | Kept | Closer to MY STUFF |
 ```
 
-**Refinement History** records what was tried during the refinement loop (Phase 7c) — both kept and reverted changes. This serves two purposes:
+**Refinement History** records what was tried during the refinement loop (Phase 7f) — both kept and reverted changes. This serves two purposes:
 1. If the user returns and says "I liked the spacing we tried last time," the history shows what values were used
 2. It reveals patterns — if the user consistently asks for tighter spacing, future audits should start with tighter recommendations
 
@@ -1387,7 +1387,7 @@ questions:
 
 ## Phase 7: Implementation Playbook
 
-**MANDATORY: Before ANY code edits, complete Phase 7a (User Commit Offer) and Phase 7b (Incremental Apply). These are NOT optional. Skipping them removes the user's ability to safely revert.**
+**MANDATORY: Before ANY code edits, complete Phase 7a (User Commit Offer), Phase 7b (Visual Inspection Gate), and Phase 7c (Guided Visual Review). These are NOT optional. Skipping them means making blind changes to visual UI.**
 
 For each finding, generate the exact code change — not just a description.
 
@@ -1498,36 +1498,163 @@ Generate the full playbook with before/after code blocks, but do not apply any e
 
 ---
 
-## Phase 7b: Incremental Apply with Keep/Revert (MANDATORY — execute after EACH finding)
+## Phase 7b: Visual Inspection Gate (MANDATORY — blocks ALL code changes)
 
-**This phase is NOT optional. Each finding is applied ONE AT A TIME. After each one, the user decides whether to keep it before the next finding is applied. Never batch-apply multiple findings without asking.**
+> **⚠️ CRITICAL WARNING: NEVER modify UI code based solely on code analysis.**
+>
+> Code analysis can count colors, measure spacing values, and detect structural patterns — but it CANNOT tell you whether a view actually *looks* wrong. A view with 3/5 blue icons might look perfectly fine because the form layout separates them visually. A view with "excessive" padding might feel exactly right on a real device.
+>
+> **Every UI change must be validated by a human looking at the actual view.** This is non-negotiable. The user must visually inspect the view before ANY finding is approved or rejected.
 
-### Why This Is Mandatory
+### Why This Gate Exists
 
-Without per-finding review, users lose the ability to:
-- Accept some improvements but reject others
-- See the effect of each change before the next one lands
-- Revert a single change that looked wrong without losing everything
+Without visual inspection, the skill will:
+- Fix "problems" that aren't actually visible to users
+- Make changes that look worse than the original
+- Waste time on micro-optimizations that don't matter on a real screen
+- Create a "revert everything" scenario because changes were made blind
 
-### Per-Finding Flow
+### How It Works
 
-For each finding in the playbook:
+**Before applying ANY code changes from the playbook, block on user visual inspection.**
 
-1. **Apply the fix** (Edit tool)
-2. **If testable** (accessibility fix, dead code removal, component wiring change) — write a test. If purely visual (spacing, color, layout reorder) — skip the test, visual verification via screenshot is the appropriate check.
-3. **Show what changed** (brief description + files modified + test if added)
-4. **Ask the user:**
+Present this prompt (do NOT skip, do NOT auto-proceed):
 
 ```
 questions:
 [
   {
-    "question": "Fix #N applied: [description]. Keep this change?",
+    "question": "Before making changes, you need to see the actual view. How are you viewing it?",
+    "header": "Inspect",
+    "options": [
+      {"label": "Xcode Canvas (Recommended)", "description": "Open the file in Xcode — Canvas shows the view live. Fastest feedback loop."},
+      {"label": "Running in Simulator", "description": "App is running in Simulator — I can navigate to the view"},
+      {"label": "Running on device", "description": "App is running on a physical device"},
+      {"label": "I'll view it later", "description": "Save the findings as a playbook — I'll apply changes when I can see the view"},
+      {"label": "Explain pros/cons", "description": "Why does visual inspection matter for this?"}
+    ],
+    "multiSelect": false
+  }
+]
+```
+
+**If "Xcode Canvas":**
+Confirm: "Open `[FileName].swift` in Xcode. The Canvas panel (right side) should show the view. If Canvas isn't visible, press Opt+Cmd+Return. Reply when you can see it."
+
+**If "Running in Simulator" or "Running on device":**
+Confirm: "Navigate to [ViewName] in the app. Reply when you can see it."
+
+**If "I'll view it later":**
+Save the full playbook to `.agents/ui-enhancer-radar/[date]-[view]-playbook.md`. Do NOT apply any code changes. Print:
+```
+📋 Playbook saved. Run `/ui-enhancer-radar` on this view again when you can see it.
+   No code changes were made.
+```
+**Then skip Phases 7c-7e entirely and go to Phase 9 (Summary).**
+
+**If "Explain pros/cons":**
+Explain briefly, then re-prompt with the same options (minus Explain).
+
+### Gate Rule
+
+**Do NOT proceed to Phase 7c until the user confirms they can see the view.** There is no bypass. There is no "trust the code analysis" option. If the user cannot view the screen right now, the correct action is to save the playbook for later.
+
+---
+
+## Phase 7c: Guided Visual Review (MANDATORY — with user looking at the view)
+
+**This is the core of the visual audit. The user is looking at the actual view. Walk through each finding collaboratively, then collect any additional issues the user spots.**
+
+### Part 1: Walk Through Recommended Changes
+
+For each finding in the playbook, present it as a question while the user is looking at the view:
+
+```
+Finding #[N]: [description]
+
+Look at [specific element] on your screen.
+[Describe what to look for — e.g., "Notice the three blue icons in a row: Appearance, Privacy, and iCloud. Do they blend together?"]
+
+What do you think?
+1. **Fix this** — [brief description of the change]
+2. **Compact instead** — [if applicable: preserve visual identity at smaller size]
+3. **Skip** — it looks fine on screen, leave it
+4. **Explain pros/cons** — walk through the tradeoff before deciding
+```
+
+**Key behavioral rules:**
+- **Describe what to LOOK FOR, not what's "wrong."** Let the user's eyes decide if it's actually a problem.
+- **Accept "Skip" gracefully.** Code analysis flagged it, but the user's eyes override. Mark as Accepted with reason "Looks fine on screen per user inspection."
+- **Never argue** if the user says it looks fine. They are literally looking at it. You are not.
+- **Be specific** about which element to examine — don't say "check the colors"; say "look at the three icons next to Appearance, Privacy, and iCloud."
+
+### Part 2: User-Spotted Issues (MANDATORY — always ask)
+
+After walking through all recommended findings, **always** ask:
+
+```
+questions:
+[
+  {
+    "question": "Now that you're looking at [ViewName], do you see anything else you'd like to change? Things code analysis might miss — alignment, spacing feel, visual weight, element sizing, color choices.",
+    "header": "Your eyes",
+    "options": [
+      {"label": "Yes, I see some things", "description": "I'll describe what I'd like to change"},
+      {"label": "No, looks good", "description": "The recommended changes cover everything"},
+      {"label": "Actually, let me look at dark mode too", "description": "Toggle to dark mode before deciding"}
+    ],
+    "multiSelect": false
+  }
+]
+```
+
+**If "Yes, I see some things":**
+Let the user describe in free text. For each item they mention:
+1. Evaluate against design rules (push-back if needed — see Push-back guidance below)
+2. Add to the approved changes list
+3. Generate the playbook entry
+
+**If "Actually, let me look at dark mode too":**
+Wait for user to toggle. Then re-ask about both light and dark mode issues.
+
+### What This Phase Produces
+
+A **final approved list** of changes — combining:
+- Recommended findings the user confirmed (from Part 1)
+- User-spotted issues (from Part 2)
+- With all "Skip" items removed
+
+This list is the input to Phase 7d.
+
+---
+
+## Phase 7d: Apply Approved Changes (execute after visual review)
+
+**Apply ONLY the changes approved in Phase 7c. One at a time, with keep/revert after each.**
+
+### Per-Change Flow
+
+For each approved change:
+
+1. **Apply the fix** (Edit tool)
+2. **If testable** (accessibility fix, dead code removal, component wiring change) — write a test. If purely visual (spacing, color, layout reorder) — skip the test.
+3. **Show what changed** (brief description + files modified)
+4. **Direct user to check the view:**
+
+> "Check [ViewName] in [Canvas/Simulator/device]. The [element] should now [description of visible change]."
+
+5. **Ask:**
+
+```
+questions:
+[
+  {
+    "question": "Fix #N applied: [description]. How does it look?",
     "header": "Review",
     "options": [
-      {"label": "Keep", "description": "This looks good, move to next fix"},
+      {"label": "Keep", "description": "Looks good, move to next fix"},
       {"label": "Compact instead", "description": "Revert removal, apply compacted version preserving visual identity"},
-      {"label": "Revert this fix", "description": "Undo this specific change, continue with others"},
+      {"label": "Revert this fix", "description": "Doesn't look right — undo this change, continue with others"},
       {"label": "Revert all", "description": "Undo everything back to checkpoint"},
       {"label": "Stop here", "description": "Keep changes so far, skip remaining fixes"}
     ],
@@ -1538,21 +1665,21 @@ questions:
 
 **If "Keep":**
 After each kept fix that removes a reference to a component/property/array, check for dead code:
-1. Grep the codebase for the removed reference (e.g., if you removed `quickActionIconsRow` from the body, grep for `quickActionIconsRow`)
+1. Grep the codebase for the removed reference
 2. If the definition is now unreferenced, flag it: "The definition of `[name]` at [file:line] is now unused. Clean up?"
-3. If the user confirms, remove the dead definition as part of the same fix
+3. If the user confirms, remove the dead definition
 
 **If "Compact instead":**
-1. Revert the removal: `git checkout -- [files modified by this fix]`
-2. Apply compaction using the techniques from Phase 6c (reduce icon size, inline layout, tighten spacing, drop secondary text)
-3. Show the compacted result and re-ask with Keep / Revert options
+1. Revert: `git checkout -- [files modified by this fix]`
+2. Apply compaction (Phase 6c techniques)
+3. Direct user to check the view again
+4. Re-ask with Keep / Revert
 
 **If "Revert this fix":**
 ```bash
-# Undo the last edit(s) for this specific fix
 git checkout -- [files modified by this fix]
 ```
-Then continue to the next fix.
+Continue to next fix.
 
 **If "Revert all":**
 ```bash
@@ -1561,51 +1688,80 @@ git checkout -- [all files modified by ui-enhancer-radar in this session]
 Report: "All UI Enhancer changes reverted."
 
 **If "Stop here":**
-Skip remaining fixes. Offer to save the remaining playbook entries to a file for later.
+Skip remaining fixes. Offer to save remaining playbook entries.
 
 ### Batch Revert Command
 
-Available anytime after an enhancement session:
+Available anytime: `/ui-enhancer-radar revert`
 
-```
-/ui-enhancer-radar revert
-```
-
-This command:
 1. Shows files changed during the session
-2. Asks for confirmation:
-
-```
-questions:
-[
-  {
-    "question": "Revert UI Enhancer changes? This will undo modifications made during this session.",
-    "header": "Revert",
-    "options": [
-      {"label": "Revert all", "description": "Undo all UI Enhancer changes"},
-      {"label": "Show diff first", "description": "Show what would be reverted before deciding"},
-      {"label": "Cancel", "description": "Keep current changes"}
-    ],
-    "multiSelect": false
-  }
-]
-```
+2. Asks for confirmation (Revert all / Show diff first / Cancel)
 
 ### Safety Rules
 
 1. **Never force-push** — revert only affects local changes
 2. **Never revert past user commits** — only revert ui-enhancer-radar edits
-3. **No revert if already pushed** — if changes were pushed to remote, warn and suggest `git revert` instead
+3. **No revert if already pushed** — warn and suggest `git revert` instead
 
 ---
 
-## Phase 7c: Refinement Loop (after all findings applied)
+## Phase 7e: Pattern Sweep (after applying changes to one view)
+
+**After all approved changes are applied to a view, check if the same patterns exist in other views. This catches consistency issues across the codebase.**
+
+### When to trigger
+
+After Phase 7d completes (all approved changes applied or stopped), and at least one change was kept.
+
+### How it works
+
+For each type of change that was applied:
+
+1. **Build a grep query** from the change (e.g., if you changed `.blue` to `.purple` on a Privacy icon, search for other Privacy-related icons using `.blue`)
+2. **Search all view files** in Sources/
+3. **Present findings with full rating table + decision prompt:**
+
+```
+Pattern: [description — e.g., "monochromatic blue icons in settings-style views"]
+Found in [N] additional views:
+
+| # | View | File:Line | Same Pattern | Severity |
+|---|------|-----------|-------------|----------|
+| 1 | PrivacyNetworkView | PrivacyNetworkView.swift:45 | 5/7 icons .blue | HIGH |
+| 2 | CloudSyncView | CloudSyncView.swift:30 | 3/4 icons .blue | MEDIUM |
+
+How would you like to handle these?
+1. **Fix all now** — apply the same color diversification to all [N] views
+2. **Fix one at a time** — inspect each view individually (requires viewing each)
+3. **Defer** — add to DEFERRED.md for a future visual audit session
+4. **Accept as-is** — these views are fine
+5. **Explain pros/cons** — walk through the tradeoff
+```
+
+**IMPORTANT:** If the user selects "Fix all now" or "Fix one at a time," the **Visual Inspection Gate (Phase 7b) applies to each new view.** The user must be able to see each view before changes are applied. No blind fixes across multiple views.
+
+**If "Fix one at a time":**
+For each view, run a mini-cycle:
+1. Direct user to open/navigate to the view
+2. Confirm they can see it
+3. Walk through the specific change
+4. Apply if approved
+
+### What NOT to sweep
+
+- Changes that were specific to one view's unique layout (not a pattern)
+- Refactoring changes (sheet router enum) — these are per-view decisions
+- Changes the user "Skip"ped during visual review — if they said it looks fine here, don't flag it elsewhere
+
+---
+
+## Phase 7f: Refinement Loop (after all changes applied)
 
 **After all findings are applied (or stopped early), offer the user a chance to refine the result. This is where users request tweaks like "add a background tint," "make the icon bigger," or "change the color."**
 
 ### When to trigger
 
-After the last finding in Phase 7b is resolved (Keep / Stop here), ask:
+After the last change in Phase 7d is resolved (Keep / Stop here), ask:
 
 ```
 questions:
@@ -1838,7 +1994,12 @@ Phase time estimates:
 | 4 | Code Analysis | ~3-5 min |
 | 5 | Domain Analysis | ~5-10 min |
 | 6 | Report + Compaction | ~3-5 min |
-| 7 | Implementation | ~10-20 min |
+| 7-7a | Playbook + Commit Offer | ~3 min |
+| 7b | Visual Inspection Gate | ~2 min (user opens view) |
+| 7c | Guided Visual Review | ~5-10 min (collaborative walk-through) |
+| 7d | Apply Approved Changes | ~10-15 min |
+| 7e | Pattern Sweep | ~5 min |
+| 7f | Refinement Loop | ~5-10 min |
 | 8 | Tests | ~5-10 min |
 | 9 | Summary | ~2 min |
 
@@ -2188,6 +2349,8 @@ If found, incorporate as context during the interview phase (e.g., "ui-path-rada
 
 ## REMINDER (End-of-File — Survives Context Compaction)
 
+**⚠️ VISUAL INSPECTION GATE:** NEVER modify UI code without the user visually confirming the view first. Phase 7b is non-negotiable. If the user cannot see the view, save the playbook and stop. Code analysis alone is insufficient for visual changes.
+
 **CRITICAL:** After EVERY phase, EVERY commit, and EVERY view transition:
 1. Print the progress banner (phase-level)
 2. Immediately `AskUserQuestion` for the next step
@@ -2196,5 +2359,7 @@ If found, incorporate as context during the interview phase (e.g., "ui-path-rada
 This reminder is placed at the end of the file because context compaction tends to preserve the beginning and end. If you are unsure whether to print the banner, **print it**.
 
 **NEVER simplify the Issue Rating Table.** Every finding shown to the user MUST use the full table format with ALL columns (Confidence, Urgency, Risk: Fix, Risk: No Fix, ROI, Blast Radius, Fix Effort). No abbreviated tables for summaries, progress updates, or layer transitions. If you are presenting findings, use the full table.
+
+**Phase 7 execution order:** 7a (Commit) → 7b (Visual Gate) → 7c (Guided Review) → 7d (Apply) → 7e (Pattern Sweep) → 7f (Refinement). Never skip 7b or 7c.
 
 </ui-enhancer-radar>
