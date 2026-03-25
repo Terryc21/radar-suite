@@ -54,6 +54,20 @@ You can also run any skill individually — they work standalone. The findings h
 
 **capstone-radar** aggregated all findings into a B+ grade with 2 critical blockers preventing release.
 
+## Finding Resolution
+
+Every finding from every skill must reach a terminal state before release:
+
+- **Fixed** — code changed, verified
+- **Planned** — added to `DEFERRED.md` with a release gate (pre-release, post-release, or next major) and review-by date
+- **Accepted** — intentional design choice, documented with rationale
+
+capstone-radar enforces this with a **Resolution Gate** — it won't recommend shipping while unresolved findings exist.
+
+## Fidelity
+
+AI audit tools can sound confident while being shallow. The radar skills include structural constraints that make deep work easier than shortcuts, and make shallow work visible when it happens. See [FIDELITY.md](FIDELITY.md) for the full philosophy and roadmap.
+
 ## Individual Repos
 
 Each skill also has its own repo if you prefer to install individually:
