@@ -860,6 +860,26 @@ If not found, proceed normally.
 
 ---
 
+## Compliance Self-Check (MANDATORY — run before final summary)
+
+**Before writing the final summary, handoff YAML, or session wrap-up, execute this mechanical checklist. Do NOT skip it. Do NOT summarize without running it first.**
+
+Review your own output from this session and fill in each row:
+
+```
+| # | Gate | Check | Pass? | Gaps |
+|---|------|-------|-------|------|
+| 1 | Table Format | Every findings table has 8 columns (Finding, Confidence, Urgency, Risk:Fix, Risk:NoFix, ROI, Blast Radius, Fix Effort) | ? | |
+| 2 | Test Gate | Every committed fix has a test — or a documented exemption (visual, dead code, singleton) | ? | |
+| 3 | Pattern Sweep | Every pattern found during sweep was presented with full rating table + Fix/Defer/Accept prompt | ? | |
+| 4 | Decision Prompts | Every design decision included "Explain pros/cons" option | ? | |
+| 5 | Finding Resolution | Every finding reached terminal state (Fixed, Planned, Accepted) — no orphaned "deferred" items | ? | |
+```
+
+**If ANY gate fails**, print the gap, fix it, then proceed. See data-model-radar SKILL.md for full gate-checking instructions.
+
+---
+
 ## REMINDER (End-of-File — Survives Context Compaction)
 
 **CRITICAL:** After EVERY fix batch (wave), EVERY commit, and EVERY workflow transition:
@@ -891,3 +911,29 @@ Common rationalizations that are NOT valid exceptions:
 - "The table would be too wide" → still needs all 8 columns (see terminal note below)
 
 **Terminal width reminder:** If the 8-column table renders as a vertical stack of items instead of horizontal rows, tell the user: "The table may appear stacked. Widen your terminal window or use full-screen mode for the intended horizontal layout."
+
+**⚠️ TEST GATE (MANDATORY — pre-commit check after EVERY fix):**
+
+Before committing ANY fix, run this mechanical check:
+
+1. Is there a test for this fix? If no, STOP.
+2. Write the test BEFORE or ALONGSIDE the fix — not "later."
+3. If the fix is not unit-testable (pure visual, singleton dependency, view-layer), document WHY in a code comment and note it in the commit message.
+
+**What needs tests:**
+- Any logic change (math, conditionals, data flow)
+- Any model change (fields, relationships, computed properties)
+- Any serialization change (backup, CSV, CloudKit mapping)
+- Any state management change (lifecycle transitions, assignment cleanup)
+- Any new code path (new save path, new error handling)
+
+**What doesn't need tests (document why):**
+- Pure visual changes (color, spacing, font) — verified by eye in Canvas/simulator
+- Dead code removal — no behavior to test
+- Singleton method calls added (e.g., adding SpotlightManager.reindexAll) — integration test, not unit-testable without protocol mock
+
+**Common rationalizations that are NOT valid:**
+- "I'll write tests after all fixes" → No. Test with each fix.
+- "This is trivial" → Trivial fixes have trivial tests. Write them.
+- "Tests would slow us down" → Untested fixes are unverified fixes.
+- "The build passes" → Building is not testing.

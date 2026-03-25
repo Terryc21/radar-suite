@@ -801,6 +801,57 @@ A grade without evidence is not a grade — it's a guess.
 
 ---
 
+## Compliance Self-Check (MANDATORY — run before final summary)
+
+**Before writing the final summary, handoff YAML, or session wrap-up, execute this mechanical checklist. Do NOT skip it. Do NOT summarize without running it first.**
+
+### How to run
+
+Review your own output from this session and fill in each row:
+
+```
+| # | Gate | Check | Pass? | Gaps |
+|---|------|-------|-------|------|
+| 1 | Table Format | Every findings table has 8 columns (Finding, Confidence, Urgency, Risk:Fix, Risk:NoFix, ROI, Blast Radius, Fix Effort) | ? | |
+| 2 | Test Gate | Every committed fix has a test — or a documented exemption (visual, dead code, singleton) | ? | |
+| 3 | Pattern Sweep | Every pattern found during sweep was presented with full rating table + Fix/Defer/Accept prompt | ? | |
+| 4 | Decision Prompts | Every design decision included "Explain pros/cons" option | ? | |
+| 5 | Finding Resolution | Every finding reached terminal state (Fixed, Planned, Accepted) — no orphaned "deferred" items | ? | |
+```
+
+### How to check each gate
+
+1. **Table Format:** Scan your output for any table containing findings or rated items. Count columns. If ANY table had fewer than 8, it fails.
+2. **Test Gate:** Count fixes committed. Count tests written. If fixes > tests + documented exemptions, it fails.
+3. **Pattern Sweep:** Check if any patterns were noted "for future" or "for the next workflow" without a decision prompt. If so, it fails.
+4. **Decision Prompts:** Check every `AskUserQuestion` that presented options for a design decision. If any lacked "Explain pros/cons", it fails.
+5. **Finding Resolution:** Check if any findings are still in "deferred" state without being moved to Planned (DEFERRED.md) or Accepted.
+
+### If ANY gate fails
+
+Print this BEFORE the summary:
+
+```
+⚠️ Compliance gap detected:
+
+| Gate | Items Missed |
+|------|-------------|
+| [gate name] | [specific items — e.g., "Findings D1-D8 presented in 5-column table instead of 8"] |
+
+Fixing now before completing the run...
+```
+
+Then fix the gap:
+- **Table Format fail:** Re-render the affected tables with all 8 columns
+- **Test Gate fail:** Write the missing tests before committing
+- **Pattern Sweep fail:** Present the missed patterns with full table + decision prompt
+- **Decision Prompt fail:** Note the gap in the handoff YAML as a process improvement
+- **Finding Resolution fail:** Present unresolved findings for Fix/Plan/Accept decision
+
+**Only after all gates pass (or gaps are fixed) may you write the final summary and handoff.**
+
+---
+
 ## REMINDER (End-of-File — Survives Context Compaction)
 
 **CRITICAL:** After EVERY wave, EVERY commit, and EVERY model transition:
@@ -834,3 +885,29 @@ Common rationalizations that are NOT valid exceptions:
 - "The table would be too wide" → still needs all 8 columns (see terminal note below)
 
 **Terminal width reminder:** If the 8-column table renders as a vertical stack of items instead of horizontal rows, tell the user: "The table may appear stacked. Widen your terminal window or use full-screen mode for the intended horizontal layout."
+
+**⚠️ TEST GATE (MANDATORY — pre-commit check after EVERY fix):**
+
+Before committing ANY fix, run this mechanical check:
+
+1. Is there a test for this fix? If no, STOP.
+2. Write the test BEFORE or ALONGSIDE the fix — not "later."
+3. If the fix is not unit-testable (pure visual, singleton dependency, view-layer), document WHY in a code comment and note it in the commit message.
+
+**What needs tests:**
+- Any logic change (math, conditionals, data flow)
+- Any model change (fields, relationships, computed properties)
+- Any serialization change (backup, CSV, CloudKit mapping)
+- Any state management change (lifecycle transitions, assignment cleanup)
+- Any new code path (new save path, new error handling)
+
+**What doesn't need tests (document why):**
+- Pure visual changes (color, spacing, font) — verified by eye in Canvas/simulator
+- Dead code removal — no behavior to test
+- Singleton method calls added (e.g., adding SpotlightManager.reindexAll) — integration test, not unit-testable without protocol mock
+
+**Common rationalizations that are NOT valid:**
+- "I'll write tests after all fixes" → No. Test with each fix.
+- "This is trivial" → Trivial fixes have trivial tests. Write them.
+- "Tests would slow us down" → Untested fixes are unverified fixes.
+- "The build passes" → Building is not testing.
