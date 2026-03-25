@@ -68,15 +68,9 @@ capstone-radar enforces this with a **Resolution Gate** — it won't recommend s
 
 AI audit tools can sound confident while being shallow. The radar skills include structural constraints that make deep work easier than shortcuts, and make shallow work visible when it happens. See [FIDELITY.md](FIDELITY.md) for the full philosophy and roadmap.
 
-## Individual Repos
+## Previous Individual Repos
 
-Each skill also has its own repo if you prefer to install individually:
-
-- [data-model-radar](https://github.com/Terryc21/data-model-radar)
-- [ui-path-radar](https://github.com/Terryc21/ui-path-radar)
-- [roundtrip-radar](https://github.com/Terryc21/roundtrip-radar)
-- [ui-enhancer-radar](https://github.com/Terryc21/ui-enhancer-radar)
-- [capstone-radar](https://github.com/Terryc21/capstone-radar)
+The skills were originally published as separate repos. Those repos now redirect here — this monorepo is the single source of truth. The skills are deeply interdependent (cross-skill handoffs, shared DEFERRED.md, unified grading) and are designed to be installed together.
 
 ## Requirements
 
