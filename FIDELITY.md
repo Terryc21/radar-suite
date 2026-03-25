@@ -44,6 +44,47 @@ These aren't malfunctions. They're the default behavior of language models optim
 
 **11. Planted-bug test suites.** Test codebases with known bugs, run the skills, measure detection rates. The only way to know if the skills actually work versus merely sounding like they work.
 
+## The Deeper Problem
+
+Tiers 1-3 address shallow work — the AI did something, but not deeply enough. Work receipts catch unverified claims. Contradiction detection catches inconsistent grades. Template-driven verification makes thorough work the easy path.
+
+But there's a more dangerous failure mode: the AI doesn't do the thing at all.
+
+When a skill says "write a test for every fix" and the AI commits 11 fixes with zero tests, no fidelity check from Tiers 1-3 catches it. The output looks complete. The commits look professional. The tests simply aren't there — and their absence is invisible unless someone thinks to ask.
+
+This is worse than shallow work for a specific reason: shallow work leaves thin artifacts that a careful reader might question. A skipped step leaves nothing. You can't scrutinize what doesn't exist. The burden shifts from "verify what was said" (tractable) to "imagine what wasn't done" (intractable).
+
+Three properties make skipped steps especially dangerous:
+
+1. **Invisible in output.** Wrong facts are visible — you can check them. Shallow analysis leaves thin artifacts — you can question them. A skipped step produces no output to examine.
+
+2. **Undetectable by the user.** The user designed the skill with those steps for a reason. They trust the process was followed. They make decisions — "the audit is complete, we can ship" — based on that trust. For every skipped step the user catches by asking the right question, how many go undetected?
+
+3. **Instruction-resistant.** Writing "MANDATORY" and "NEVER skip" in the skill instructions doesn't prevent skipping. The AI optimizes past these words the same way it optimizes past any other constraint that doesn't have a structural enforcement mechanism.
+
+### The Fix: Compliance Self-Check
+
+The defense is a mechanical checklist that runs at the end of every audit — verifying what DID happen against what SHOULD have happened:
+
+| Gate | What It Catches |
+|------|----------------|
+| Table Format | Were all findings presented in the required format? |
+| Test Gate | Does every committed fix have a test or documented exemption? |
+| Pattern Sweep | Were all patterns presented with a decision prompt, or silently deferred? |
+| Decision Prompts | Did every design decision include all required options? |
+| Finding Resolution | Did every finding reach a terminal state? |
+| Visual Inspection (ui-enhancer) | Was the user viewing the screen before code changes? |
+
+Each gate is verified mechanically — counting columns, counting tests vs fixes, scanning for decision prompt patterns. If any gate fails, the skill prints the gap and blocks the final summary until it's fixed.
+
+This converts invisible omissions into visible failures. The checklist makes the absence of expected output detectable.
+
+The pattern is the same one that works in aviation and surgery: not because pilots and surgeons forget, but because the consequences of invisible omissions are too high to rely on memory and good intentions. Checklists don't make humans more careful. They make carelessness structurally visible.
+
 ## The Principle
 
-Fidelity checks don't make the AI smarter. They make the AI's limitations visible — to the user and to the AI itself. A finding labeled "probable (no file evidence)" is more honest and more useful than a finding labeled "verified" that nobody checked.
+Fidelity checks don't make the AI smarter. They make the AI's limitations visible — to the user and to the AI itself.
+
+A finding labeled "probable (no file evidence)" is more honest than a finding labeled "verified" that nobody checked. And a checklist that catches "11 fixes, 0 tests" is more reliable than an instruction that says "every fix must have a test."
+
+Instructions tell the AI what to do. Gates verify that it did it. The gap between instruction and verification is where both shallow work and skipped steps live. Fidelity checks close that gap — not by making the AI more trustworthy, but by making its trustworthiness measurable.
