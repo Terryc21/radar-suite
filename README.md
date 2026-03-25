@@ -11,7 +11,7 @@ One install gives you a complete audit pipeline — from data model integrity to
 | **data-model-radar** | Your data definitions — are fields backed up correctly? Does CSV export lose data? Are database relationships safe? |
 | **ui-path-radar** | Navigation flows — can users reach every feature? Are there dead ends or broken links? |
 | **roundtrip-radar** | Data round-trips — does data survive backup→restore, export→import, create→edit→save? |
-| **ui-enhancer-radar** | Visual quality — spacing, typography, color contrast, accessibility, empty states |
+| **ui-enhancer-radar** | Visual quality — requires you to view each screen before changes, walks through recommendations collaboratively, then finds similar patterns across views |
 | **capstone-radar** | Overall grade (A-F) and release recommendation — aggregates findings from all other skills |
 
 ## Install
