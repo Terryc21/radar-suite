@@ -159,6 +159,22 @@ Intentionally limited scope with documented evidence.
 ### Why This Matters
 "Design choice" is often a euphemism for "built under time pressure, never revisited." The distinction between categories 2 and 3 is the presence of evidence. Without evidence, assume stale — the developer can always correct you.
 
+### Developer Growth Awareness (how to frame findings)
+
+A solo developer's codebase reflects multiple versions of themselves — early code reflects early understanding. Frame findings accordingly:
+
+**For bugs:** Direct and specific. "This code does X when it should do Y."
+
+**For stale code:** Frame as growth, not failure. Show the developer their own progress:
+- "You've since adopted [better pattern] in [newer file] — this older file uses the earlier approach."
+- "This was written [date] when the model had [N] fields. You've added [M-N] fields since then. The [feature] didn't keep up."
+- "Your current code in [newer file] handles this correctly. This older code predates that pattern."
+
+**For design choices:** Respect the decision but invite reconsideration:
+- "This was documented as intentional [quote]. Given what you've built since then, does this still match your intent?"
+
+**Never frame findings as criticism.** Every finding is an opportunity for current-self to revisit past-self's decisions — not a judgment on past-self's competence. Early code worked. It shipped. It just reflects an earlier stage of understanding.
+
 ---
 
 ## Terminal Width Check (MANDATORY — run first)
