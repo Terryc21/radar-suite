@@ -40,6 +40,7 @@ You are performing a systematic UI enhancement on a specific iOS/SwiftUI view, a
 | `/ui-enhancer-radar batch [path]` | Audit all views in a directory, rank by severity |
 | `/ui-enhancer-radar --capture` | Capture screenshot from running simulator (optional) |
 | `/ui-enhancer-radar --devices` | Analyze layout across device sizes (optional) |
+| `/ui-enhancer-radar fix-deferred` | Resolve items deferred from a previous run |
 
 ---
 
@@ -2024,6 +2025,81 @@ If chrome/status/badge scores highest → hierarchy issue.
 
 ---
 
+## Finding Resolution (MANDATORY — end of every run)
+
+**Principle:** Every finding must reach a terminal state. "Deferred" is not terminal — it's temporary.
+
+### Terminal States
+
+| State | Meaning | How |
+|-------|---------|-----|
+| **Fixed** | Code changed, test written, committed | Phase 7 apply workflow |
+| **Planned** | Added to `DEFERRED.md` with severity, effort, reason, release gate | User chose "save for later" |
+| **Accepted** | User explicitly said "this is fine" | User chose "accept as-is" |
+
+### Self-Resolution (end of every run)
+
+After Phase 9 completes (or if the user chose "plan only"), check for unresolved findings in this session. If any exist, present:
+
+```
+You have [N] unresolved findings from this audit:
+
+| # | Finding | Severity | Effort |
+|---|---------|----------|--------|
+| 1 | ... | ... | ... |
+
+Every finding needs a decision:
+1. **Fix now** — enter apply workflow for these items
+2. **Plan it** — add to DEFERRED.md (tracked, reviewed before release)
+3. **Accept as-is** — explicitly sign off (removed from tracking)
+4. **Explain more** — walk through what each finding means
+```
+
+For each finding, the user chooses Fix / Plan / Accept. Update the handoff YAML accordingly:
+- Fix → move to `findings_fixed` after apply completes
+- Plan → move to `findings_planned`, write to `DEFERRED.md`
+- Accept → move to `findings_accepted`
+
+### `fix-deferred` Subcommand
+
+When invoked via `/ui-enhancer-radar fix-deferred`:
+
+1. Read own handoff YAML (`.agents/ui-audit/ui-enhancer-radar-handoff.yaml`)
+2. Extract findings that were not applied in previous runs
+3. If empty → "No deferred findings from previous ui-enhancer-radar runs."
+4. If non-empty → present findings table (already rated from original run)
+5. For each finding, ask: Fix now / Plan it / Accept as-is
+6. Fix items enter Phase 7 apply workflow. Plan items go to DEFERRED.md. Accept items go to `findings_accepted`.
+7. Update handoff YAML with resolved statuses
+
+### Startup Check
+
+On every invocation, check for `DEFERRED.md` at the project root. If it exists and contains ui-enhancer-radar items:
+
+```
+📋 You have [N] planned items from previous ui-enhancer-radar audits in DEFERRED.md.
+   [M] are pre-release priority. Run `/ui-enhancer-radar fix-deferred` to resolve them.
+```
+
+### DEFERRED.md Format
+
+If DEFERRED.md doesn't exist, create it when the first item is planned. Format:
+
+```markdown
+# Deferred Findings
+
+Items intentionally deferred from radar audits. Review before each release.
+
+| # | Finding | Source | Severity | Release Gate | Effort | Reason | Date | Review By |
+|---|---------|--------|----------|-------------|--------|--------|------|-----------|
+```
+
+**Release Gate values:** Pre-release / Post-release / Next major
+
+**Review By:** Default 90 days from deferral date. Capstone flags overdue items.
+
+---
+
 ## Cross-Skill Handoff
 
 UI Enhancer Radar complements **data-model-radar** (model layer), **ui-path-radar** (navigation paths), **roundtrip-radar** (data safety), and **capstone-radar** (ship readiness). Findings from one skill inform the others.
@@ -2037,6 +2113,29 @@ source: ui-enhancer-radar
 date: <ISO 8601>
 project: <project name>
 views_audited: <count>
+
+findings_fixed:
+  - finding: "<description>"
+    severity: "<CRITICAL|HIGH|MEDIUM|LOW>"
+    fix_commit: "<git hash>"
+
+findings_deferred:
+  - finding: "<description>"
+    severity: "<CRITICAL|HIGH|MEDIUM|LOW>"
+    reason: "<why deferred>"
+
+findings_planned:
+  - finding: "<description>"
+    severity: "<CRITICAL|HIGH|MEDIUM|LOW>"
+    release_gate: "<Pre-release|Post-release|Next major>"
+    reason: "<why deferred>"
+    deferred_md_row: true
+
+findings_accepted:
+  - finding: "<description>"
+    severity: "<CRITICAL|HIGH|MEDIUM|LOW>"
+    reason: "<why accepted>"
+    accepted_date: "<ISO 8601>"
 
 for_ui_path_radar:
   # Visual issues that suggest structural navigation problems
@@ -2080,5 +2179,7 @@ If found, incorporate as context during the interview phase (e.g., "ui-path-rada
 3. NEVER leave a blank prompt
 
 This reminder is placed at the end of the file because context compaction tends to preserve the beginning and end. If you are unsure whether to print the banner, **print it**.
+
+**NEVER simplify the Issue Rating Table.** Every finding shown to the user MUST use the full table format with ALL columns (Confidence, Urgency, Risk: Fix, Risk: No Fix, ROI, Blast Radius, Fix Effort). No abbreviated tables for summaries, progress updates, or layer transitions. If you are presenting findings, use the full table.
 
 </ui-enhancer-radar>

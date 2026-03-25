@@ -32,6 +32,7 @@ You are performing a systematic UI path audit on this SwiftUI application.
 | `/ui-path-radar diff` | Compare current findings against previous audit |
 | `/ui-path-radar fix` | Generate fixes for found issues |
 | `/ui-path-radar status` | Show audit progress and remaining issues |
+| `/ui-path-radar fix-deferred` | Resolve items deferred from a previous run |
 
 ## Overview
 
@@ -918,6 +919,81 @@ Optional field suggesting how planning skills might batch issues:
 
 ---
 
+## Finding Resolution (MANDATORY — end of every run)
+
+**Principle:** Every finding must reach a terminal state. "Deferred" is not terminal — it's temporary.
+
+### Terminal States
+
+| State | Meaning | How |
+|-------|---------|-----|
+| **Fixed** | Code changed, test written, committed | Wave workflow |
+| **Planned** | Added to `DEFERRED.md` with severity, effort, reason, release gate | User chose "save for later" |
+| **Accepted** | User explicitly said "this is fine" | User chose "accept as-is" |
+
+### Self-Resolution (end of every run)
+
+After all waves complete (or if the user chose "plan only"), check `findings_deferred` in this session. If any exist, present:
+
+```
+You have [N] unresolved findings from this audit:
+
+| # | Finding | Severity | Effort |
+|---|---------|----------|--------|
+| 1 | ... | ... | ... |
+
+Every finding needs a decision:
+1. **Fix now** — enter wave workflow for these items
+2. **Plan it** — add to DEFERRED.md (tracked, reviewed before release)
+3. **Accept as-is** — explicitly sign off (removed from tracking)
+4. **Explain more** — walk through what each finding means
+```
+
+For each finding, the user chooses Fix / Plan / Accept. Update the handoff YAML accordingly:
+- Fix → move to `findings_fixed` after wave completes
+- Plan → move to `findings_planned`, write to `DEFERRED.md`
+- Accept → move to `findings_accepted`
+
+### `fix-deferred` Subcommand
+
+When invoked via `/ui-path-radar fix-deferred`:
+
+1. Read own handoff YAML (`.agents/ui-audit/ui-path-radar-handoff.yaml`)
+2. Extract `findings_deferred` list
+3. If empty → "No deferred findings from previous ui-path-radar runs."
+4. If non-empty → present findings table (already rated from original run)
+5. For each finding, ask: Fix now / Plan it / Accept as-is
+6. Fix items enter the wave workflow. Plan items go to DEFERRED.md. Accept items go to `findings_accepted`.
+7. Update handoff YAML with resolved statuses
+
+### Startup Check
+
+On every invocation, check for `DEFERRED.md` at the project root. If it exists and contains ui-path-radar items:
+
+```
+📋 You have [N] planned items from previous ui-path-radar audits in DEFERRED.md.
+   [M] are pre-release priority. Run `/ui-path-radar fix-deferred` to resolve them.
+```
+
+### DEFERRED.md Format
+
+If DEFERRED.md doesn't exist, create it when the first item is planned. Format:
+
+```markdown
+# Deferred Findings
+
+Items intentionally deferred from radar audits. Review before each release.
+
+| # | Finding | Source | Severity | Release Gate | Effort | Reason | Date | Review By |
+|---|---------|--------|----------|-------------|--------|--------|------|-----------|
+```
+
+**Release Gate values:** Pre-release / Post-release / Next major
+
+**Review By:** Default 90 days from deferral date. Capstone flags overdue items.
+
+---
+
 ## Cross-Skill Handoff
 
 UI Path Radar complements **data-model-radar** (model layer), **roundtrip-radar** (data safety), **ui-enhancer-radar** (visual quality), and **capstone-radar** (ship readiness). Findings from one skill inform the others.
@@ -930,6 +1006,29 @@ After completing an audit, write `.agents/ui-audit/ui-path-radar-handoff.yaml`:
 source: ui-path-radar
 date: <ISO 8601>
 project: <project name>
+
+findings_fixed:
+  - finding: "<description>"
+    severity: "<CRITICAL|HIGH|MEDIUM|LOW>"
+    fix_commit: "<git hash>"
+
+findings_deferred:
+  - finding: "<description>"
+    severity: "<CRITICAL|HIGH|MEDIUM|LOW>"
+    reason: "<why deferred>"
+
+findings_planned:
+  - finding: "<description>"
+    severity: "<CRITICAL|HIGH|MEDIUM|LOW>"
+    release_gate: "<Pre-release|Post-release|Next major>"
+    reason: "<why deferred>"
+    deferred_md_row: true
+
+findings_accepted:
+  - finding: "<description>"
+    severity: "<CRITICAL|HIGH|MEDIUM|LOW>"
+    reason: "<why accepted>"
+    accepted_date: "<ISO 8601>"
 
 for_roundtrip_radar:
   # Dead ends and broken promises suggest data flow issues
@@ -973,3 +1072,5 @@ If found, incorporate relevant items as **suspects** in the appropriate layer. I
 3. NEVER leave a blank prompt
 
 This reminder is placed at the end of the file because context compaction tends to preserve the beginning and end. If you are unsure whether to print the banner, **print it**.
+
+**NEVER simplify the Issue Rating Table.** Every finding shown to the user MUST use the full table format with ALL columns (Confidence, Urgency, Risk: Fix, Risk: No Fix, ROI, Blast Radius, Fix Effort). No abbreviated tables for summaries, progress updates, or layer transitions. If you are presenting findings, use the full table.

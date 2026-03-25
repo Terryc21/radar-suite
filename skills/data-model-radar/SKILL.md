@@ -29,6 +29,7 @@ metadata:
 | `/data-model-radar migration` | Domain 6 only — schema version safety |
 | `/data-model-radar dead-fields` | Domain 5 only — unused model fields |
 | `/data-model-radar status` | Show audit progress |
+| `/data-model-radar fix-deferred` | Resolve items deferred from a previous run |
 
 ## Overview
 
@@ -576,6 +577,85 @@ Then ask: "Ready to check the next model?" with options including **"Explain mor
 
 ---
 
+## Finding Resolution (MANDATORY — end of every run)
+
+**Principle:** Every finding must reach a terminal state. "Deferred" is not terminal — it's temporary.
+
+### Terminal States
+
+| State | Meaning | How |
+|-------|---------|-----|
+| **Fixed** | Code changed, test written, committed | Wave workflow |
+| **Planned** | Added to `DEFERRED.md` with severity, effort, reason, release gate | User chose "save for later" |
+| **Accepted** | User explicitly said "this is fine" | User chose "accept as-is" |
+
+### Self-Resolution (end of every run)
+
+After all waves complete (or if the user chose "plan only"), check `findings_deferred` in this session. If any exist, present:
+
+```
+You have [N] unresolved findings from this audit:
+
+| # | Finding | Severity | Effort |
+|---|---------|----------|--------|
+| 1 | ... | ... | ... |
+
+Every finding needs a decision:
+1. **Fix now** — enter wave workflow for these items
+2. **Plan it** — add to DEFERRED.md (tracked, reviewed before release)
+3. **Accept as-is** — explicitly sign off (removed from tracking)
+4. **Explain more** — walk through what each finding means
+```
+
+For each finding, the user chooses Fix / Plan / Accept. Update the handoff YAML accordingly:
+- Fix → move to `findings_fixed` after wave completes
+- Plan → move to `findings_planned`, write to `DEFERRED.md`
+- Accept → move to `findings_accepted`
+
+### `fix-deferred` Subcommand
+
+When invoked via `/data-model-radar fix-deferred`:
+
+1. Read own handoff YAML (`.agents/ui-audit/data-model-radar-handoff.yaml`)
+2. Extract `findings_deferred` list
+3. If empty → "No deferred findings from previous data-model-radar runs."
+4. If non-empty → present findings table (already rated from original run)
+5. For each finding, ask: Fix now / Plan it / Accept as-is
+6. Fix items enter the wave workflow. Plan items go to DEFERRED.md. Accept items go to `findings_accepted`.
+7. Update handoff YAML with resolved statuses
+
+### Startup Check
+
+On every invocation, check for `DEFERRED.md` at the project root. If it exists and contains data-model-radar items:
+
+```
+📋 You have [N] planned items from previous data-model-radar audits in DEFERRED.md.
+   [M] are pre-release priority. Run `/data-model-radar fix-deferred` to resolve them.
+```
+
+### DEFERRED.md Format
+
+If DEFERRED.md doesn't exist, create it when the first item is planned. Format:
+
+```markdown
+# Deferred Findings
+
+Items intentionally deferred from radar audits. Review before each release.
+
+| # | Finding | Source | Severity | Release Gate | Effort | Reason | Date | Review By |
+|---|---------|--------|----------|-------------|--------|--------|------|-----------|
+| 1 | CloudKit syncs 20% of Item fields | data-model-radar | HIGH | Post-release | Large | Needs architecture decision | 2026-03-24 | 2026-06-24 |
+```
+
+**Release Gate values:**
+- **Pre-release** — must fix before App Store submission
+- **Post-release** — tracked for next update cycle
+- **Next major** — deferred to next major version
+
+**Review By:** Default 90 days from deferral date. Capstone flags overdue items.
+
+---
+
 ## Cross-Skill Handoff
 
 Data Model Radar is the **foundation layer** of the radar family. Run it first — its findings feed every other skill.
@@ -593,6 +673,29 @@ audit_depth: <full | partial | quick>
 domains_verified: [1, 2, 3, 4, 5, 6, 7]
 domains_at_quick_depth: []
 domains_skipped: []
+
+findings_fixed:
+  - finding: "<description>"
+    severity: "<CRITICAL|HIGH|MEDIUM|LOW>"
+    fix_commit: "<git hash>"
+
+findings_deferred:
+  - finding: "<description>"
+    severity: "<CRITICAL|HIGH|MEDIUM|LOW>"
+    reason: "<why deferred>"
+
+findings_planned:
+  - finding: "<description>"
+    severity: "<CRITICAL|HIGH|MEDIUM|LOW>"
+    release_gate: "<Pre-release|Post-release|Next major>"
+    reason: "<why deferred>"
+    deferred_md_row: true
+
+findings_accepted:
+  - finding: "<description>"
+    severity: "<CRITICAL|HIGH|MEDIUM|LOW>"
+    reason: "<why accepted>"
+    accepted_date: "<ISO 8601>"
 
 for_roundtrip_radar:
   # Serialization gaps = workflow-specific data loss
@@ -686,3 +789,5 @@ A grade without evidence is not a grade — it's a guess.
 **ANTI-SHORTCUT:** Do not hand-wave Domain 2 (Serialization) or Domain 5 (Field Usage). These are the two highest-value domains. If you find yourself writing "looks complete" or "no dead fields" without having grepped, stop and do the work.
 
 This reminder is placed at the end of the file because context compaction tends to preserve the beginning and end. If you are unsure whether to print the banner, **print it**.
+
+**NEVER simplify the Issue Rating Table.** Every finding shown to the user MUST use the full table format with ALL columns (Confidence, Urgency, Risk: Fix, Risk: No Fix, ROI, Blast Radius, Fix Effort). No abbreviated tables for summaries, progress updates, or layer transitions. If you are presenting findings, use the full table.

@@ -24,6 +24,7 @@ It does NOT:
 - `/capstone-radar` — Full analysis — checks everything and reads findings from other audits you've run
 - `/capstone-radar quick` — Quick check — only looks at its own areas, ignores other audit results
 - `/capstone-radar report` — No scanning, re-grade from existing handoff files only
+- `/capstone-radar resolve` — Resolve all deferred findings across all 5 skills
 
 ---
 
@@ -260,6 +261,9 @@ For each handoff found:
    - data-model-radar: `serialization_coverage` (model field coverage stats)
    - roundtrip-radar: `cross_cutting_patterns[]` (patterns affecting multiple workflows)
 4. Record which companions were found vs missing
+5. Parse `findings_deferred[]` — these are unresolved items that must be resolved before ship/no-ship
+6. Parse `findings_planned[]` — these are tracked in DEFERRED.md (already resolved to "planned")
+7. Parse `findings_accepted[]` — these are explicitly signed off (already resolved)
 
 **Score consumed domains:** Start at 95 (generous baseline — companion ran a full audit and only escalated the worst items). Deduct:
 - Per CRITICAL blocker: **-15**
@@ -599,6 +603,104 @@ Run `git log -1 --format="%H %s %an %ai" -- {file}` for each regression file.
 
 ---
 
+## Step 8.5: Finding Resolution Gate (MANDATORY)
+
+**Rule:** Capstone CANNOT issue a ship recommendation while `findings_deferred` is non-empty in ANY handoff YAML. All findings must be terminal (fixed, planned, or accepted).
+
+### 8.5.1: Collect All Deferred Findings
+
+Read all 5 handoff YAMLs and collect every `findings_deferred` entry:
+
+```
+Read .agents/ui-audit/data-model-radar-handoff.yaml → findings_deferred[]
+Read .agents/ui-audit/ui-path-radar-handoff.yaml → findings_deferred[]
+Read .agents/ui-audit/roundtrip-radar-handoff.yaml → findings_deferred[]
+Read .agents/ui-audit/ui-enhancer-radar-handoff.yaml → findings_deferred[]
+Read .agents/ui-audit/capstone-radar-handoff.yaml → findings_deferred[] (own)
+```
+
+Also read `DEFERRED.md` at project root for previously planned items.
+
+### 8.5.2: Staleness Validation
+
+For each planned item in DEFERRED.md, validate it still applies:
+- Grep for the pattern the finding describes (e.g., if finding says "CloudKit syncs 20%", grep for CKRecordMapper field count)
+- If code changed since the finding was written, flag: "This finding may be resolved — verify before removing"
+- If `review_by` date has passed, flag: "This item is overdue for review (deferred [N] days ago)"
+
+### 8.5.3: Present Unified Deferred List
+
+If any `findings_deferred` exist across any handoff:
+
+```
+## Unresolved Findings (must be resolved before ship/no-ship)
+
+You have [N] unresolved findings across [M] audit areas:
+
+| # | Finding | Source | Severity | Effort |
+|---|---------|--------|----------|--------|
+| 1 | CloudKit syncs 20% | data-model-radar | HIGH | Large |
+| 2 | Dead fields (12) | data-model-radar | MEDIUM | Small |
+| 3 | ... | ... | ... | ... |
+
+Ship/no-ship recommendation is blocked until all findings are resolved.
+
+Every finding needs a decision:
+1. **Resolve them now** — I'll group by source skill and fix each group
+2. **Batch decide** — mark each as Fix / Plan / Accept in one pass
+3. **Skip resolution** — proceed to grading (deferred items will lower grades)
+4. **Explain more** — walk through what each finding means
+```
+
+### 8.5.4: Resolution Paths
+
+**"Resolve them now":** Group findings by source skill, then for each group:
+1. Print: "[N] findings from [skill-name] — running fix-deferred workflow"
+2. Enter that skill's fix-deferred flow (wave workflow for Fix items, DEFERRED.md for Plan items)
+3. After each skill completes, return to capstone for the next group
+4. After all groups resolved, re-read handoff YAMLs and proceed to Step 9
+
+**"Batch decide":** Present each finding and ask Fix / Plan / Accept:
+- **Fix** items get grouped by skill for fix-deferred workflow
+- **Plan** items go to DEFERRED.md with Release Gate (Pre-release / Post-release / Next major)
+- **Accept** items go to `findings_accepted` in the source handoff YAML
+
+**"Skip resolution":** Proceed to grading, but:
+- Each domain with unresolved deferred findings gets a grade penalty (-5 per deferred item)
+- Ship recommendation includes: "[N] unresolved findings not factored into grades"
+- This is the "escape hatch" — not recommended but available
+
+### 8.5.5: DEFERRED.md Management
+
+Capstone owns the DEFERRED.md file. On every run:
+
+1. **Read** existing DEFERRED.md entries
+2. **Validate** each entry still applies (staleness check)
+3. **Add** newly planned items from this session
+4. **Remove** items that were fixed (check if finding still exists in code)
+5. **Flag** overdue items (review_by date passed)
+
+DEFERRED.md format:
+
+```markdown
+# Deferred Findings
+
+Items intentionally deferred from radar audits. Review before each release.
+
+| # | Finding | Source | Severity | Release Gate | Effort | Reason | Date | Review By |
+|---|---------|--------|----------|-------------|--------|--------|------|-----------|
+| 1 | CloudKit syncs 20% of Item fields | data-model-radar | HIGH | Post-release | Large | Needs architecture decision | 2026-03-24 | 2026-06-24 |
+```
+
+**Release Gate values:**
+- **Pre-release** — must fix before App Store submission (blocks SHIP recommendation)
+- **Post-release** — tracked for next update cycle (does not block SHIP)
+- **Next major** — deferred to next major version (does not block SHIP)
+
+**Review By:** Default 90 days from deferral date.
+
+---
+
 ## Step 9: Ship Recommendation
 
 | Recommendation | Criteria |
@@ -638,6 +740,32 @@ Ship recommendation is based on {N}/10 domains. Run missing companions for full 
 ---
 
 ## Step 10: Output + Follow-up
+
+### Release Status Summary
+
+After grading and resolution, ALWAYS present this summary:
+
+```
+## Release Status
+
+### Pre-Release Blockers (must fix before shipping)
+| # | Finding | Source | Severity | Effort |
+|---|---------|--------|----------|--------|
+(items from findings_deferred with release_gate = Pre-release, plus CRITICAL/HIGH unresolved)
+
+### Post-Release Improvements (tracked for next update)
+| # | Finding | Source | Severity | Effort |
+|---|---------|--------|----------|--------|
+(items from DEFERRED.md with release_gate = Post-release or Next major)
+
+### Accepted (explicitly signed off)
+- [finding] (accepted [date])
+
+### Fixed This Session
+- [finding] (commit [hash])
+```
+
+This summary is the **final output** of the radar suite. It answers: "What's left to do, and when?"
 
 ### Write Report
 
@@ -867,6 +995,8 @@ Capstone is both the **entry point** ("what should I audit?") and the **exit poi
 3. NEVER leave a blank prompt
 
 This reminder is placed at the end of the file because context compaction tends to preserve the beginning and end. If you are unsure whether to print the banner, **print it**.
+
+**NEVER simplify the Issue Rating Table.** Every finding shown to the user MUST use the full table format with ALL columns (Confidence, Urgency, Risk: Fix, Risk: No Fix, ROI, Blast Radius, Fix Effort). No abbreviated tables for summaries, progress updates, or layer transitions. If you are presenting findings, use the full table.
 
 **GRADE HONESTY:** Every overall grade must state N/10 domains audited. Every owned domain grade must state verification depth (deep/sampled/spot-checked). When companions are missing, add the hygiene-only disclaimer. Do not produce a clean A+ from surface grep patterns — that grade disguises the unknown risk in unaudited companion domains.
 
