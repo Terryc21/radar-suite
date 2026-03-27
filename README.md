@@ -4,6 +4,16 @@
 
 One install gives you a complete audit pipeline — from data model integrity to visual quality to release readiness.
 
+## How is Radar Suite different from other code auditing skills?
+
+Most code auditing skills are pattern matchers. They look at code in isolation — this file, this function, this line — and compare it against known-good patterns. *"You used `@StateObject` where `@State` works." "This `try?` swallows an error."* They're fast, precise, and context-free. They don't need to know what your app does.
+
+Radar Suite traces behavior. It starts from what the user sees — a button, a flow, a journey — and follows the data through views, view models, managers, and persistence to see if the round trip actually works. A file can pass every pattern check and still contain a bug that only appears when you trace the full path.
+
+Pattern matching catches wrong code. Behavior tracing catches wrong outcomes.
+
+Most auditors are the building code. Radar Suite is the home inspector.
+
 ## What's Included
 
 | Skill | What It Checks |
