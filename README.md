@@ -1,5 +1,8 @@
 # Radar Suite
 
+![GitHub stars](https://img.shields.io/github/stars/Terryc21/radar-suite?style=flat)
+![GitHub forks](https://img.shields.io/github/forks/Terryc21/radar-suite?style=flat)
+
 **5 audit skills for Claude Code that find bugs in your Swift/SwiftUI app before your users do.**
 
 One install gives you a complete audit pipeline — from data model integrity to visual quality to release readiness.
