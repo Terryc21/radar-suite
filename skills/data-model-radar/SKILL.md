@@ -291,6 +291,16 @@ Fields with `InCents`/`Price`/`Value`/`Cost`, identity fields (`cloudSyncID`, `o
 **Signal 6: The "looks clean" feeling (meta-signal).**
 When you feel confident about a domain without having produced its required artifact — that IS the signal to stop and do the work. Confidence without evidence is the #1 predictor of shallow work.
 
+**Signal 7: First-impression failure risk (user experience).**
+When this feature fails, does the user discover it:
+- **Silently** — data is wrong but nothing looks broken (e.g., backup missing 7 fields — user won't notice until restore). Deferral OK.
+- **Eventually** — user notices after repeated use (e.g., CSV export missing columns — noticed when opening the spreadsheet). Medium priority.
+- **Immediately and visibly** — user sees the failure the first time they try (e.g., sync between devices — missing data is obvious on the second device). **Ship blocker regardless of fix effort.**
+
+The effort to fix a finding determines timeline. It does NOT determine whether the fix blocks shipping. A trivial fix and a massive fix can both be ship blockers if the user hits them immediately.
+
+**Rule:** Any finding where the user immediately and visibly encounters the failure cannot be gated as Post-release in DEFERRED.md.
+
 ### Risk-Ranking Output
 
 Before starting Domain 1, produce a risk-ranking table:
@@ -674,6 +684,29 @@ Before writing the handoff file or presenting the wrap-up summary, verify:
 **Not terminal:**
 - "Noted" / "Observed" / "Documented" — these are descriptions, not decisions
 - Findings presented in a table but never asked about individually
+
+### User Experience Gate (applies to all findings)
+
+Before accepting a "Deferred (Post-release)" classification, check:
+
+**When this feature fails, does the user discover it silently, eventually, or immediately and visibly?**
+
+- **Silent** — user won't notice unless they hit an edge case. Post-release deferral OK.
+- **Eventually** — user notices after repeated use. Post-release acceptable if documented.
+- **Immediately and visibly** — user sees the failure the first time they try the feature. **Cannot be Post-release. Must be Pre-release regardless of fix effort.**
+
+Effort determines how long the fix takes. It does NOT determine whether the fix blocks shipping.
+
+### Deferred Finding Re-evaluation (on startup)
+
+When this skill reads existing DEFERRED.md or handoff files at startup, **re-evaluate every deferred finding** against the User Experience Gate:
+
+1. Read all `findings_deferred` entries from handoff YAMLs and DEFERRED.md
+2. For each: "Would a user hit this immediately and visibly?"
+3. If yes and it's gated as Post-release: **challenge the deferral** — present to user with updated severity recommendation
+4. If no: carry forward as-is
+
+A finding deferred as "Post-release" in session 1 should be re-challenged in session 2. Severity can change as understanding grows.
 
 ---
 

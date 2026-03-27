@@ -1072,6 +1072,18 @@ Before writing the handoff file or presenting the wrap-up summary:
 
 **Not terminal:** "Noted" / "Observed" / "Documented" — these are descriptions, not decisions. Findings presented in a table but never asked about individually are not resolved.
 
+### User Experience Gate (applies to all findings)
+
+Before accepting a "Deferred (Post-release)" classification, check: **When this feature fails, does the user discover it silently, eventually, or immediately and visibly?**
+
+- **Silent** — Post-release deferral OK.
+- **Eventually** — Post-release acceptable if documented.
+- **Immediately and visibly** — **Cannot be Post-release. Must be Pre-release regardless of fix effort.**
+
+### Deferred Finding Re-evaluation (on startup)
+
+When reading existing DEFERRED.md or handoff files at startup, re-evaluate every deferred finding against the User Experience Gate. If a Post-release finding would be immediately visible to users, challenge the deferral.
+
 ---
 
 ## REMINDER (End-of-File — Survives Context Compaction)

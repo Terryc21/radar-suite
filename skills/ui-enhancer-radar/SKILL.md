@@ -1800,6 +1800,18 @@ Review your own output from this session and fill in each row:
 - **Visual Inspection fail:** If code was changed without user viewing the screen, flag it: "Changes to [view] were applied without visual confirmation. Verify in Canvas/simulator now, or revert."
 - **Other gates:** See data-model-radar SKILL.md for full gate-checking instructions.
 
+### User Experience Gate (applies to all findings)
+
+Before accepting a "Deferred (Post-release)" classification, check: **When this feature fails, does the user discover it silently, eventually, or immediately and visibly?**
+
+- **Silent** — Post-release deferral OK.
+- **Eventually** — Post-release acceptable if documented.
+- **Immediately and visibly** — **Cannot be Post-release. Must be Pre-release regardless of fix effort.**
+
+### Deferred Finding Re-evaluation (on startup)
+
+When reading existing DEFERRED.md or handoff files at startup, re-evaluate every deferred finding against the User Experience Gate. If a Post-release finding would be immediately visible to users, challenge the deferral.
+
 ---
 
 ## REMINDER (End-of-File — Survives Context Compaction)
