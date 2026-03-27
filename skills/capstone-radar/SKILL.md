@@ -1,7 +1,7 @@
 ---
 name: capstone-radar
 description: 'Unified A-F grading and ship/no-ship decisions for the 5-skill radar family. Aggregates companion handoffs, owns 5 grep-reliable domains, tracks velocity, celebrates improvements. Triggers: "capstone radar", "can I ship", "grade codebase", "/capstone-radar".'
-version: 3.1.0
+version: 3.2.0
 author: Terry Nyberg
 license: MIT
 ---
@@ -11,6 +11,8 @@ license: MIT
 **YOU MUST EXECUTE THIS WORKFLOW. Do not just describe it.**
 
 **Required output:** Every finding MUST include Urgency, Risk, ROI, and Blast Radius ratings. Do not omit these ratings.
+
+**Genuine problems only:** Report real issues backed by evidence. Do not nitpick, invent issues, or inflate severity. If unsure whether something is a problem, say so — don't report it as a finding.
 
 Capstone Radar is the **aggregator + gap filler** for the 5-skill radar family. It consumes findings from 4 companion skills, runs its own scans for 5 domains the companions don't cover, grades everything on one unified scale, and makes the ship/no-ship decision.
 
@@ -54,6 +56,33 @@ On first invocation, ask the user two questions in a single `AskUserQuestion` ca
 - **Senior/Expert**: "5 owned + 4 consumed domains. Velocity. Heatmap. Ship/no-ship."
 
 Store the experience level as `USER_EXPERIENCE` and apply to ALL output for the session.
+
+---
+
+## Version Check (on first invocation — silent on failure)
+
+On startup, check if a newer version exists. Run in background, do not block the audit:
+
+```bash
+curl -sf https://raw.githubusercontent.com/Terryc21/radar-suite/main/skills/capstone-radar/VERSION 2>/dev/null
+```
+
+- If the remote version is newer than `3.2.0`, print one line before proceeding:
+  > Update available: capstone-radar v[remote] (you have v3.2.0). Run `git -C ~/.claude/skills/capstone-radar pull` or visit https://github.com/Terryc21/radar-suite
+- If curl fails, remote is same/older, or command times out — skip silently. Never block the audit for a version check.
+
+---
+
+## Xcode MCP Integration (Optional)
+
+On startup, silently check if Xcode MCP tools are available (e.g., attempt to list tools or check for `xcrun mcpbridge`).
+
+- **Available:** Set `XCODE_MCP = true`, note in audit header: `Xcode MCP: available`
+- **Not available:** Set `XCODE_MCP = false`, skip silently. Do not prompt user to install.
+
+**When XCODE_MCP = true, use these tools:**
+- `BuildProject` — verify build health domain (own scan)
+- `DocumentationSearch` — check deprecated API findings in code hygiene domain
 
 ---
 
@@ -742,6 +771,23 @@ Ship recommendation is based on {N}/10 domains. Run missing companions for full 
 
 ---
 
+## Inline Cross-Skill Referrals
+
+When a finding primarily belongs to a companion skill's domain, append this line to the finding:
+
+`→ Deeper analysis: /[skill-name] [relevant-command]`
+
+| If the finding involves... | Refer to |
+|---------------------------|----------|
+| Missing/incomplete model fields | `/data-model-radar [ModelName]` |
+| Navigation dead ends or broken links | `/ui-path-radar` |
+| Visual layout, spacing, color issues | `/ui-enhancer-radar [ViewName]` |
+| Data loss through a complete user cycle | `/roundtrip-radar [workflow]` |
+
+Do NOT refer to capstone-radar (that's this skill). Do NOT refer to a skill already running in this session.
+
+---
+
 ## Step 10: Output + Follow-up
 
 ### Release Status Summary
@@ -769,6 +815,22 @@ After grading and resolution, ALWAYS present this summary:
 ```
 
 This summary is the **final output** of the radar suite. It answers: "What's left to do, and when?"
+
+### Findings by File
+
+After the Release Status tables, re-group all findings (owned + companion) by file path:
+
+```
+**Sources/Managers/BackupManager.swift** (3 findings)
+- #1 [data-model-radar] (🔴 CRITICAL) — one-line summary
+- #5 [roundtrip-radar] (🟡 HIGH) — one-line summary
+- #9 [capstone-radar] (🟢 MEDIUM) — one-line summary
+```
+
+- Include source skill in brackets for companion findings
+- Sort files by highest-severity finding first
+- Skip if fewer than 3 total findings
+- For Senior/Expert users, omit the "no findings" file list
 
 ### Write Report
 
@@ -942,7 +1004,13 @@ Adjust ALL output (grades, findings, recommendations, domain summaries) based on
 
 ## Step Progress Banner (CRITICAL — BLOCKING requirement)
 
-**After EVERY step and EVERY commit, your NEXT output MUST be the progress banner followed by the next-step `AskUserQuestion`. Do not output anything else first. Do not leave a blank prompt.**
+**HARD GATE: After EVERY step, EVERY commit, and EVERY build verification, your response MUST end with the progress banner + `AskUserQuestion`. If your response does not end with `AskUserQuestion`, you have violated this rule. Check before sending.**
+
+**This includes:**
+- After `git commit` → banner + AskUserQuestion (not just "committed" or "ready to push")
+- After `xcodebuild build` succeeds → banner + AskUserQuestion (not just "build passed")
+- After completing a step → banner + AskUserQuestion
+- After all steps done → banner + AskUserQuestion for wrap-up
 
 After completing each step, **always** print this banner:
 
@@ -1023,6 +1091,21 @@ Review your own output from this session and fill in each row:
 ```
 
 **If ANY gate fails**, print the gap, fix it, then proceed. See data-model-radar SKILL.md for full gate-checking instructions.
+
+---
+
+## Finding Resolution Gate (MANDATORY before wrap-up)
+
+**The audit cannot end until every finding has a terminal state.** The auditor does not get to decide which findings are "not worth asking about" — the user decides.
+
+Before writing the handoff file or presenting the wrap-up summary:
+
+1. List all findings from the session
+2. Check each has a terminal state: **Fixed** / **Accepted** / **Deferred** (with reason)
+3. If any finding lacks a terminal state, present it to the user via `AskUserQuestion`
+4. Only after all findings are resolved can you write the handoff and wrap up
+
+**Not terminal:** "Noted" / "Observed" / "Documented" — these are descriptions, not decisions. Findings presented in a table but never asked about individually are not resolved.
 
 ---
 

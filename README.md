@@ -37,6 +37,21 @@ cd radar-suite
 
 That's it. All 5 skills are now available in Claude Code.
 
+## Updates
+
+Each skill checks for updates on startup. If a newer version is available, you'll see a one-line notice — it never blocks your audit.
+
+To update manually:
+
+```bash
+cd radar-suite
+git pull
+```
+
+If you installed via `install.sh` (symlinks), the update takes effect immediately. If you copied the files, re-run `./install.sh` after pulling.
+
+Each skill has a `VERSION` file and a `version:` field in its SKILL.md frontmatter. [GitHub Releases](https://github.com/Terryc21/radar-suite/releases) include changelogs for each version.
+
 ## Recommended Run Order
 
 Each skill writes findings that the next one can read, so running them in order gives the best results:

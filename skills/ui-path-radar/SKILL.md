@@ -1,7 +1,7 @@
 ---
 name: ui-path-radar
 description: 'UI path tracer for SwiftUI/UIKit apps. 5-layer audit: discover entry points, trace flows, detect dead ends and broken promises, evaluate UX impact, verify data wiring. Supports targeted trace, diff against previous audits, and handoff to planning skills. Triggers: "trace UI paths", "find dead ends", "/ui-path-radar".'
-version: 3.4.0
+version: 3.5.0
 author: Terry Nyberg
 license: MIT
 allowed-tools: [Read, Grep, Glob, Bash, Edit, Write, AskUserQuestion]
@@ -18,6 +18,8 @@ You are performing a systematic UI path audit on this SwiftUI application.
 
 **Required output:** Every finding MUST include Urgency, Risk, ROI, and Blast Radius ratings using the Issue Rating Table format. Do not omit these ratings.
 
+**Genuine problems only:** Report real issues backed by evidence. Do not nitpick, invent issues, or inflate severity. If unsure whether something is a problem, say so — don't report it as a finding.
+
 ## Quick Commands
 
 | Command | Description |
@@ -32,8 +34,6 @@ You are performing a systematic UI path audit on this SwiftUI application.
 | `/ui-path-radar diff` | Compare current findings against previous audit |
 | `/ui-path-radar fix` | Generate fixes for found issues |
 | `/ui-path-radar status` | Show audit progress and remaining issues |
-| `/ui-path-radar fix-deferred` | Resolve items deferred from a previous run |
-| `/ui-path-radar verify` | Re-check previous findings without full re-audit (~5 min) |
 
 ## Overview
 
@@ -118,9 +118,10 @@ from scanning the actual codebase as it exists now.
 Ask the user:
 
 **Question 1: "How should fixes be handled?"**
-- **Auto-fix safe items (Recommended)** — Apply isolated, low-blast-radius fixes
-  automatically. Present cross-cutting fixes and design decisions as a plan.
-- **Plan only** — Do not change any code. Present all findings as a plan.
+- **Auto-fix safe items (Recommended)** — Apply isolated, low-blast-radius fixes automatically. Present cross-cutting fixes and design decisions for approval first.
+- **Review first** — Present all findings with ratings, then ask before making any changes. Fixes still happen — you just approve each wave first.
+
+**IMPORTANT:** Both modes lead to fixes. "Review first" means the user sees the plan before code changes — it does NOT mean "skip fixes and jump to handoff." After presenting findings, ALWAYS offer to fix them regardless of which mode was selected.
 
 **Question 2: "How should results be delivered?"**
 - **Display only (Recommended)** — Show findings in the conversation. No file written.
@@ -298,6 +299,33 @@ tput cols
 ```
 
 Store the result as `TERMINAL_WIDE` (true/false) and apply to ALL tables in the session — discovery tables, issue tables, and summaries. If the user later says "show full table", "wide table", or "full ratings", re-render the most recent findings table in full 8-column format regardless of terminal width.
+
+---
+
+## Version Check (on first invocation — silent on failure)
+
+On startup, check if a newer version exists. Run in background, do not block the audit:
+
+```bash
+curl -sf https://raw.githubusercontent.com/Terryc21/radar-suite/main/skills/ui-path-radar/VERSION 2>/dev/null
+```
+
+- If the remote version is newer than `3.5.0`, print one line before proceeding:
+  > Update available: ui-path-radar v[remote] (you have v3.5.0). Run `git -C ~/.claude/skills/ui-path-radar pull` or visit https://github.com/Terryc21/radar-suite
+- If curl fails, remote is same/older, or command times out — skip silently. Never block the audit for a version check.
+
+---
+
+## Xcode MCP Integration (Optional)
+
+On startup, silently check if Xcode MCP tools are available (e.g., attempt to list tools or check for `xcrun mcpbridge`).
+
+- **Available:** Set `XCODE_MCP = true`, note in audit header: `Xcode MCP: available`
+- **Not available:** Set `XCODE_MCP = false`, skip silently. Do not prompt user to install.
+
+**When XCODE_MCP = true, use these tools:**
+- `RenderPreview` — verify navigation destinations exist and render correctly
+- `BuildProject` — verify fix compilation after each wave
 
 ---
 
@@ -720,8 +748,6 @@ Compare current codebase against the previous audit to show what changed:
    - **Requires design decision** — multiple valid approaches
    - **Deferred** — no action needed now
    - **Out of scope** — belongs to a different audit type
-5. **Design decisions MUST include "Explain pros/cons" option.** Every design decision prompt must offer: Recommended option, Alternative(s), Accept as-is, and **Explain pros/cons** (walks through tradeoffs before deciding). If user selects it, present brief analysis then re-prompt.
-6. **Pattern sweep findings MUST use full rating table + decision prompt.** Never silently note patterns "for future." Present in full Issue Rating Table, then ask: Fix now / Defer / Accept as-is / Explain pros/cons.
 
 ### If "status":
 1. Read existing audit files
@@ -818,6 +844,29 @@ All findings MUST be presented in this format, sorted by Urgency then ROI:
 
 ---
 
+## Findings by File (auto-generated after findings table)
+
+After the main findings table, re-group all findings by file path:
+
+```
+### Findings by File
+
+**Sources/Views/Navigation/AppNavigationView.swift** (3 findings)
+- #1 (🔴 CRITICAL) — one-line summary
+- #5 (🟡 HIGH) — one-line summary
+- #9 (🟢 MEDIUM) — one-line summary
+
+**Sources/Features/Settings/SettingsView.swift** (1 finding)
+- #3 (🟡 HIGH) — one-line summary
+```
+
+- Sort files by highest-severity finding first (files with CRITICAL first)
+- Finding numbers match the main table for cross-reference
+- Skip this section entirely if fewer than 3 total findings
+- For Senior/Expert users, omit the "no findings" file list
+
+---
+
 ## Fix Application Workflow
 
 After presenting findings, apply fixes in **waves**. After each wave (including commits), **always** print the progress banner and auto-prompt for the next wave. Never leave the user with a blank prompt.
@@ -837,7 +886,14 @@ Skip empty waves.
 
 ### Progress Banner (MANDATORY after every wave)
 
-**CRITICAL — BLOCKING requirement.** After EVERY wave and EVERY commit, your NEXT output MUST be the progress banner followed by the next-wave `AskUserQuestion`. Do not output anything else first. Do not wait for user input. Do not leave a blank prompt.
+**HARD GATE: After EVERY wave, EVERY commit, and EVERY build verification, your response MUST end with the progress banner + `AskUserQuestion`. If your response does not end with `AskUserQuestion`, you have violated this rule. Check before sending.**
+
+**This includes:**
+- After `git commit` → banner + AskUserQuestion (not just "committed" or "ready to push")
+- After `xcodebuild build` succeeds → banner + AskUserQuestion (not just "build passed")
+- After all fixes in a wave are applied → banner + AskUserQuestion
+- After wrapping up a layer → banner + AskUserQuestion for next layer
+- After all layers done → banner + AskUserQuestion for wrap-up/next-skill
 
 After completing each wave, **always** print:
 
@@ -922,92 +978,26 @@ Optional field suggesting how planning skills might batch issues:
 
 ---
 
-## Finding Resolution (MANDATORY — end of every run)
+## Inline Cross-Skill Referrals
 
-**Principle:** Every finding must reach a terminal state. "Deferred" is not terminal — it's temporary.
+When a finding primarily belongs to another skill's domain, append this line to the finding:
 
-### Terminal States
+`→ Deeper analysis: /[skill-name] [relevant-command]`
 
-| State | Meaning | How |
-|-------|---------|-----|
-| **Fixed** | Code changed, test written, committed | Wave workflow |
-| **Planned** | Added to `DEFERRED.md` with severity, effort, reason, release gate | User chose "save for later" |
-| **Accepted** | User explicitly said "this is fine" | User chose "accept as-is" |
+| If the finding involves... | Refer to |
+|---------------------------|----------|
+| Missing/incomplete model fields | `/data-model-radar [ModelName]` |
+| Visual layout, spacing, color issues | `/ui-enhancer-radar [ViewName]` |
+| Data loss through a complete user cycle | `/roundtrip-radar [workflow]` |
+| Overall release readiness | `/capstone-radar` |
 
-### Self-Resolution (end of every run)
-
-After all waves complete (or if the user chose "plan only"), check `findings_deferred` in this session. If any exist, present:
-
-```
-You have [N] unresolved findings from this audit:
-
-| # | Finding | Severity | Effort |
-|---|---------|----------|--------|
-| 1 | ... | ... | ... |
-
-Every finding needs a decision:
-1. **Fix now** — enter wave workflow for these items
-2. **Plan it** — add to DEFERRED.md (tracked, reviewed before release)
-3. **Accept as-is** — explicitly sign off (removed from tracking)
-4. **Explain more** — walk through what each finding means
-```
-
-For each finding, the user chooses Fix / Plan / Accept. Update the handoff YAML accordingly:
-- Fix → move to `findings_fixed` after wave completes
-- Plan → move to `findings_planned`, write to `DEFERRED.md`
-- Accept → move to `findings_accepted`
-
-### `fix-deferred` Subcommand
-
-When invoked via `/ui-path-radar fix-deferred`:
-
-1. Read own handoff YAML (`.agents/ui-audit/ui-path-radar-handoff.yaml`)
-2. Extract `findings_deferred` list
-3. If empty → "No deferred findings from previous ui-path-radar runs."
-4. If non-empty → present findings table (already rated from original run)
-5. For each finding, ask: Fix now / Plan it / Accept as-is
-6. Fix items enter the wave workflow. Plan items go to DEFERRED.md. Accept items go to `findings_accepted`.
-7. Update handoff YAML with resolved statuses
-
-### `verify` Subcommand (lightweight re-check)
-
-When invoked via `/ui-path-radar verify`: Read own handoff YAML, grep for each finding's pattern in the codebase, classify as Still present / Resolved / Changed, update handoff accordingly. Print summary. Much faster than a full re-audit. See data-model-radar SKILL.md for full verify logic.
-
-### Startup Check
-
-On every invocation, check for `DEFERRED.md` at the project root. If it exists and contains ui-path-radar items:
-
-```
-📋 You have [N] planned items from previous ui-path-radar audits in DEFERRED.md.
-   [M] are pre-release priority. Run `/ui-path-radar fix-deferred` to resolve them.
-```
-
-### DEFERRED.md Format
-
-If DEFERRED.md doesn't exist, create it when the first item is planned. Format:
-
-```markdown
-# Deferred Findings
-
-Items intentionally deferred from radar audits. Review before each release.
-
-| # | Finding | Source | Severity | Release Gate | Effort | Reason | Date | Review By |
-|---|---------|--------|----------|-------------|--------|--------|------|-----------|
-```
-
-**Release Gate values:** Pre-release / Post-release / Next major
-
-**Review By:** Default 90 days from deferral date. Capstone flags overdue items.
+Do NOT refer to ui-path-radar (that's this skill). Do NOT refer to a skill already running in this session.
 
 ---
 
 ## Cross-Skill Handoff
 
 UI Path Radar complements **data-model-radar** (model layer), **roundtrip-radar** (data safety), **ui-enhancer-radar** (visual quality), and **capstone-radar** (ship readiness). Findings from one skill inform the others.
-
-### Cross-Skill Resolution (after fixing any finding)
-
-When a fix resolves a finding that originated from ANOTHER skill's handoff, update that skill's handoff YAML. Read the other skill's handoff, find the matching finding in `findings_deferred[]` or `for_capstone_radar.blockers[]`, move it to `findings_fixed[]` (or `resolved[]`) with the fix commit hash and `resolved_by: "ui-path-radar"`. This prevents stale handoffs from blocking capstone's ship recommendation.
 
 ### On Completion — Write Handoff
 
@@ -1017,29 +1007,6 @@ After completing an audit, write `.agents/ui-audit/ui-path-radar-handoff.yaml`:
 source: ui-path-radar
 date: <ISO 8601>
 project: <project name>
-
-findings_fixed:
-  - finding: "<description>"
-    severity: "<CRITICAL|HIGH|MEDIUM|LOW>"
-    fix_commit: "<git hash>"
-
-findings_deferred:
-  - finding: "<description>"
-    severity: "<CRITICAL|HIGH|MEDIUM|LOW>"
-    reason: "<why deferred>"
-
-findings_planned:
-  - finding: "<description>"
-    severity: "<CRITICAL|HIGH|MEDIUM|LOW>"
-    release_gate: "<Pre-release|Post-release|Next major>"
-    reason: "<why deferred>"
-    deferred_md_row: true
-
-findings_accepted:
-  - finding: "<description>"
-    severity: "<CRITICAL|HIGH|MEDIUM|LOW>"
-    reason: "<why accepted>"
-    accepted_date: "<ISO 8601>"
 
 for_roundtrip_radar:
   # Dead ends and broken promises suggest data flow issues
@@ -1065,33 +1032,45 @@ for_capstone_radar:
 
 **Automatic:** This file is always written so other audit skills can pick up where this one left off. No user action needed.
 
-### On Startup — Read Handoffs
+### On Startup — Read Handoffs (MANDATORY)
 
-Before starting the audit, check for handoff files from other skills:
-- `.agents/ui-audit/roundtrip-radar-handoff.yaml` — data safety issues that may have UI implications
-- `.agents/ui-audit/ui-enhancer-radar-handoff.yaml` — visual issues that may indicate structural problems
+Before starting the audit, read ALL companion handoff YAMLs that exist:
 
-If found, incorporate relevant items as **suspects** in the appropriate layer. If not found, proceed normally — the other skills may not be installed or haven't been run yet.
+```
+Read .agents/ui-audit/data-model-radar-handoff.yaml (if exists)
+Read .agents/ui-audit/roundtrip-radar-handoff.yaml (if exists)
+Read .agents/ui-audit/ui-enhancer-radar-handoff.yaml (if exists)
+Read .agents/ui-audit/capstone-radar-handoff.yaml (if exists)
+```
+
+**Parse `for_ui_path_radar` sections.** Each companion can direct findings to this skill. Look for:
+- `for_ui_path_radar.suspects[]` — views or navigation paths another skill flagged as broken
+- `for_ui_path_radar.priority_areas[]` — areas another skill wants traced first
+
+If found, incorporate as **priority targets** in the appropriate audit layer. These are not pre-confirmed findings — verify each one independently.
+
+**What each companion provides:**
+- data-model-radar — dead model fields that may indicate orphaned UI
+- roundtrip-radar — data safety issues that may have UI implications
+- ui-enhancer-radar — visual issues that may indicate structural navigation problems
+- capstone-radar — priority navigation areas from ship readiness grading
+
+If not found, proceed normally — the other skills may not be installed or haven't been run yet.
 
 ---
 
-## Compliance Self-Check (MANDATORY — run before final summary)
+## Finding Resolution Gate (MANDATORY before wrap-up)
 
-**Before writing the final summary, handoff YAML, or session wrap-up, execute this mechanical checklist. Do NOT skip it. Do NOT summarize without running it first.**
+**The audit cannot end until every finding has a terminal state.** The auditor does not get to decide which findings are "not worth asking about" — the user decides.
 
-Review your own output from this session and fill in each row:
+Before writing the handoff file or presenting the wrap-up summary:
 
-```
-| # | Gate | Check | Pass? | Gaps |
-|---|------|-------|-------|------|
-| 1 | Table Format | Every findings table has 8 columns (Finding, Confidence, Urgency, Risk:Fix, Risk:NoFix, ROI, Blast Radius, Fix Effort) | ? | |
-| 2 | Test Gate | Every committed fix has a test — or a documented exemption (visual, dead code, singleton) | ? | |
-| 3 | Pattern Sweep | Every pattern found during sweep was presented with full rating table + Fix/Defer/Accept prompt | ? | |
-| 4 | Decision Prompts | Every design decision included "Explain pros/cons" option | ? | |
-| 5 | Finding Resolution | Every finding reached terminal state (Fixed, Planned, Accepted) — no orphaned "deferred" items | ? | |
-```
+1. List all findings from the session
+2. Check each has a terminal state: **Fixed** / **Accepted** / **Deferred** (with reason)
+3. If any finding lacks a terminal state, present it to the user via `AskUserQuestion`
+4. Only after all findings are resolved can you write the handoff and wrap up
 
-**If ANY gate fails**, print the gap, fix it, then proceed. See data-model-radar SKILL.md for full gate-checking instructions.
+**Not terminal:** "Noted" / "Observed" / "Documented" — these are descriptions, not decisions. Findings presented in a table but never asked about individually are not resolved.
 
 ---
 
@@ -1103,57 +1082,3 @@ Review your own output from this session and fill in each row:
 3. NEVER leave a blank prompt
 
 This reminder is placed at the end of the file because context compaction tends to preserve the beginning and end. If you are unsure whether to print the banner, **print it**.
-
-**⚠️ CONTEXT EXHAUSTION GUARD:**
-
-Track tool calls during the session. After **50 tool calls**, auto-downgrade new findings from `verified` to `probable (long context)`. Print a warning suggesting the user split the session. Tag findings with `confidence_note`. In the handoff YAML, add `context_exhaustion_after: [N]`. On session split, the next session re-verifies those findings FIRST and upgrades to `verified` if confirmed. See data-model-radar SKILL.md for full context exhaustion logic.
-
-**⚠️ TABLE FORMAT GATE (MANDATORY — pre-output check before EVERY table):**
-
-Before outputting ANY table that contains findings, issues, deferred items, or rated items, run this mechanical check:
-
-1. Count the columns. If fewer than 8, STOP and rebuild.
-2. Verify ALL of these columns exist: **Finding | Confidence | Urgency | Risk: Fix | Risk: No Fix | ROI | Blast Radius | Fix Effort**
-3. If any column is missing, add it before displaying.
-
-This applies to ALL tables — no exceptions:
-- Findings tables, fix plan tables, batch decision tables
-- Summary tables, progress update tables, pattern sweep tables
-- Deferred item tables, resolution tables, comparison tables
-- ANY table where items have severity, urgency, or effort ratings
-
-Common rationalizations that are NOT valid exceptions:
-- "This is just a summary" → still needs all 8 columns
-- "This is a decision prompt" → still needs all 8 columns
-- "This is a quick list" → still needs all 8 columns
-- "I'm showing recommendations, not findings" → still needs all 8 columns
-- "The table would be too wide" → still needs all 8 columns (see terminal note below)
-
-**Terminal width reminder:** If the 8-column table renders as a vertical stack of items instead of horizontal rows, tell the user: "The table may appear stacked. Widen your terminal window or use full-screen mode for the intended horizontal layout."
-
-**⚠️ TEST GATE (MANDATORY — pre-commit check after EVERY fix):**
-
-Before committing ANY fix, run this mechanical check:
-
-1. Is there a test for this fix? If no, STOP.
-2. Write the test BEFORE or ALONGSIDE the fix — not "later."
-3. Run the tests: `xcodebuild test -scheme [TestScheme] -destination [simulator] -only-testing:[TestClass]` (or full test suite if quick). If any fail, fix before committing.
-4. If the fix is not unit-testable (pure visual, singleton dependency, view-layer), document WHY in a code comment and note it in the commit message.
-
-**What needs tests:**
-- Any logic change (math, conditionals, data flow)
-- Any model change (fields, relationships, computed properties)
-- Any serialization change (backup, CSV, CloudKit mapping)
-- Any state management change (lifecycle transitions, assignment cleanup)
-- Any new code path (new save path, new error handling)
-
-**What doesn't need tests (document why):**
-- Pure visual changes (color, spacing, font) — verified by eye in Canvas/simulator
-- Dead code removal — no behavior to test
-- Singleton method calls added (e.g., adding SpotlightManager.reindexAll) — integration test, not unit-testable without protocol mock
-
-**Common rationalizations that are NOT valid:**
-- "I'll write tests after all fixes" → No. Test with each fix.
-- "This is trivial" → Trivial fixes have trivial tests. Write them.
-- "Tests would slow us down" → Untested fixes are unverified fixes.
-- "The build passes" → Building is not testing.

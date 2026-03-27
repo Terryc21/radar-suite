@@ -1,7 +1,7 @@
 ---
 name: roundtrip-radar
 description: 'Per-journey code audit tracing data through complete user flows for bugs, data safety, performance, and round-trip completeness. Discovers workflows, audits each end-to-end, and rolls up cross-cutting issues. Triggers: "roundtrip audit", "trace user journey", "/roundtrip-radar".'
-version: 1.2.0
+version: 1.3.0
 author: Terry Nyberg
 license: MIT
 ---
@@ -9,6 +9,8 @@ license: MIT
 # Workflow Code Audit
 
 **YOU MUST EXECUTE THIS WORKFLOW. Do not just describe it.**
+
+**Genuine problems only:** Report real issues backed by evidence. Do not nitpick, invent issues, or inflate severity. If unsure whether something is a problem, say so — don't report it as a finding.
 
 This skill audits application workflows for bugs, data-safety issues, performance
 problems, and data round-trip completeness. It operates in three steps:
@@ -23,8 +25,6 @@ problems, and data round-trip completeness. It operates in three steps:
 - `/workflow-code-audit [WORKFLOW_NAME]` — Run Step 1 for a specific workflow
 - `/workflow-code-audit rollup` — Run Step 2 after all individual audits
 - `/workflow-code-audit` (no args) — Start with Step 0, then prompt for Step 1
-- `/roundtrip-radar fix-deferred` — Resolve items deferred from a previous run
-- `/roundtrip-radar verify` — Re-check previous findings without full re-audit (~5 min vs ~1 hour)
 
 ---
 
@@ -56,7 +56,7 @@ Store the experience level as `USER_EXPERIENCE` and apply to ALL output for the 
 
 **Subsequent workflows:** Do NOT re-ask the full setup questions. Instead, show a one-line reminder before each workflow:
 ```
-Using: [Beginner] mode, [Auto-fix small issues], [Display only]. Type "adjust" to change, or press Enter to continue.
+Using: [Beginner] mode, [Auto-fix] or [Review first], [Display only]. Type "adjust" to change, or press Enter to continue.
 ```
 If the user types "adjust", re-ask only the question(s) they want to change. Users may want to adjust experience level after a few workflows (beginner explanations may feel too simple, expert too terse).
 
@@ -95,6 +95,32 @@ tput cols
 ```
 
 If the user later says "show full table", "wide table", or "full ratings", re-render the most recent findings table in full 8-column format regardless of terminal width. Apply to ALL tables in the session.
+
+---
+
+## Version Check (on first invocation — silent on failure)
+
+On startup, check if a newer version exists. Run in background, do not block the audit:
+
+```bash
+curl -sf https://raw.githubusercontent.com/Terryc21/radar-suite/main/skills/roundtrip-radar/VERSION 2>/dev/null
+```
+
+- If the remote version is newer than `1.3.0`, print one line before proceeding:
+  > Update available: roundtrip-radar v[remote] (you have v1.3.0). Run `git -C ~/.claude/skills/roundtrip-radar pull` or visit https://github.com/Terryc21/radar-suite
+- If curl fails, remote is same/older, or command times out — skip silently. Never block the audit for a version check.
+
+---
+
+## Xcode MCP Integration (Optional)
+
+On startup, silently check if Xcode MCP tools are available (e.g., attempt to list tools or check for `xcrun mcpbridge`).
+
+- **Available:** Set `XCODE_MCP = true`, note in audit header: `Xcode MCP: available`
+- **Not available:** Set `XCODE_MCP = false`, skip silently. Do not prompt user to install.
+
+**When XCODE_MCP = true, use these tools:**
+- `BuildProject` — verify fix compilation after each wave
 
 ---
 
@@ -298,8 +324,10 @@ Ask the user these questions **once per session** in a single prompt. For subseq
 - **Senior/Expert** — Deep expertise. Terse, file:line only, skip explanations.
 
 **Question 2: "How should fixes be handled?"**
-- **Fix small, isolated issues automatically (Recommended)** — Apply fixes that are contained (only touching one or two files) without asking. Present larger fixes and design decisions as a plan for approval.
-- **Report issues without changing any code** — Do not change any code. Present all findings as a plan for approval.
+- **Auto-fix safe items (Recommended)** — Apply isolated, low-blast-radius fixes automatically. Present cross-cutting fixes and design decisions for approval first.
+- **Review first** — Present all findings with ratings, then ask before making any changes. Fixes still happen — you just approve each wave first.
+
+**IMPORTANT:** Both modes lead to fixes. "Review first" means the user sees the plan before code changes — it does NOT mean "skip fixes and jump to handoff." After presenting findings, ALWAYS offer to fix them regardless of which mode was selected.
 
 **Question 3: "How should results be delivered?"**
 - **Display only (Recommended)** — Show findings in the conversation. No file written.
@@ -548,10 +576,10 @@ After applying Safe fixes:
 
 #### Then
 
-- If user chose **Fix small, isolated issues automatically**: apply Section 1 fixes, run Verification,
+- If user chose **Auto-fix safe items**: apply Section 1 fixes, run Verification,
   then present Sections 2-3 for approval.
-- If user chose **Report issues without changing any code**: present all sections for approval.
-  Do not change any code.
+- If user chose **Review first**: present all sections for approval,
+  then ask if the user wants to proceed with fixes.
 
 #### Delivery
 
@@ -577,6 +605,29 @@ Format:
 
 ---
 
+## Findings by File (auto-generated after findings table)
+
+After the main findings table, re-group all findings by file path:
+
+```
+### Findings by File
+
+**Sources/Managers/BackupManager.swift** (3 findings)
+- #1 (🔴 CRITICAL) — one-line summary
+- #5 (🟡 HIGH) — one-line summary
+- #9 (🟢 MEDIUM) — one-line summary
+
+**Sources/ViewModels/AddItemViewModel.swift** (1 finding)
+- #3 (🟡 HIGH) — one-line summary
+```
+
+- Sort files by highest-severity finding first (files with CRITICAL first)
+- Finding numbers match the main table for cross-reference
+- Skip this section entirely if fewer than 3 total findings
+- For Senior/Expert users, omit the "no findings" file list
+
+---
+
 ## Fix Application Workflow
 
 After presenting the Fix Plan, apply fixes in **waves**. Each wave is a phase from the Fix Plan. After each wave (including commits), **always** print the progress banner and auto-prompt for the next wave.
@@ -597,24 +648,6 @@ Skip empty waves (e.g., if no design decisions, go straight from Wave 2 to Wave 
 
 If a "cross-cutting fix" turns out to need a design decision during implementation, reclassify it — ask the user via `AskUserQuestion` with the options, don't proceed without input.
 
-### Wave 3: Design Decision Prompt Format (MANDATORY)
-
-Every design decision presented to the user MUST include an **"Explain pros/cons"** option. Use this template for each decision in the `AskUserQuestion`:
-
-```
-Options:
-- **[Recommended option] (Recommended)** — [one-line description]
-- **[Alternative option]** — [one-line description]
-- **Accept as-is** — [why this is safe to leave]
-- **Explain pros/cons** — Walk through the tradeoffs before deciding
-```
-
-If the user selects "Explain pros/cons":
-1. Present a brief pros/cons analysis (3-5 bullets total, not an essay)
-2. Re-prompt with the same options (minus "Explain pros/cons")
-
-**Never present a design decision without the "Explain pros/cons" option.** Users should be able to make informed decisions without feeling pressured by a recommendation.
-
 ### Wave 4: Pattern Sweep (after fixes, before commit)
 
 After fixing findings in a workflow, scan the entire codebase for the same anti-pattern. This catches all instances at once instead of rediscovering them workflow-by-workflow.
@@ -623,23 +656,18 @@ For each pattern found and fixed in this workflow:
 1. Build a grep query (e.g., `Double(` for raw price parsing, `hashValue` for unstable IDs)
 2. Search all Sources/ files
 3. Report: "Pattern X found in N additional files: [list]"
-
-**MANDATORY: Full rating table + decision prompt for every pattern found.**
-
-Do NOT silently note patterns "for future" or "for the next workflow." Every pattern instance found during the sweep must be:
-1. Presented in the full Issue Rating Table (all columns)
-2. Followed by an `AskUserQuestion` with these options:
-   - **Fix now (Recommended)** — if trivial and isolated
-   - **Fix now** — if feasible but non-trivial
-   - **Defer** — add to DEFERRED.md with release gate
-   - **Accept as-is** — intentional or too risky to change
-   - **Explain pros/cons** — walk through the tradeoffs before deciding
-
-Group related patterns into a single table + prompt when they share the same root cause (e.g., all `hashValue` usages in one table). But never skip the prompt.
+4. If fixes are trivial and isolated, apply them now. Otherwise, note for the next workflow.
 
 ### Progress Banner (CRITICAL — BLOCKING requirement)
 
-**This is a BLOCKING requirement.** After EVERY wave and EVERY commit, your NEXT output MUST be the progress banner followed by the next-wave `AskUserQuestion`. Do not output anything else first. Do not wait for user input. Do not leave a blank prompt.
+**HARD GATE: After EVERY wave, EVERY commit, and EVERY build verification, your response MUST end with the progress banner + `AskUserQuestion`. If your response does not end with `AskUserQuestion`, you have violated this rule. Check before sending.**
+
+**This includes:**
+- After `git commit` → banner + AskUserQuestion (not just "committed" or "ready to push")
+- After `xcodebuild build` succeeds → banner + AskUserQuestion (not just "build passed")
+- After all fixes in a wave are applied → banner + AskUserQuestion
+- After wrapping up a workflow → banner + AskUserQuestion for next workflow
+- After all workflows done → banner + AskUserQuestion for wrap-up/next-skill
 
 After completing each wave, **always** print:
 
@@ -703,105 +731,26 @@ Deliver results according to the user's output preference from Step 1.
 
 ---
 
-## Finding Resolution (MANDATORY — end of every run)
+## Inline Cross-Skill Referrals
 
-**Principle:** Every finding must reach a terminal state. "Deferred" is not terminal — it's temporary.
+When a finding primarily belongs to another skill's domain, append this line to the finding:
 
-### Terminal States
+`→ Deeper analysis: /[skill-name] [relevant-command]`
 
-| State | Meaning | How |
-|-------|---------|-----|
-| **Fixed** | Code changed, test written, committed | Wave workflow |
-| **Planned** | Added to `DEFERRED.md` with severity, effort, reason, release gate | User chose "save for later" |
-| **Accepted** | User explicitly said "this is fine" | User chose "accept as-is" |
+| If the finding involves... | Refer to |
+|---------------------------|----------|
+| Missing/incomplete model fields | `/data-model-radar [ModelName]` |
+| Navigation dead ends or broken links | `/ui-path-radar` |
+| Visual layout, spacing, color issues | `/ui-enhancer-radar [ViewName]` |
+| Overall release readiness | `/capstone-radar` |
 
-### Self-Resolution (end of every run)
-
-After all waves complete (or if the user chose "plan only"), check `findings_deferred` in this session. If any exist, present:
-
-```
-You have [N] unresolved findings from this audit:
-
-| # | Finding | Severity | Effort |
-|---|---------|----------|--------|
-| 1 | ... | ... | ... |
-
-Every finding needs a decision:
-1. **Fix now** — enter wave workflow for these items
-2. **Plan it** — add to DEFERRED.md (tracked, reviewed before release)
-3. **Accept as-is** — explicitly sign off (removed from tracking)
-4. **Explain more** — walk through what each finding means
-```
-
-For each finding, the user chooses Fix / Plan / Accept. Update the handoff YAML accordingly:
-- Fix → move to `findings_fixed` after wave completes
-- Plan → move to `findings_planned`, write to `DEFERRED.md`
-- Accept → move to `findings_accepted`
-
-### `fix-deferred` Subcommand
-
-When invoked via `/roundtrip-radar fix-deferred`:
-
-1. Read own handoff YAML (`.agents/ui-audit/roundtrip-radar-handoff.yaml`)
-2. Extract `findings_deferred` list
-3. If empty → "No deferred findings from previous roundtrip-radar runs."
-4. If non-empty → present findings table (already rated from original run)
-5. For each finding, ask: Fix now / Plan it / Accept as-is
-6. Fix items enter the wave workflow. Plan items go to DEFERRED.md. Accept items go to `findings_accepted`.
-7. Update handoff YAML with resolved statuses
-
-### `verify` Subcommand (lightweight re-check)
-
-When invoked via `/roundtrip-radar verify`: Read own handoff YAML, grep for each finding's pattern in the codebase, classify as Still present / Resolved / Changed, update handoff accordingly. Print summary. Much faster than a full re-audit. See data-model-radar SKILL.md for full verify logic.
-
-### Startup Check
-
-On every invocation, check for `DEFERRED.md` at the project root. If it exists and contains roundtrip-radar items:
-
-```
-📋 You have [N] planned items from previous roundtrip-radar audits in DEFERRED.md.
-   [M] are pre-release priority. Run `/roundtrip-radar fix-deferred` to resolve them.
-```
-
-### DEFERRED.md Format
-
-If DEFERRED.md doesn't exist, create it when the first item is planned. Format:
-
-```markdown
-# Deferred Findings
-
-Items intentionally deferred from radar audits. Review before each release.
-
-| # | Finding | Source | Severity | Release Gate | Effort | Reason | Date | Review By |
-|---|---------|--------|----------|-------------|--------|--------|------|-----------|
-```
-
-**Release Gate values:** Pre-release / Post-release / Next major
-
-**Review By:** Default 90 days from deferral date. Capstone flags overdue items.
+Do NOT refer to roundtrip-radar (that's this skill). Do NOT refer to a skill already running in this session.
 
 ---
 
 ## Cross-Skill Handoff
 
 Roundtrip Radar complements **data-model-radar** (model layer), **ui-path-radar** (navigation paths), **ui-enhancer-radar** (visual quality), and **capstone-radar** (ship readiness). Findings from one skill inform the others.
-
-### Cross-Skill Resolution (after fixing any finding)
-
-When a fix resolves a finding that originated from ANOTHER skill's handoff, update that skill's handoff YAML:
-
-1. After applying a fix, check: does this fix address a finding listed in another skill's `for_capstone_radar.blockers[]` or `findings_deferred[]`?
-2. If yes, read that skill's handoff YAML
-3. Move the finding from `findings_deferred[]` (or `for_capstone_radar.blockers[]`) to `findings_fixed[]` with the fix commit hash
-4. Write the updated YAML
-
-**Example:** Roundtrip-radar fixes "InsuranceProfile missing from backup" which was flagged by data-model-radar. After committing the fix:
-- Read `.agents/ui-audit/data-model-radar-handoff.yaml`
-- Find the matching blocker in `for_capstone_radar.blockers[]`
-- Add to `resolved[]`: `finding: "...", fix_commit: "abc123", resolved_by: "roundtrip-radar"`
-- Write the updated YAML
-
-This prevents stale handoffs from blocking capstone's ship recommendation when the underlying issue has been fixed by a different skill.
 
 ### On Completion — Write Handoff
 
@@ -812,29 +761,6 @@ source: roundtrip-radar
 date: <ISO 8601>
 project: <project name>
 workflows_audited: <count>
-
-findings_fixed:
-  - finding: "<description>"
-    severity: "<CRITICAL|HIGH|MEDIUM|LOW>"
-    fix_commit: "<git hash>"
-
-findings_deferred:
-  - finding: "<description>"
-    severity: "<CRITICAL|HIGH|MEDIUM|LOW>"
-    reason: "<why deferred>"
-
-findings_planned:
-  - finding: "<description>"
-    severity: "<CRITICAL|HIGH|MEDIUM|LOW>"
-    release_gate: "<Pre-release|Post-release|Next major>"
-    reason: "<why deferred>"
-    deferred_md_row: true
-
-findings_accepted:
-  - finding: "<description>"
-    severity: "<CRITICAL|HIGH|MEDIUM|LOW>"
-    reason: "<why accepted>"
-    accepted_date: "<ISO 8601>"
 
 for_ui_path_radar:
   # Data issues that may have navigation/entry-point implications
@@ -867,38 +793,51 @@ cross_cutting_patterns:
 
 **Automatic:** This file is always written so other audit skills can pick up where this one left off. No user action needed.
 
-### On Startup — Read Handoffs
+### On Startup — Read Handoffs (MANDATORY)
 
-Before Step 0 (or Step 1 if skipping discovery), check for handoff files:
-- `.agents/ui-audit/ui-path-radar-handoff.yaml` — dead ends and broken promises suggest workflows to prioritize
-- `.agents/ui-audit/ui-enhancer-radar-handoff.yaml` — visual issues in views that may have data backing problems
+Before Step 0 (or Step 1 if skipping discovery), read ALL companion handoff YAMLs that exist:
 
-If found, incorporate relevant items as **suspects** in the matching workflow's audit. Specifically:
+```
+Read .agents/ui-audit/data-model-radar-handoff.yaml (if exists)
+Read .agents/ui-audit/ui-path-radar-handoff.yaml (if exists)
+Read .agents/ui-audit/ui-enhancer-radar-handoff.yaml (if exists)
+Read .agents/ui-audit/capstone-radar-handoff.yaml (if exists)
+```
+
+**Parse `for_roundtrip_radar` sections.** Each companion can direct findings to this skill. Look for:
+- `for_roundtrip_radar.suspects[]` — workflows or data paths another skill flagged as potentially broken
+- `for_roundtrip_radar.priority_workflows[]` — workflows another skill wants audited first
+
+If found, incorporate as **priority targets** in workflow selection. These are not pre-confirmed findings — verify each one independently.
+
+**What each companion provides:**
+- data-model-radar — model gaps that may cause data loss in specific workflows
+- ui-path-radar — dead ends and broken promises suggest workflows to prioritize
+- ui-enhancer-radar — visual issues in views that may have data backing problems
+- capstone-radar — priority workflows from ship readiness grading
+
+**Specific incorporation rules:**
 - Dead-end buttons from ui-path-radar → check the workflow behind that button
 - Orphaned views from ui-path-radar → verify the data path exists
 - Views flagged by ui-enhancer → check if the data binding is correct before suggesting visual changes
+- Model gaps from data-model-radar → trace through the workflow that creates/edits that model
 
 If not found, proceed normally.
 
 ---
 
-## Compliance Self-Check (MANDATORY — run before final summary)
+## Finding Resolution Gate (MANDATORY before wrap-up)
 
-**Before writing the final summary, handoff YAML, or session wrap-up, execute this mechanical checklist. Do NOT skip it. Do NOT summarize without running it first.**
+**The audit cannot end until every finding has a terminal state.** The auditor does not get to decide which findings are "not worth asking about" — the user decides.
 
-Review your own output from this session and fill in each row:
+Before writing the handoff file or presenting the wrap-up summary:
 
-```
-| # | Gate | Check | Pass? | Gaps |
-|---|------|-------|-------|------|
-| 1 | Table Format | Every findings table has 8 columns (Finding, Confidence, Urgency, Risk:Fix, Risk:NoFix, ROI, Blast Radius, Fix Effort) | ? | |
-| 2 | Test Gate | Every committed fix has a test — or a documented exemption (visual, dead code, singleton) | ? | |
-| 3 | Pattern Sweep | Every pattern found during sweep was presented with full rating table + Fix/Defer/Accept prompt | ? | |
-| 4 | Decision Prompts | Every design decision included "Explain pros/cons" option | ? | |
-| 5 | Finding Resolution | Every finding reached terminal state (Fixed, Planned, Accepted) — no orphaned "deferred" items | ? | |
-```
+1. List all findings from the session
+2. Check each has a terminal state: **Fixed** / **Accepted** / **Deferred** (with reason)
+3. If any finding lacks a terminal state, present it to the user via `AskUserQuestion`
+4. Only after all findings are resolved can you write the handoff and wrap up
 
-**If ANY gate fails**, print the gap, fix it, then proceed. See data-model-radar SKILL.md for full gate-checking instructions.
+**Not terminal:** "Noted" / "Observed" / "Documented" — these are descriptions, not decisions. Findings presented in a table but never asked about individually are not resolved.
 
 ---
 
@@ -910,57 +849,3 @@ Review your own output from this session and fill in each row:
 3. NEVER leave a blank prompt
 
 This reminder is placed at the end of the file because context compaction tends to preserve the beginning and end. If you are unsure whether to print the banner, **print it**.
-
-**⚠️ CONTEXT EXHAUSTION GUARD:**
-
-Track tool calls during the session. After **50 tool calls**, auto-downgrade new findings from `verified` to `probable (long context)`. Print a warning suggesting the user split the session. Tag findings with `confidence_note`. In the handoff YAML, add `context_exhaustion_after: [N]`. On session split, the next session re-verifies those findings FIRST and upgrades to `verified` if confirmed. See data-model-radar SKILL.md for full context exhaustion logic.
-
-**⚠️ TABLE FORMAT GATE (MANDATORY — pre-output check before EVERY table):**
-
-Before outputting ANY table that contains findings, issues, deferred items, or rated items, run this mechanical check:
-
-1. Count the columns. If fewer than 8, STOP and rebuild.
-2. Verify ALL of these columns exist: **Finding | Confidence | Urgency | Risk: Fix | Risk: No Fix | ROI | Blast Radius | Fix Effort**
-3. If any column is missing, add it before displaying.
-
-This applies to ALL tables — no exceptions:
-- Findings tables, fix plan tables, batch decision tables
-- Summary tables, progress update tables, pattern sweep tables
-- Deferred item tables, resolution tables, comparison tables
-- ANY table where items have severity, urgency, or effort ratings
-
-Common rationalizations that are NOT valid exceptions:
-- "This is just a summary" → still needs all 8 columns
-- "This is a decision prompt" → still needs all 8 columns
-- "This is a quick list" → still needs all 8 columns
-- "I'm showing recommendations, not findings" → still needs all 8 columns
-- "The table would be too wide" → still needs all 8 columns (see terminal note below)
-
-**Terminal width reminder:** If the 8-column table renders as a vertical stack of items instead of horizontal rows, tell the user: "The table may appear stacked. Widen your terminal window or use full-screen mode for the intended horizontal layout."
-
-**⚠️ TEST GATE (MANDATORY — pre-commit check after EVERY fix):**
-
-Before committing ANY fix, run this mechanical check:
-
-1. Is there a test for this fix? If no, STOP.
-2. Write the test BEFORE or ALONGSIDE the fix — not "later."
-3. Run the tests: `xcodebuild test -scheme [TestScheme] -destination [simulator] -only-testing:[TestClass]` (or full test suite if quick). If any fail, fix before committing.
-4. If the fix is not unit-testable (pure visual, singleton dependency, view-layer), document WHY in a code comment and note it in the commit message.
-
-**What needs tests:**
-- Any logic change (math, conditionals, data flow)
-- Any model change (fields, relationships, computed properties)
-- Any serialization change (backup, CSV, CloudKit mapping)
-- Any state management change (lifecycle transitions, assignment cleanup)
-- Any new code path (new save path, new error handling)
-
-**What doesn't need tests (document why):**
-- Pure visual changes (color, spacing, font) — verified by eye in Canvas/simulator
-- Dead code removal — no behavior to test
-- Singleton method calls added (e.g., adding SpotlightManager.reindexAll) — integration test, not unit-testable without protocol mock
-
-**Common rationalizations that are NOT valid:**
-- "I'll write tests after all fixes" → No. Test with each fix.
-- "This is trivial" → Trivial fixes have trivial tests. Write them.
-- "Tests would slow us down" → Untested fixes are unverified fixes.
-- "The build passes" → Building is not testing.

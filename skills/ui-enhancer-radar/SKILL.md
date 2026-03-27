@@ -1,7 +1,7 @@
 ---
 name: ui-enhancer-radar
 description: 'Systematic iOS/SwiftUI UI audit with design intent interview, 11-domain analysis (including Color Audit with adaptive Color Profile), element compaction, cross-view consistency checks, layout reorganization, design-aware push-back, App Store guardrails, and incremental apply with revert safety. 17 subcommands. Run /ui-enhancer-radar help for all commands. Triggers: "enhance this UI", "ui enhancer radar", "improve this view", "screen review", "ux audit".'
-version: 3.1.0
+version: 3.2.0
 author: Terry Nyberg
 license: MIT
 allowed-tools: [Read, Grep, Glob, Bash, Write, Edit, AskUserQuestion]
@@ -19,6 +19,8 @@ metadata:
 You are performing a systematic UI enhancement on a specific iOS/SwiftUI view, analyzing both the visual screenshot and the underlying code, then implementing improvements with tests.
 
 **Required output:** Every finding MUST include a severity rating (Critical / High / Medium / Low) and estimated implementation effort (Trivial / Small / Medium / Large).
+
+**Genuine problems only:** Report real issues backed by evidence. Do not nitpick, invent issues, or inflate severity. If unsure whether something is a problem, say so — don't report it as a finding.
 
 ## Quick Commands
 
@@ -151,6 +153,33 @@ tput cols
 ```
 
 If the user later says "show full table", "wide table", or "full ratings", re-render the most recent findings table in full 8-column format regardless of terminal width. Apply to ALL tables in the session.
+
+---
+
+## Version Check (on first invocation — silent on failure)
+
+On startup, check if a newer version exists. Run in background, do not block the audit:
+
+```bash
+curl -sf https://raw.githubusercontent.com/Terryc21/radar-suite/main/skills/ui-enhancer-radar/VERSION 2>/dev/null
+```
+
+- If the remote version is newer than `3.2.0`, print one line before proceeding:
+  > Update available: ui-enhancer-radar v[remote] (you have v3.2.0). Run `git -C ~/.claude/skills/ui-enhancer-radar pull` or visit https://github.com/Terryc21/radar-suite
+- If curl fails, remote is same/older, or command times out — skip silently. Never block the audit for a version check.
+
+---
+
+## Xcode MCP Integration (Optional)
+
+On startup, silently check if Xcode MCP tools are available (e.g., attempt to list tools or check for `xcrun mcpbridge`).
+
+- **Available:** Set `XCODE_MCP = true`, note in audit header: `Xcode MCP: available`
+- **Not available:** Set `XCODE_MCP = false`, skip silently. Do not prompt user to install.
+
+**When XCODE_MCP = true, use these tools:**
+- `RenderPreview` — verify layout recommendations before presenting them
+- `BuildProject` — verify code changes compile after applying fixes
 
 ---
 
@@ -594,460 +623,34 @@ Rules:
 - Skipped domains cannot contribute to the grade (positive or negative)
 - A grade cannot be produced while any domain has `?`
 
-### Domain 1: Space Efficiency
+### Domain Reference Loading
 
-**Goal:** Maximize content-to-chrome ratio; minimize wasted vertical space.
+Load domain references based on the command. References are in `references/` relative to this skill's directory.
 
-| Check | What to Look For | Common Fix |
-|-------|-----------------|------------|
-| Header overhead | Custom headers stacking on nav bar | Collapse or merge headers |
-| Dual button rows | Action buttons on separate line from navigation | Merge into one row |
-| Section headers | Oversized section titles with icons | Reduce font size, remove decorative icons |
-| Bottom padding | Excessive padding for floating elements | Reduce to actual element height + margin |
-| Hints/tips | Permanent hints that should dismiss after first use | Use coach marks or remove after learning |
-| Photo sections | Separate photo rows when thumbnail could be inline | Merge photo into title/header row |
-| Dividers/spacers | Excessive VStack spacing or explicit Spacer() | Reduce spacing values |
-| **Mergeable sections** | Small sections (1-2 items) with their own header overhead | Merge into adjacent related section |
-| **Relocatable controls** | Buttons/toggles in separate rows that could fit in an existing header or toolbar | Move into header, nav bar, or existing row |
-| **Redundant entry points** | Same action accessible from both a toolbar button AND a content card/row | Remove the duplicate; keep the more discoverable one |
+**Full audit or no subcommand:** Read all domain references:
+- `Read ~/.claude/skills/ui-enhancer-radar/references/domains-1-4.md`
+- `Read ~/.claude/skills/ui-enhancer-radar/references/domains-5-8.md`
+- `Read ~/.claude/skills/ui-enhancer-radar/references/domains-9-11.md`
 
-**Layout reorganization analysis (run for every view):**
+**Single domain commands — load only the relevant file:**
 
-Before recommending individual element changes, check whether **reorganizing the layout** would save more space than tweaking individual elements:
+| Command | Load |
+|---------|------|
+| `space`, `hierarchy`, `density`, `interaction` | `references/domains-1-4.md` |
+| `accessibility`, `hig`, `dark-mode`, `performance` | `references/domains-5-8.md` |
+| `design-system`, `color` | `references/domains-9-11.md` |
 
-1. **Count items per section** — sections with 1-2 items are candidates for merging with adjacent sections
-2. **Check for orphaned controls** — buttons, toggles, or status indicators in their own row that could be absorbed into an existing element (e.g., theme toggle → header)
-3. **Identify duplicate entry points** — the same action accessible from both a toolbar/action bar AND a content card below; remove the less discoverable one
-4. **Measure section header overhead** — each section header costs ~40pt; merging 2 sections saves ~40pt without touching content
-
-**Metrics:**
-- Content starts at: [Y position in points from top]
-- First interactive element at: [Y position]
-- Content-to-chrome ratio: [percentage]
-- Target: Content should start within 120pt of safe area top on iPhone
+**batch mode:** Read all domain references (needed for cross-view scoring).
 
 ---
 
-### Domain 2: Visual Hierarchy
-
-**Goal:** The most important information should be the most prominent.
-
-| Check | What to Look For | Common Fix |
-|-------|-----------------|------------|
-| Title prominence | Is the item/screen title the dominant element? | Ensure title is largest text |
-| Competing elements | Multiple elements fighting for attention | Differentiate with size/weight/color |
-| Status overload | Status indicators louder than content | Reduce to subtle badges |
-| Date/number sizing | Dates or numbers displayed too large | Use caption/footnote for secondary data |
-| Action vs. content | Action buttons more prominent than content | Tone down button styling |
-| Truncation | Important text truncated while less important text has room | Allow wrapping or reprioritize |
-| Color dominance | Bright colors on secondary elements | Reserve bright colors for primary actions |
-
-**Analysis technique:**
-1. Squint at the screenshot — what stands out?
-2. That should be the primary content, not navigation chrome
-3. If navigation or status draws the eye first, hierarchy is wrong
+**Domains 5-8** (Accessibility, HIG, Dark Mode, Performance): See `references/domains-5-8.md`
 
 ---
 
-### Domain 3: Information Density
-
-**Goal:** Show the right amount of information — not too sparse, not too cluttered.
-
-| Check | What to Look For | Common Fix |
-|-------|-----------------|------------|
-| Sparse rows | List rows with too much whitespace | Reduce padding, show more per row |
-| Dense rows | Too much crammed into one row | Progressive disclosure |
-| Redundant info | Same data shown in multiple places | Remove duplicates |
-| Hidden useful info | Important data behind taps/scrolling | Surface in primary view |
-| Badge overload | Too many status badges on one element | Prioritize, hide secondary |
-| Empty states | Large empty areas when data is missing | Collapse section |
-| Nonsense values | Negative numbers, meaningless dates | Use human labels or hide |
-
-**Density targets:**
-- List row: 2-3 lines max (title + subtitle + trailing status)
-- Card: 4-6 data points visible without scrolling
-- Form section: 3-5 fields visible without scrolling
+**Domains 9-11** (Design System, Competitive, Color Audit, Adaptive View Profile): See `references/domains-9-11.md`
 
 ---
-
-### Domain 4: Interaction Patterns
-
-**Goal:** Every interactive element should be discoverable, predictable, and satisfying.
-
-| Check | What to Look For | Common Fix |
-|-------|-----------------|------------|
-| Touch targets | Elements smaller than 44x44pt | Increase frame/padding |
-| Ambiguous buttons | Buttons that look like labels | Add clear button styling |
-| Combined buttons | Two features sharing one button | Separate into distinct buttons |
-| Gesture-only actions | Actions only via swipe/long-press | Add visible button alternative |
-| Dead ends | Screens with no clear next action | Add CTA or navigation hint |
-| Feedback gaps | Actions with no visual/haptic response | Add animation or haptic |
-| Scroll discovery | Content below fold with no indicator | Add hint or gradient |
-| Menu depth | Important actions buried in menus | Surface frequently-used actions |
-
----
-
-### Domain 5: Accessibility
-
-**Goal:** Every user, regardless of ability, can use the view effectively.
-
-| Check | What to Look For | Common Fix |
-|-------|-----------------|------------|
-| Color-only info | Information conveyed only by color | Add icon + text (triple redundancy) |
-| Fixed fonts | `.system(size:)` instead of semantic | Use Dynamic Type |
-| Missing labels | Images/icons without accessibility labels | Add `.accessibilityLabel()` |
-| Small text | Text below 11pt that doesn't scale | Use `.caption` minimum |
-| Contrast ratio | Low contrast text on backgrounds | Ensure 4.5:1 (WCAG AA) |
-| VoiceOver order | Reading order doesn't match visual | Reorder or group |
-| Motion | Animations without Reduce Motion check | Check accessibility setting |
-
----
-
-### Domain 6: HIG Compliance
-
-**Goal:** Follow Apple Human Interface Guidelines for platform consistency.
-
-| Check | What to Look For | Common Fix |
-|-------|-----------------|------------|
-| Navigation | Custom back buttons, non-standard patterns | Use system NavigationStack |
-| Tab bar | Incorrect icons or labels | Follow SF Symbol + short label |
-| Sheet presentation | Missing drag indicator or dismiss | Add `.presentationDragIndicator(.visible)` |
-| System colors | Hard-coded colors | Use `.primary`, `.secondary` |
-| Platform differences | iOS-only patterns on macOS | Use `#if os(iOS)` |
-| Safe areas | Content under notch or home indicator | Respect safe area insets |
-| Standard controls | Custom controls duplicating system | Use SwiftUI standard controls |
-
----
-
-### Domain 7: Dark Mode
-
-**Goal:** The view should look correct and intentional in both light and dark mode.
-
-| Check | What to Look For | Common Fix |
-|-------|-----------------|------------|
-| Hardcoded colors | `Color.white`, `Color.black`, hex values | Use semantic colors (`.primary`, `.background`) |
-| Background assumptions | `.background(Color.white)` | Use `.background(Color(.systemBackground))` |
-| Shadow visibility | Shadows invisible in dark mode | Use `.shadow` with adaptive opacity |
-| Image contrast | Images with white/transparent backgrounds | Add dark mode variants or tinted backgrounds |
-| Separator visibility | Light separators disappearing | Use `.separator` system color |
-| Accent consistency | Accent colors that clash in dark mode | Test all accent colors in both modes |
-| Material usage | Solid backgrounds where materials work better | Use `.ultraThinMaterial` for overlays |
-
-**Analysis:** If screenshot provided, check if the view uses light or dark mode. If code available, grep for hardcoded colors.
-
----
-
-### Domain 8: Performance Impact
-
-**Goal:** UI patterns should not cause frame drops, excessive redraws, or memory issues.
-
-| Check | What to Look For | Common Fix |
-|-------|-----------------|------------|
-| Heavy body | Complex expressions in view body | Extract to computed properties |
-| Inline images | Image decoding in body | Use `AsyncCachedImage` or background decoding |
-| Missing lazy | Large lists without `LazyVStack` | Switch to lazy containers |
-| Excessive state | Too many `@State` vars causing redraws | Consolidate or use `@Observable` |
-| Geometry readers | GeometryReader in scroll views | Use `.onGeometryChange` or remove |
-| Conditional complexity | Deep if/else chains in body | Extract to `@ViewBuilder` functions |
-| Animation cost | Heavy animations on low-end devices | Reduce or check Reduce Motion |
-
-**Analysis:** Read the SwiftUI file and check for known performance anti-patterns. Flag files over 500 lines that could benefit from extraction.
-
----
-
-### Domain 9: Design System Compliance
-
-**Goal:** The view should follow the project's established design system.
-
-**How it works:**
-1. Read `CLAUDE.md` for project-level design rules
-2. Read any design system files (`DESIGN_SYSTEM.md`, `StuffolioStyleGuide.swift`, etc.)
-3. Compare the view against documented patterns
-
-| Check | What to Look For | Common Fix |
-|-------|-----------------|------------|
-| Color palette | Colors outside the approved palette | Replace with design system colors |
-| Spacing values | Non-standard spacing/padding | Use `Spacing.*` constants |
-| Component usage | Custom components where standard ones exist | Replace with `SheetHeader`, `SemanticIconCircle`, etc. |
-| Card styles | Cards not using `.stuffolioCard()` or `.actionCard()` | Apply standard modifiers |
-| Icon style | Inconsistent icon rendering or sizing | Use `@ScaledMetric` and standard patterns |
-| Section structure | Sections not using `CollapsibleSection` | Adopt standard section component |
-| Sheet pattern | Sheets not using `SheetContainer` + `SheetHeader` | Apply standard sheet pattern |
-| **Unused component capabilities** | Custom UI that duplicates a feature already available in a shared component | Enable the existing parameter instead of building separate UI |
-
-**Unused capability check (run for every view):**
-
-When the view uses a shared component (e.g., `ContentIllustratedHeader`, `SheetHeader`, `CompactSheetHeader`), read that component's `init` parameters. If the component supports a feature via a parameter that the view isn't using — but the view builds separate custom UI for the same feature — flag it:
-
-> "[ComponentName] already supports [feature] via `parameterName: true`, but this view builds a separate [custom element] instead. Enable the parameter and remove the custom UI."
-
-**How to check:**
-1. Identify shared components used in the view (headers, containers, cards)
-2. Read each component's `init` signature — look for `Bool` parameters defaulting to `false`, optional closures defaulting to `nil`
-3. Compare unused parameters against custom UI in the view that serves the same purpose
-4. If there's a match, recommend enabling the parameter over keeping the custom UI
-
-**Note:** This domain is project-specific. If no design system docs are found, skip this domain and note that establishing a design system would benefit consistency.
-
-#### Cross-View Consistency Additions (What's Missing?)
-
-**Goal:** Detect features or controls that *should* be present based on what sibling views include. The skill checks not just what to remove or change, but what to *add* for consistency.
-
-**How it works:**
-1. Identify shared components used in the current view (e.g., `ContentIllustratedHeader`, `SheetContainer`)
-2. Grep the codebase for all other callers of the same component
-3. Compare which optional parameters/features each caller enables
-4. If a majority of sibling views enable a feature that this view doesn't, flag it as a potential addition
-
-**What to check:**
-
-| Pattern | How to Detect | Recommendation Format |
-|---|---|---|
-| **Missing header controls** | Component used with `showThemeToggle: true` in 6/8 views but not here | "[N] of [total] views with [Component] enable [parameter]. Add it for consistency?" |
-| **Missing keyboard toolbar** | iOS form/input view without `ToolbarItemGroup(placement: .keyboard)` | "This view has text inputs but no keyboard Done button" |
-| **Missing dismiss button** | Sheet without close/done on macOS | "macOS sheets need an explicit dismiss button" |
-| **Missing empty state** | List/collection with no `if items.isEmpty` handler | "This view shows a list but has no empty state" |
-| **Missing pull-to-refresh** | Scrollable data view without `.refreshable` | "Data views should support pull-to-refresh on iOS" |
-| **Missing loading state** | Async data fetch with no loading indicator | "Data loads asynchronously but no ProgressView shown" |
-| **Missing error state** | Async operation with no error UI | "Network/data operations have no error feedback" |
-
-**How to present findings:**
-
-Always frame as a recommendation with design-intent acknowledgment:
-
-```
-"[N] of [total] views with [ComponentName] enable [feature]. This view doesn't.
- - Add [feature] (Recommended) — matches [N/total] sibling views for consistency
- - Skip — intentionally omitted for this view (e.g., [possible reason])"
-```
-
-**Possible reasons to skip (provide the relevant one):**
-- Settings views may omit theme toggle because theme *is* a setting on that page
-- Modal sheets may omit help because the parent view already provides context
-- Simple utility views may not need pull-to-refresh if data is local-only
-- Single-purpose sheets may not need customization controls
-
-**Detection requires the Adaptive View Profile** (see below). On first audit, there's no baseline — the skill records what this view uses. On subsequent audits, the profile provides the sibling comparison data.
-
----
-
-### Domain 10: Competitive Comparison (On Request)
-
-Only runs when user provides a competitor screenshot during interview.
-
-| Analysis | What to Compare |
-|----------|----------------|
-| Information density | How much data is visible without scrolling? |
-| Visual hierarchy | What does each app emphasize first? |
-| Interaction patterns | How many taps to accomplish the same task? |
-| Space efficiency | Content-to-chrome ratio comparison |
-| Unique strengths | What does each app do better? |
-
-Output as a side-by-side comparison table.
-
----
-
-### Domain 11: Color Audit
-
-**Goal:** Ensure intentional, consistent, and effective use of color throughout the view. Detect monochromatic flatness, semantic drift, opacity inconsistencies, and missing visual differentiation.
-
-**Adaptive Color Profile:** On first run, this domain reads CLAUDE.md and design system files to learn the project's palette rules. Findings are saved to `.agents/ui-enhancer-radar/color-profile.md` so subsequent audits can compare views against established patterns.
-
-#### 11a. Color Inventory Table
-
-**Build a table of every colored element in the view:**
-
-| Element | Color | Opacity | Role | Category |
-|---|---|---|---|---|
-| Header bg | `.blue` | 100% | Branding | Chrome |
-| Section icon | `.secondary` | 100% | Decoration | Chrome |
-| Toggle (on) | `.blue` | 100% | Interactive | System |
-| Row text | `.primary` | 100% | Content | Text |
-
-**Categories:** Chrome (navigation, headers, borders), Content (user data, labels), Interactive (buttons, toggles, pickers), Status (badges, indicators), Decoration (icons, backgrounds, separators)
-
-**How to build:** Grep the SwiftUI file for `.foregroundStyle`, `.foregroundColor`, `.fill(`, `.background(`, `.tint(`, `Color(`, `.opacity(`, and `.shadow(`. Record each with its context.
-
-#### 11b. Color Distribution
-
-Count unique colors and how many elements use each:
-
-```
-Color Distribution:
-  .secondary / .gray:  14 elements  ████████████████  (58%)  ⚠️ DOMINANT
-  .blue:                4 elements  ████              (17%)
-  .primary:             3 elements  ███               (12%)
-  .red:                 2 elements  ██                 (8%)
-  .tertiary:            1 element   █                  (4%)
-```
-
-**Flag:** Any color family used by >50% of elements → "Monochromatic risk"
-**Flag:** Any color used only once → "Orphan color — is it intentional?"
-
-#### 11c. Monochromatic Detection (Form Flatness)
-
-**This is the most critical check for form/settings views.** When a view is visually flat — same background, same text color, same icon color everywhere — users cannot scan it effectively.
-
-**Color Variance Score:** Count distinct color *families* (not counting opacity variants) visible in the view, excluding system chrome (status bar, nav bar).
-
-| Score | Distinct Colors | Assessment |
-|---|---|---|
-| 1-2 | Monochromatic | **Critical** — view appears as a flat, undifferentiated wall |
-| 3-4 | Low variety | **High** — sections blend together, hard to scan |
-| 5-6 | Adequate | **Medium** — functional but could benefit from more differentiation |
-| 7+ | Good variety | **Pass** — clear visual zones |
-
-**When monochromatic is detected, recommend (in order):**
-
-1. **Colored section header icons** — Each section gets a semantically colored icon circle (e.g., Network = blue cloud, Privacy = red shield, Data = purple database). This alone breaks the monochrome wall into scannable zones.
-2. **Section background tints** — Subtle colored backgrounds (5-8% opacity) behind each section group, using the section's accent color.
-3. **Icon colorization** — Replace `.secondary` gray icons with semantically meaningful colors from the project palette (shield = red, cloud = blue, sparkles = yellow).
-4. **Interactive row highlighting** — Rows with pickers, navigation chevrons, or buttons get a subtle accent indicator to distinguish from static display rows.
-
-#### 11d. Section Distinguishability
-
-**Can you tell where one section ends and another begins without reading the text?**
-
-| Check | What to Look For | Fix |
-|---|---|---|
-| Section headers same style as row labels | Headers use same font/color as content | Make headers bolder, colored, or add accent bar |
-| No visual boundary between sections | Sections separated only by thin dividers | Add section background tints or spacing |
-| All icons same color | Every icon is `.secondary` gray | Assign semantic colors per section |
-| Sections run together visually | No color or weight change at section boundaries | Add colored section headers or dividers |
-
-#### 11e. Interactive vs. Static Contrast
-
-**Can users instantly identify which elements are tappable?**
-
-| Check | What to Look For | Fix |
-|---|---|---|
-| Buttons look like labels | Navigation rows with no chevron/color distinction | Add `.blue` text or chevron indicator |
-| Pickers look like static text | Picker values in same color as labels | Use accent color for picker values |
-| Destructive actions blend in | "Clear History" looks like "Activity History" | Use `.red` for destructive, accent for navigation |
-| Toggle rows vs info rows | Both look identical except for the toggle | Add subtle leading tint or icon color |
-
-#### 11f. Opacity Consistency
-
-**Group elements by role and check if similar elements use matching opacities:**
-
-| Role | Elements | Opacities Found | Consistent? |
-|---|---|---|---|
-| Subtitles | Row descriptions, section footers | 70%, 85%, `.secondary` | No — standardize to `.secondary` |
-| Backgrounds | Section tints, hover states | 6%, 8%, 45% | Check if intentional variation |
-| Shadows | Card shadows, text shadows | 10%, 20%, 30%, 35% | Acceptable range |
-| Borders | Card borders, row separators | 15%, 20%, 30% | Narrow to 2 values |
-
-**Flag:** Same-role elements with >20% opacity variance → "Inconsistent opacity"
-
-#### 11g. Semantic Drift
-
-**Does the same color mean different things in different parts of the view?**
-
-| Color | Location A | Meaning A | Location B | Meaning B | Drift? |
-|---|---|---|---|---|---|
-| `.blue` | Sidebar | "Own" phase | Dashboard | Primary action | Minor |
-| `.orange` | Sidebar | "Dispose Of" phase | Dashboard | Import/Export | Yes — different semantic |
-
-**Flag:** Same color with clearly different meanings in adjacent or related areas.
-
-#### 11h. Light/Dark Mode Delta
-
-For each element, note whether color/opacity changes between modes:
-
-| Check | What to Look For | Fix |
-|---|---|---|
-| Hardcoded `.white` or `.black` | Won't adapt to mode switch | Use `.primary`, `.background`, semantic colors |
-| Hex colors without dark variant | `Color(hex: "#FFFFFF")` in both modes | Use `Color(.systemBackground)` or asset catalog |
-| Shadows invisible in dark mode | `Color.black.opacity(0.1)` disappears | Use adaptive opacity or colored shadows |
-| Tints that wash out | Light tints (5% opacity) invisible on dark backgrounds | Increase dark mode opacity (e.g., 3% light → 8% dark) |
-
-#### 11i. Contrast Pairs (WCAG AA)
-
-Check text-on-background combinations:
-
-| Pair | Ratio Needed | Common Failures |
-|---|---|---|
-| Body text on background | 4.5:1 | `.secondary` on `.systemGroupedBackground` in light mode |
-| White text on colored cards | 4.5:1 | White on `.yellow` or `.cyan` (low contrast) |
-| Caption text on tinted backgrounds | 4.5:1 | `.tertiary` on subtle tints |
-| Interactive text on background | 3:1 (large text) | `.blue` on dark backgrounds can be low |
-
-#### 11j. Design System Compliance
-
-**Compare actual color usage against project rules:**
-
-1. Read CLAUDE.md for palette restrictions (e.g., "never use green", "use AccessibleColor.sf3aYellow instead of .yellow")
-2. Read design system files for approved colors
-3. Flag any color not in the approved palette
-4. Flag any use of restricted colors
-
-### Adaptive View Profile
-
-The View Profile is a persistent file that grows with each audit, enabling cross-view consistency checks for both color (Domain 11) and component usage (Domain 9). Stored at `.agents/ui-enhancer-radar/view-profile.md`.
-
-**On first audit of a project:**
-
-1. Check for `.agents/ui-enhancer-radar/view-profile.md` — if it doesn't exist, create it
-2. Record the Color Inventory Table, opacity conventions, and semantic color map from this audit
-3. Record which shared components the view uses and which optional parameters it enables
-4. Note the project's palette rules from CLAUDE.md
-
-**On subsequent audits:**
-
-1. Load the View Profile
-2. **Color comparison:** Flag views that deviate from established color/opacity conventions
-3. **Component comparison:** Flag views that don't enable features most sibling views use
-4. Update the profile with any new patterns discovered
-5. If a previously recorded convention has changed in the majority of views, update the convention (not the outlier)
-
-**View Profile format (`.agents/ui-enhancer-radar/view-profile.md`):**
-
-```markdown
-# UI Enhancer View Profile
-*Last updated: [date] | Views audited: [count]*
-
-## Project Palette
-[Colors from CLAUDE.md or design system]
-
-## Color Conventions
-| Role | Standard Color | Standard Opacity | Views Using |
-|---|---|---|---|
-| Section header icon | Semantic per section | 100% | DashboardView, ToolsView |
-| Row subtitle | .secondary | 100% | SettingsView, ItemDetailView |
-| Card shadow | sectionColor | 20% resting | DashboardView |
-
-## Semantic Color Map
-| Color | Meaning | Consistent Across Views? |
-|---|---|---|
-| .blue | Primary actions, Own phase | Yes |
-| .orange | Dispose Of, data flow | Yes |
-
-## Component Usage
-| Component | Parameter | Enabled In | Not Enabled In | Adoption |
-|---|---|---|---|---|
-| ContentIllustratedHeader | showThemeToggle | Dashboard, Tools, Reports, MyProducts, StuffScout, LegacyWishes | Settings, Archive | 75% |
-| ContentIllustratedHeader | showHelp | Dashboard, Tools, Reports | Settings, Archive, MyProducts | 50% |
-| ContentIllustratedHeader | solidBackground | Dashboard | All others | 12% (intentional — dashboard only) |
-| SheetContainer | showHelp | AddItem, StuffScout, Backup | Restore, Export | 60% |
-
-## Detected Patterns
-| Pattern | Views Using | Views Missing | Notes |
-|---|---|---|---|
-| Keyboard Done toolbar | All form views | — | Universal |
-| Pull-to-refresh | Dashboard, MyProducts | Reports, Archive | Data views only |
-| Empty state handling | MyProducts, Dashboard | Loans, Locations | Gap — should add |
-
-## Refinement History
-| Date | View | Change | Kept? | Notes |
-|---|---|---|---|---|
-| 2026-03-22 | DashboardView | VStack spacing 24→16→12pt | Kept 12pt | User wanted tighter |
-| 2026-03-22 | DashboardView | Solid header background | Kept | More punch in light mode |
-| 2026-03-22 | DashboardView | Quick Stats collapsed padding -8pt | Kept | Closer to MY STUFF |
-```
-
-**Refinement History** records what was tried during the refinement loop (Phase 7f) — both kept and reverted changes. This serves two purposes:
-1. If the user returns and says "I liked the spacing we tried last time," the history shows what values were used
-2. It reveals patterns — if the user consistently asks for tighter spacing, future audits should start with tighter recommendations
 
 ---
 
@@ -1148,243 +751,18 @@ Content ratio: 63%
 
 ---
 
-## Phase 6b: Content & Identity Preservation Check (MANDATORY before removing UI)
+## Phases 6b/6c/6d: Compaction Rules
 
-**When any finding recommends removing or replacing a UI element, check whether it contained informational text OR visual identity elements that serve a purpose beyond decoration.**
+**When any finding recommends removing UI elements, load the compaction reference:**
 
-### What to check
+`Read ~/.claude/skills/ui-enhancer-radar/references/compaction-rules.md`
 
-For each element being removed, ask:
-- Does it contain **explanatory text** (descriptions, subtitles, instructions)?
-- Does it contain **status information** (counts, states, labels)?
-- Would a **first-time user** lose context about what this screen does?
-- Does it contain **branding elements** (app icon, section icon, colored backgrounds) that establish visual identity?
-- Does it contribute to **visual consistency** across the app (same component used in multiple views)?
-- Is it tagged `[PRESERVE]` from the Design Intent interview?
+This covers:
+- **Phase 6b:** Content & Identity Preservation Check (before removing UI)
+- **Phase 6c:** Element Compaction (when recommending removal of visual elements)
+- **Phase 6d:** Visual Compensation Check (when removing visual elements)
 
-**If text content would be lost**, the text must be **relocated, not deleted**. Propose one of these options to the user:
-
-**If visual identity would be lost** (icons, colors, branded backgrounds), route to **Phase 6c (Element Compaction)** instead of removing — compaction preserves identity at reduced size.
-
-### Relocation options
-
-| Option | When to use | Example |
-|--------|------------|---------|
-| **Help button (`?`)** | Descriptive text that experienced users don't need | Toolbar `?` button → popover with description |
-| **Info icon (`i`)** | Context that's useful but not essential to scan | Small `ℹ️` next to a title, expands on tap |
-| **First-visit only** | Onboarding text that should disappear after learning | Show once via `@AppStorage`, hide after first visit |
-| **Nav bar subtitle** | Short taglines (< 40 chars) | `.navigationSubtitle("Identify & Appraise")` |
-| **Tooltip / help text** | Secondary info on macOS | `.help("Identify and value antiques...")` |
-| **Keep as-is** | The text is truly decorative and losing it is fine | Marketing copy repeated elsewhere |
-
-### How to present
-
-After listing findings but before implementation, flag any content at risk:
-
-```
-questions:
-[
-  {
-    "question": "Removing [element] would also remove the text '[text]'. Where should this information go?",
-    "header": "Content",
-    "options": [
-      {"label": "Drop it (Recommended)", "description": "The text isn't needed — users understand from context"},
-      {"label": "Help button (?)", "description": "Add a toolbar help button that shows this on tap"},
-      {"label": "First-visit only", "description": "Show on first use, hide after"},
-      {"label": "Keep the element", "description": "Don't remove this element after all"}
-    ],
-    "multiSelect": false
-  }
-]
-```
-
-**If "Keep the element"** — remove that finding from the playbook and adjust space savings estimates.
-
-### Skip this check when
-
-- The removed element contained only a **title that's already in the nav bar**
-- The removed element contained only **color/icon decoration** with no text
-- The text is **displayed elsewhere on the same screen** (e.g., in a banner below)
-
----
-
-## Phase 6c: Element Compaction (MANDATORY when recommending removal of visual elements)
-
-**When a finding recommends removing a decorative or branding element for space efficiency, the user may want to preserve the element's visual identity at a smaller footprint. Always offer compaction as an alternative to removal.**
-
-### Cross-View Consistency Check (run before compaction decisions)
-
-Before recommending removal or compaction of any visual element, check whether it's part of a cross-view pattern:
-
-1. **Grep the codebase** for the component name (e.g., `ContentIllustratedHeader`, `SheetHeader`, custom component names)
-2. **Count how many views** use the same component
-3. **If used in 3+ views**, flag it as a **consistency pattern**:
-
-```
-⚠️ Cross-view pattern detected: [ComponentName] is used in [N] views:
-  - ViewA.swift (line X)
-  - ViewB.swift (line Y)
-  - ViewC.swift (line Z)
-
-Removing it from this view would break visual consistency.
-Recommendation: Compact (not remove), or apply the change across all [N] views.
-```
-
-**If a consistency pattern is detected:**
-- Default to **Compact** instead of Remove
-- If the user chooses Remove, warn: "This will make [ViewName] visually inconsistent with [N] other views that use [ComponentName]. Apply the same change to all, or just this one?"
-- Offer: "Apply to all [N] views" / "Just this view" / "Cancel"
-
-### When to trigger
-
-This check runs when ANY finding recommends removing:
-- Illustrated headers (ContentIllustratedHeader, custom banners)
-- Branded sections with icons, backgrounds, or imagery
-- Photo rows, hero images, or visual feature cards
-- Any element the user may consider part of the view's visual identity
-- Any element tagged `[PRESERVE]` during the Design Intent interview
-
-### What to ask
-
-For each element recommended for removal, present compaction as the default:
-
-```
-questions:
-[
-  {
-    "question": "The [element] uses ~[N]pt. How would you like to handle it?",
-    "header": "Element",
-    "options": [
-      {"label": "Compact (Recommended)", "description": "Preserve visual identity at reduced size (~[M]pt savings)"},
-      {"label": "Remove entirely", "description": "Maximum space savings (~[N]pt recovered)"},
-      {"label": "Keep as-is", "description": "No change to this element"}
-    ],
-    "multiSelect": false
-  }
-]
-```
-
-### Compaction techniques by element type
-
-| Element Type | Full Size | Compaction Techniques | Target Size |
-|---|---|---|---|
-| **Illustrated header** (icon + title + subtitle + background) | ~100-140pt | Inline icon (28pt) + title only, reduce background height, drop subtitle | ~44-56pt |
-| **Section header** (decorative circle + title) | ~40-48pt | Smaller circle (18pt), reduce font, tighten padding | ~28-32pt |
-| **Photo/hero row** | ~80-120pt | Thumbnail (40pt) inline with title instead of full-width | ~44pt |
-| **Status banner/card** | ~60-80pt | Compact badge or chip instead of card | ~28-36pt |
-| **Tip/hint section** | ~60-100pt | Collapsible disclosure, or single-line with `(i)` | ~20-44pt |
-| **Feature card** | ~80-120pt | Reduce padding, smaller icon, tighter text | ~48-64pt |
-
-### How to generate compact code
-
-When "Compact" is selected, apply these reductions in order until target height is reached:
-
-1. **Reduce icon size** — e.g., 48pt → 28pt, 32pt → 20pt
-2. **Inline layout** — switch from VStack to HStack where possible
-3. **Drop secondary text** — remove subtitles, taglines, descriptions (relocate per Phase 6b if needed)
-4. **Tighten spacing** — reduce padding and VStack/HStack spacing by 30-50%
-5. **Reduce background** — shrink or remove decorative backgrounds, keep accent color as border or tint
-6. **Simplify** — remove shadows, reduce corner radius, flatten visual layers
-
-### Playbook format for compaction
-
-When compaction is chosen, the playbook entry should show the before/after with measurements:
-
-```
-### Fix #N: Compact [element name]
-
-**File:** `Sources/Views/[file].swift`
-**Lines:** [range]
-
-**Before:** (~[N]pt height)
-[exact code block]
-
-**After:** (~[M]pt height, [savings]pt saved)
-[exact replacement code — compacted version]
-
-**Why:** Preserves visual identity while reclaiming [savings]pt of vertical space
-
-**Test:** Verify element is visually recognizable at smaller size on iPhone SE and Pro Max
-```
-
-### When NOT to compact
-
-- The element is **purely redundant** (same title shown in nav bar AND header AND banner) — removal is better
-- The element **cannot be meaningfully reduced** (already near minimum viable size)
-- The user explicitly chose "Remove entirely"
-
----
-
-## Phase 6d: Visual Compensation Check (MANDATORY when removing visual elements)
-
-**When findings remove headers, icons, colored elements, or decorative components, the result may look visually flat. Before implementing, check whether the remaining UI needs visual enrichment to compensate.**
-
-### When to trigger
-
-This check runs when ANY finding:
-- Removes a header component (SheetHeader, ContentIllustratedHeader, custom headers)
-- Removes colored backgrounds, accent bars, or decorative elements
-- Consolidates multiple visual sections into fewer elements
-- Strips icons or imagery from the view
-
-### What to ask
-
-```
-questions:
-[
-  {
-    "question": "Removing [element] will reduce visual richness. How would you like to compensate?",
-    "header": "Visual",
-    "options": [
-      {"label": "Colored section headers (Recommended)", "description": "Add colored icon circles to section headers for visual anchoring"},
-      {"label": "Per-section accent colors", "description": "Use project palette to differentiate sections (icons, borders, or backgrounds)"},
-      {"label": "Both \u2014 headers + accents", "description": "Full treatment: colored header icons + per-section accent colors from project palette"},
-      {"label": "No compensation needed", "description": "The view looks fine without it"}
-    ],
-    "multiSelect": false
-  }
-]
-```
-
-### Compensation techniques (by view type)
-
-| View Type | Best Compensation | Why |
-|-----------|------------------|-----|
-| **Help / reference** | Colored icon circles in section headers | Provides visual anchoring without distracting from linear reading |
-| **Dashboard / overview** | Colored card backgrounds + accent bars | Scanning views benefit from strong visual differentiation |
-| **Form / input** | Subtle section tints or header icons | Keep focus on inputs, use color sparingly |
-| **Detail / inspector** | Accent bars on cards + status colors | Help users scan for specific information |
-| **List / table** | Alternating row tints or leading color indicators | Help distinguish items at a glance |
-
-### Color palette for compensation
-
-**Always check the project's design system first.** Before applying any colors:
-
-1. Read `CLAUDE.md` for documented color rules or palette restrictions
-2. Search for design system files (`DESIGN_SYSTEM.md`, `StyleGuide.swift`, `Colors.swift`, `Theme.swift`)
-3. Check for existing color constants or enums in the codebase (`grep` for `static let`, `Color(`, `UIColor(`)
-
-**If a project palette exists:** Use only colors from that palette. Follow any restrictions (e.g., "never use green", "use semantic colors only"). Reference the project's color constants in code, not raw SwiftUI colors.
-
-**If no project palette exists:** Use this default set, which provides good contrast and variety across common forms of color vision:
-
-| Color | Use for |
-|-------|---------|
-| Blue | Primary, required, actions |
-| Purple | Secondary, optional, analysis |
-| Teal/Cyan | Tools, utilities, coverage |
-| Orange | Media, images, discovery |
-| Pink | Support, resources, special |
-| Yellow | Tips, highlights, warnings |
-| Gray | Notes, neutral, settings |
-
-### When to skip
-
-- The view is already visually rich after removal (e.g., content itself has color/imagery)
-- Only minor chrome was removed (a single label or small spacer)
-- The user explicitly chose "No compensation needed"
-
----
+Load this reference ONLY when findings recommend removing or replacing UI elements. Skip for audits that only identify issues without removal recommendations.
 
 ## Phase 7: Implementation Playbook
 
@@ -1706,144 +1084,13 @@ Available anytime: `/ui-enhancer-radar revert`
 
 ---
 
-## Phase 7e: Pattern Sweep — Similar View Queue (after applying changes to one view)
+## Phase 7e: Pattern Sweep — Similar View Queue
 
-**After all approved changes are applied to a view, check if similar patterns exist in other views. Pre-generate tailored recommendations for each similar view, but require visual inspection before presenting or applying them.**
+**Load the pattern sweep reference:**
 
-### Why pre-generate but gate on visual inspection
+`Read ~/.claude/skills/ui-enhancer-radar/references/pattern-sweep.md`
 
-Code analysis CAN reliably detect structural similarity (same component, same color pattern, same layout issue). What it CANNOT do is tell you whether the fix from View A makes sense in View B — the context may be different. So:
-
-- **Pre-generate:** Read each similar view's code, adapt the original fix to its specific structure, and prepare tailored recommendations. This is "thinking" work — safe to do without seeing the view.
-- **Gate on viewing:** Present the tailored recommendations ONLY after the user can see the view. The user validates whether the recommendations make visual sense in this context.
-
-This means the skill does the work upfront, and the user just validates — efficient without being blind.
-
-### When to trigger
-
-After Phase 7d completes (all approved changes applied or stopped), and at least one change was kept.
-
-### Step 1: Find similar views and pre-generate recommendations
-
-For each type of change that was applied:
-
-1. **Build a grep query** from the change (e.g., if you changed `.blue` to `.purple` on a Privacy icon, search for other views with the same component/pattern)
-2. **Search all view files** in Sources/
-3. **For each matching view, read the code** and generate specific recommendations adapted to that view's structure. Don't just copy the original fix — account for differences:
-   - Different number of sections/icons
-   - Different semantic meanings (Privacy in one view vs. Network in another)
-   - Different component parameters enabled
-   - Different layout structure that may not need the same change
-
-4. **Present the queue** with the full rating table:
-
-```
-Pattern: [description — e.g., "monochromatic blue icons in settings-style views"]
-
-I found [N] views with the same pattern. I've read each one and prepared
-specific recommendations based on what we changed in [original view]:
-
-| # | View | Pattern Match | Tailored Recommendation | Severity |
-|---|------|--------------|------------------------|----------|
-| 1 | PrivacyNetworkView | 5/7 icons .blue | Change Network→cyan, VPN→purple, Cache→orange, keeping Privacy→blue | HIGH |
-| 2 | CloudSyncView | 3/4 icons .blue | Change Zones→purple, Status→cyan, keeping Sync→blue | MEDIUM |
-| 3 | NotificationSettingsView | 2/4 icons .blue | Minor — only 2 adjacent blues. Change Schedule→orange | LOW |
-```
-
-Then ask:
-
-```
-questions:
-[
-  {
-    "question": "[N] similar views found. Walk through them one at a time? You'll view each before any changes.",
-    "header": "Queue",
-    "options": [
-      {"label": "Start the queue (Recommended)", "description": "Open each view, review tailored recommendations, apply what looks right"},
-      {"label": "Defer all", "description": "Add to DEFERRED.md for a future visual inspection session"},
-      {"label": "Accept as-is", "description": "These views are fine — the pattern doesn't bother me elsewhere"},
-      {"label": "Explain pros/cons", "description": "Walk through why consistency matters across views"}
-    ],
-    "multiSelect": false
-  }
-]
-```
-
-**There is no "Fix all now" option.** Every view requires visual inspection. Batch-applying visual changes across multiple views without looking at them is exactly what this skill is designed to prevent.
-
-### Step 2: Walk through the queue (one view at a time)
-
-For each view in the queue:
-
-**2a. Direct user to open the view:**
-
-> "Open **[ViewName]** in [Canvas / Simulator / device]. [Brief description of what the view shows — e.g., 'This is the privacy settings form with network, VPN, and cache sections.']"
-
-Wait for user to confirm they can see it.
-
-**2b. Present tailored recommendations:**
-
-Once the user confirms, present the pre-generated recommendations for THIS specific view:
-
-```
-Based on what we changed in [original view], here's what I'd recommend for [this view]:
-
-1. [Specific change — e.g., "Change Network section icon from .blue to .cyan"]
-   Look at [specific element]. Does the blue blend with adjacent sections?
-
-2. [Specific change — e.g., "Change VPN section icon from .blue to .purple"]
-   Look at [specific element]. Would purple better distinguish this section?
-
-Do you see the same issues here?
-```
-
-Then ask:
-
-```
-questions:
-[
-  {
-    "question": "[ViewName]: [N] recommendations. How does it look?",
-    "header": "Review",
-    "options": [
-      {"label": "Apply all", "description": "All recommendations look right for this view"},
-      {"label": "Apply some", "description": "I'll tell you which ones to apply and which to skip"},
-      {"label": "Skip this view", "description": "It looks fine as-is — move to next view"},
-      {"label": "I see other things too", "description": "Apply recommendations + I'll add my own changes"},
-      {"label": "Stop the queue", "description": "Done with similar views — keep remaining as-is or defer"}
-    ],
-    "multiSelect": false
-  }
-]
-```
-
-**If "Apply all":** Apply changes, direct user to verify visually, then Keep/Revert per Phase 7d flow.
-
-**If "Apply some":** User specifies which. Apply only those.
-
-**If "I see other things too":** Apply recommendations, then collect user-spotted issues (same as Phase 7c Part 2). This is valuable — the user is already looking at the view, so capture everything.
-
-**If "Skip this view":** Mark as Accepted ("Looks fine on screen per user inspection"). Move to next view in queue.
-
-**If "Stop the queue":** Ask whether remaining views should be Deferred (tracked) or Accepted (closed).
-
-### Step 3: Queue progress
-
-After each view in the queue, print a mini progress banner:
-
-```
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📊 Similar views: [completed]/[total]
-   [ViewA] ✅ Fixed | [ViewB] ✅ Skipped | [ViewC] ⏳ Next
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-```
-
-### What NOT to sweep
-
-- Changes that were specific to one view's unique layout (not a pattern)
-- Refactoring changes (sheet router enum) — these are per-view architectural decisions
-- Changes the user "Skip"ped during visual review — if they said it looks fine in the original view, don't flag the same thing elsewhere
-- Views the user already audited in this session — don't re-queue them
+Load after Phase 7d completes and at least one change was kept.
 
 ---
 
@@ -2065,7 +1312,13 @@ Tests added: 5
 
 ### Phase Progress Banner (CRITICAL — BLOCKING requirement)
 
-**After EVERY phase and EVERY commit, your NEXT output MUST be the progress banner followed by the next-phase `AskUserQuestion`. Do not output anything else first. Do not leave a blank prompt.**
+**HARD GATE: After EVERY phase, EVERY commit, and EVERY build verification, your response MUST end with the progress banner + `AskUserQuestion`. If your response does not end with `AskUserQuestion`, you have violated this rule. Check before sending.**
+
+**This includes:**
+- After `git commit` → banner + AskUserQuestion (not just "committed" or "ready to push")
+- After `xcodebuild build` succeeds → banner + AskUserQuestion (not just "build passed")
+- After completing a phase → banner + AskUserQuestion
+- After all phases done → banner + AskUserQuestion for wrap-up/next-view
 
 After completing each phase, **always** print this banner:
 
@@ -2315,6 +1568,29 @@ If the user selects "Explain pros/cons": present a brief analysis (3-5 bullets),
 
 ---
 
+## Findings by File (auto-generated after findings table)
+
+After the main findings table, re-group all findings by file path:
+
+```
+### Findings by File
+
+**Sources/Views/Dashboard/DashboardView.swift** (3 findings)
+- #1 (🔴 CRITICAL) — one-line summary
+- #5 (🟡 HIGH) — one-line summary
+- #9 (🟢 MEDIUM) — one-line summary
+
+**Sources/Views/Components/StatusBadge.swift** (1 finding)
+- #3 (🟡 HIGH) — one-line summary
+```
+
+- Sort files by highest-severity finding first (files with CRITICAL first)
+- Finding numbers match the main table for cross-reference
+- Skip this section entirely if fewer than 3 total findings
+- For Senior/Expert users, omit the "no findings" file list
+
+---
+
 ## Finding Resolution (MANDATORY — end of every run)
 
 **Principle:** Every finding must reach a terminal state. "Deferred" is not terminal — it's temporary.
@@ -2394,6 +1670,23 @@ Items intentionally deferred from radar audits. Review before each release.
 
 ---
 
+## Inline Cross-Skill Referrals
+
+When a finding primarily belongs to another skill's domain, append this line to the finding:
+
+`→ Deeper analysis: /[skill-name] [relevant-command]`
+
+| If the finding involves... | Refer to |
+|---------------------------|----------|
+| Missing/incomplete model fields | `/data-model-radar [ModelName]` |
+| Navigation dead ends or broken links | `/ui-path-radar` |
+| Data loss through a complete user cycle | `/roundtrip-radar [workflow]` |
+| Overall release readiness | `/capstone-radar` |
+
+Do NOT refer to ui-enhancer-radar (that's this skill). Do NOT refer to a skill already running in this session.
+
+---
+
 ## Cross-Skill Handoff
 
 UI Enhancer Radar complements **data-model-radar** (model layer), **ui-path-radar** (navigation paths), **roundtrip-radar** (data safety), and **capstone-radar** (ship readiness). Findings from one skill inform the others.
@@ -2459,13 +1752,30 @@ for_capstone_radar:
 
 **Automatic:** This file is always written so other audit skills can pick up where this one left off. No user action needed.
 
-### On Startup — Read Handoffs
+### On Startup — Read Handoffs (MANDATORY)
 
-Before Phase 1 (Interview), check for handoff files:
-- `.agents/ui-audit/ui-path-radar-handoff.yaml` — dead buttons to remove before visual audit
-- `.agents/ui-audit/roundtrip-radar-handoff.yaml` — data issues that affect view correctness
+Before Phase 1 (Interview), read ALL companion handoff YAMLs that exist:
 
-If found, incorporate as context during the interview phase (e.g., "ui-path-radar found this button is dead — should we remove it?"). If not found, proceed normally.
+```
+Read .agents/ui-audit/data-model-radar-handoff.yaml (if exists)
+Read .agents/ui-audit/ui-path-radar-handoff.yaml (if exists)
+Read .agents/ui-audit/roundtrip-radar-handoff.yaml (if exists)
+Read .agents/ui-audit/capstone-radar-handoff.yaml (if exists)
+```
+
+**Parse `for_ui_enhancer_radar` sections.** Each companion can direct findings to this skill. Look for:
+- `for_ui_enhancer_radar.suspects[]` — views another skill flagged as having visual issues
+- `for_ui_enhancer_radar.priority_views[]` — views another skill wants audited first
+
+If found, incorporate as context during the interview phase (e.g., "capstone-radar wants ToolsHelpView audited first — monochromatic icons flagged"). These are not pre-confirmed findings — verify each one independently.
+
+**What each companion provides:**
+- data-model-radar — model fields that should be displayed but aren't (missing UI for data)
+- ui-path-radar — dead buttons to remove before visual audit
+- roundtrip-radar — data issues that affect view correctness, computed data never displayed
+- capstone-radar — priority views from ship readiness grading
+
+If not found, proceed normally.
 
 ---
 

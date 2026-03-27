@@ -1,7 +1,7 @@
 ---
 name: data-model-radar
 description: 'Audits SwiftData/Core Data model layer for field completeness, serialization gaps, relationship integrity, semantic ambiguity, dead fields, and migration safety. Finds model-layer bugs that manifest as workflow bugs. Triggers: "audit models", "model radar", "/data-model-radar".'
-version: 1.2.0
+version: 1.3.0
 author: Terry Nyberg
 license: MIT
 allowed-tools: [Read, Grep, Glob, Bash, Edit, Write, AskUserQuestion]
@@ -18,6 +18,8 @@ metadata:
 
 **Anti-shortcut rule:** Do not claim a domain is "clean" without evidence. Every domain grade must cite specific files read and patterns checked. "No dead fields detected from structural analysis" without grepping is a failing grade for the auditor, not a passing grade for the model.
 
+**Genuine problems only:** Report real issues backed by evidence. Do not nitpick, invent issues, or inflate severity. If unsure whether something is a problem, say so — don't report it as a finding.
+
 ## Quick Commands
 
 | Command | Description |
@@ -29,8 +31,6 @@ metadata:
 | `/data-model-radar migration` | Domain 6 only — schema version safety |
 | `/data-model-radar dead-fields` | Domain 5 only — unused model fields |
 | `/data-model-radar status` | Show audit progress |
-| `/data-model-radar fix-deferred` | Resolve items deferred from a previous run |
-| `/data-model-radar verify` | Re-check previous findings without full re-audit (~5 min vs ~30 min) |
 
 ## Overview
 
@@ -76,7 +76,7 @@ Store the experience level as `USER_EXPERIENCE` and apply to ALL output for the 
 
 **Subsequent models (if auditing multiple):** Show one-line reminder:
 ```
-Using: [Beginner] mode, [Auto-fix], [Display only]. Type "adjust" to change, or press Enter to continue.
+Using: [Beginner] mode, [Auto-fix] or [Review first], [Display only]. Type "adjust" to change, or press Enter to continue.
 ```
 
 ---
@@ -95,6 +95,33 @@ tput cols
   - **"I've widened it" (Recommended)** — Re-run `tput cols` to confirm. If tput still reports the old width (terminal resize doesn't always propagate to the shell), trust the user and use full tables anyway.
   - **"Use compact tables"** — Use compact 3-column table with finding text on separate lines below each row.
   - **"Skip check"** — Use full table regardless (user accepts wrapping).
+
+---
+
+## Version Check (on first invocation — silent on failure)
+
+On startup, check if a newer version exists. Run in background, do not block the audit:
+
+```bash
+curl -sf https://raw.githubusercontent.com/Terryc21/radar-suite/main/skills/data-model-radar/VERSION 2>/dev/null
+```
+
+- If the remote version is newer than `1.3.0`, print one line before proceeding:
+  > Update available: data-model-radar v[remote] (you have v1.3.0). Run `git -C ~/.claude/skills/data-model-radar pull` or visit https://github.com/Terryc21/radar-suite
+- If curl fails, remote is same/older, or command times out — skip silently. Never block the audit for a version check.
+
+---
+
+## Xcode MCP Integration (Optional)
+
+On startup, silently check if Xcode MCP tools are available (e.g., attempt to list tools or check for `xcrun mcpbridge`).
+
+- **Available:** Set `XCODE_MCP = true`, note in audit header: `Xcode MCP: available`
+- **Not available:** Set `XCODE_MCP = false`, skip silently. Do not prompt user to install.
+
+**When XCODE_MCP = true, use these tools:**
+- `BuildProject` — verify model changes compile after fixes
+- `DocumentationSearch` — check deprecated API references in migration findings
 
 ---
 
@@ -327,148 +354,33 @@ Audit one model at a time across all 7 domains.
 
 ### Before Starting (First Model Only)
 
-Ask setup questions (same pattern as roundtrip-radar):
-- Fix mode: Auto-fix safe items / Plan only
+Ask setup questions:
+
+**"How should fixes be handled?"**
+- **Auto-fix safe items (Recommended)** — Apply isolated, low-blast-radius fixes automatically. Present cross-cutting fixes and design decisions for approval first.
+- **Review first** — Present all findings with ratings, then ask before making any changes. Fixes still happen — you just approve each wave first.
+
+**IMPORTANT:** Both modes lead to fixes. "Review first" means the user sees the plan before code changes — it does NOT mean "skip fixes and jump to handoff." After presenting findings, ALWAYS offer to fix them regardless of which mode was selected.
+
 - Delivery: Display only / Report / Both
 - Presence: Normal / Hands-free / Pre-approved
 
-### Domain 1: Field Completeness
+### Domain Reference Loading
 
-**What to check:**
-- Are there fields that *should* exist based on how the model is used?
-  - Grep for hardcoded strings/enums that could be model fields (e.g., `"inherited"` string where an `acquisitionType` enum should exist)
-  - Check if sibling models have fields this model lacks (e.g., all models have `cloudSyncID` except one)
-- Are enums complete? Check every `switch` statement — are there `default` cases hiding missing enum values?
-- Are optional fields appropriately optional? (Should `warrantyMonths` really be non-optional with default 12?)
+Load domain definitions from `references/domains.md`:
 
-**Output per finding:** What field is missing, why it should exist, which code paths would use it.
+`Read ~/.claude/skills/data-model-radar/references/domains.md`
 
-### Domain 2: Serialization Coverage
+**Full audit:** Read all domains.
+**Single domain commands:** Read the full file but focus on the requested domain:
 
-**MANDATORY CHECKLIST — verify each target explicitly:**
+| Command | Focus on |
+|---------|----------|
+| `serialization` | Domain 2 only |
+| `relationships` | Domain 3 only |
+| `migration` | Domain 6 only |
+| `dead-fields` | Domain 5 only |
 
-For the model being audited, check ALL applicable serialization targets. Do not skip any.
-
-- [ ] **Backup struct** — Read the `BackupXxx` struct. Diff every model field against backup fields. List gaps.
-- [ ] **CSV export** — Find the CSV export code (e.g., `CSVExportManager`, `ExportManager`). Read it. List which model fields map to CSV columns and which don't.
-- [ ] **CSV import** — Find the CSV import code (e.g., `CSVImportManager`). Read it. List which CSV columns map back to model fields. The export→import gap is where data loss hides.
-- [ ] **CloudKit sync** — Find CKRecord mapping code (e.g., `CloudSyncManager`, `SharedZoneSyncManager`). List synced fields.
-- [ ] **JSON API** — If the model receives data from an API, check the response mapping.
-
-**Do not report a target as "covered" without reading the actual code.** "Backup looks complete" without reading BackupItem is not verification.
-
-**Method:**
-1. Read the model — list all stored properties (exclude `@Transient` computed properties)
-2. Read each serialization struct/function listed above
-3. Diff: model fields NOT in serialization = potential data loss on round-trip
-4. For each gap, determine: intentional exclusion or oversight?
-
-**Output:** Side-by-side coverage table:
-
-```
-| Field | Model | Backup | CSV Export | CSV Import | CloudKit |
-|-------|:-----:|:------:|:---------:|:----------:|:--------:|
-| title | yes | yes | yes | yes | yes |
-| cloudSyncID | yes | yes | no | no | yes |
-| documents | yes | no | no | no | yes |
-```
-
-Mark fields not checked with `?` instead of yes/no. The table must be honest about what was verified.
-
-### Verification Template (MANDATORY for Domain 2)
-
-Before grading serialization coverage, produce this pre-populated table. Read the model file first to get all stored properties, then fill in each cell by reading the actual serialization code.
-
-```
-| Field | Model | Backup | CSV Export | CSV Import | CloudKit | Receipt |
-|-------|:-----:|:------:|:---------:|:----------:|:--------:|---------|
-| [field1] | yes | ? | ? | ? | ? | (fill after reading each target) |
-| [field2] | yes | ? | ? | ? | ? | |
-```
-
-Rules:
-- `yes` = confirmed by reading the code (include file:line in Receipt column)
-- `no` = confirmed absent by reading the code
-- `?` = not yet checked
-- A domain grade CANNOT be produced while any cell contains `?` for a target you claimed to check
-- If you skip a target (e.g., don't read CloudKit), mark the entire column as `not checked` — don't fill in `?` and then grade as if you checked it
-
-### Domain 3: Relationship Integrity
-
-**What to check:**
-- Every `@Relationship` has a correct `deleteRule` (`.cascade`, `.nullify`, `.deny`, `.noAction`)
-- Every `@Relationship` has an `inverse` specified
-- Cascade chains don't create unexpected data loss (deleting Item cascades to Photos, which is correct — but does it also cascade to SharedZone records?)
-- Orphan risk: can child objects exist without a parent? (e.g., PhotoAttachment with `item: Item? = nil`)
-- Circular relationships: A → B → A
-
-**Method:**
-1. Grep for all `@Relationship` declarations
-2. For each, verify: deleteRule, inverse, optional vs required
-3. Build a relationship graph and check for orphan paths
-
-### Domain 4: Semantic Clarity
-
-**What to check:**
-- **nil vs zero:** For every `Int?` field, is there UI or documentation that distinguishes "not set" from "zero"? (e.g., `priceInCents: Int?` — nil = not entered, 0 = free. But does the UI show this difference?)
-- **Missing type distinctions:** Are there fields where a single type carries multiple meanings? (e.g., `priceInCents` used for both new and used purchases — should there be separate fields?)
-- **Boolean ambiguity:** `isEstimatedPrice` — does `false` mean "confirmed exact" or "user never set this flag"?
-- **String fields that should be enums:** Fields like `disposalMethodRaw: String` — is the enum complete? Are there raw strings in the codebase that don't match any enum case?
-
-### Domain 5: Field Usage Mapping
-
-**What to check:**
-- **Dead fields:** Model properties that are never read in any view, ViewModel, or manager. Set during creation but never displayed or used in calculations.
-- **Phantom fields:** Values shown in the UI that are computed on-the-fly and never stored. If the computation inputs change, the displayed value changes retroactively (e.g., donation FMV recalculated from condition).
-- **Write-only fields:** Set by the user but never read back (data goes in but nothing comes out).
-- **Read-only fields:** Displayed but never settable by the user (may be intentional for computed fields, but worth flagging if the user might want to override).
-
-**Method (Deep — required for High-risk models):**
-
-For models with >20 fields, use a **stratified sampling strategy** instead of grepping all fields:
-
-1. **All recently added fields** (from git log in Step 0) — highest risk for being unwired
-2. **All currency fields** (`*InCents`, `*Price*`, `*Value*`, `*Cost*`) — money = high risk
-3. **All optional fields** (`var x: Type? = nil`) — more likely to be dead than required fields
-4. **All fields with "raw" suffix** (`*Raw`) — enum storage, check if enum is used anywhere
-5. **Random sample of remaining fields** (5-10) to spot-check
-
-For each sampled field:
-```
-Grep pattern="\.fieldName" glob="**/*.swift" path="Sources/" output_mode="files_with_matches"
-```
-
-Flag: 0 read hits in Sources/ (excluding the model file itself and Tests/) = dead field candidate. Verify by reading one suspected consumer.
-
-**Method (Quick — for Low-risk models):**
-1. List all stored properties
-2. Check for obvious dead patterns: fields with no corresponding UI label, fields added but never referenced in any view
-3. Label grade as `(quick)` — not fully verified
-
-### Domain 6: Migration Safety
-
-**What to check (Deep — read the actual schema files):**
-1. **Read the VersionedSchema file** — `Glob pattern="**/*Schema*.swift"` or `**/*Migration*.swift"`
-2. **Verify the latest schema version includes all current model fields.** Diff the schema's model definition against the actual model. Any field in the model but not in the latest schema version = migration gap.
-3. Does a `SchemaMigrationPlan` exist with proper stage ordering?
-4. Are there fields added without migration? (SwiftData handles simple additions automatically, but relationship changes or type changes need explicit migration)
-5. Has the model changed since the last migration version? Compare timestamps: `git log -1 --format="%ai" -- Sources/Models/Item.swift` vs `git log -1 --format="%ai" -- Sources/Models/AppSchema.swift`
-6. Are there `@Attribute` modifiers that affect storage (`.externalStorage`, `.unique`) — are these in the migration plan?
-
-**Do not say "migration infrastructure exists" without reading the schema file.** That's the same as saying "backup exists" without reading BackupItem.
-
-### Domain 7: Cross-Model Consistency
-
-**Minimum model requirement:** This domain requires reading at least 3 models to be meaningful. When auditing a single model, this domain outputs one of:
-
-- **If 3+ models are being audited this session:** Full cross-model comparison.
-- **If single model audit:** Read 2-3 additional model files (pick the highest-relationship models from Step 0) to compare patterns, then grade. Label as `(partial — N models compared)`.
-
-**What to check:**
-- **Identifier strategy:** Do all models use the same approach? (Some use `cloudSyncID`, some use `persistentModelID.hashValue`, some use UUID — should be consistent)
-- **Timestamp conventions:** `timestamp`, `createdAt`, `date` — same concept, different names across models?
-- **Naming patterns:** `priceInCents` vs `deductibleInCents` vs `fairMarketValue` (not in cents?) — consistent currency representation?
-- **Shared protocol conformances:** Do models that should be `Sendable` all conform? Do models with `cloudSyncID` all use it the same way?
 
 ---
 
@@ -521,6 +433,29 @@ When multiple models duplicate the same pattern, extract to a shared protocol or
 
 ---
 
+## Findings by File (auto-generated after findings table)
+
+After the main findings table, re-group all findings by file path:
+
+```
+### Findings by File
+
+**Sources/Models/Item.swift** (3 findings)
+- #1 (🔴 CRITICAL) — one-line summary
+- #5 (🟡 HIGH) — one-line summary
+- #9 (🟢 MEDIUM) — one-line summary
+
+**Sources/Managers/BackupManager.swift** (1 finding)
+- #3 (🟡 HIGH) — one-line summary
+```
+
+- Sort files by highest-severity finding first (files with CRITICAL first)
+- Finding numbers match the main table for cross-reference
+- Skip this section entirely if fewer than 3 total findings
+- For Senior/Expert users, omit the "no findings" file list
+
+---
+
 ## Fix Application Workflow
 
 Apply fixes in **waves** with progress tracking.
@@ -545,31 +480,16 @@ Scale the number of waves to finding severity:
 
 **Every fix must have a test.** Do not move to the next wave until tests for the current wave's fixes are written and compiling. The test verifies the fix works; without it, the fix is unverified code.
 
-### Design Decision Prompt Format (MANDATORY — all waves)
-
-Every design decision presented to the user MUST include an **"Explain pros/cons"** option:
-
-```
-Options:
-- **[Recommended option] (Recommended)** — [one-line description]
-- **[Alternative option]** — [one-line description]
-- **Accept as-is** — [why this is safe to leave]
-- **Explain pros/cons** — Walk through the tradeoffs before deciding
-```
-
-If the user selects "Explain pros/cons": present a brief analysis (3-5 bullets), then re-prompt with the same options (minus "Explain pros/cons").
-
-### Wave 4: Pattern Sweep Rules
-
-Do NOT silently note patterns "for future" or "for the next workflow." Every pattern instance found during the sweep must be:
-1. Presented in the full Issue Rating Table (all columns)
-2. Followed by an `AskUserQuestion` with options: **Fix now** / **Defer** / **Accept as-is** / **Explain pros/cons**
-
-Group related patterns into a single table + prompt when they share the same root cause.
-
 ### Progress Banner (CRITICAL — BLOCKING requirement)
 
-**After EVERY wave and EVERY commit, your NEXT output MUST be the progress banner followed by the next-wave `AskUserQuestion`. Do not output anything else first. Do not leave a blank prompt.**
+**HARD GATE: After EVERY wave, EVERY commit, and EVERY build verification, your response MUST end with the progress banner + `AskUserQuestion`. If your response does not end with `AskUserQuestion`, you have violated this rule. Check before sending.**
+
+**This includes:**
+- After `git commit` → banner + AskUserQuestion (not just "committed" or "ready to push")
+- After `xcodebuild build` succeeds → banner + AskUserQuestion (not just "build passed")
+- After all fixes in a wave are applied → banner + AskUserQuestion
+- After wrapping up a model → banner + AskUserQuestion for next model
+- After all models done → banner + AskUserQuestion for wrap-up/next-skill
 
 After completing each wave, **always** print:
 
@@ -600,109 +520,26 @@ Then ask: "Ready to check the next model?" with options including **"Explain mor
 
 ---
 
-## Finding Resolution (MANDATORY — end of every run)
+## Inline Cross-Skill Referrals
 
-**Principle:** Every finding must reach a terminal state. "Deferred" is not terminal — it's temporary.
+When a finding primarily belongs to another skill's domain, append this line to the finding:
 
-### Terminal States
+`→ Deeper analysis: /[skill-name] [relevant-command]`
 
-| State | Meaning | How |
-|-------|---------|-----|
-| **Fixed** | Code changed, test written, committed | Wave workflow |
-| **Planned** | Added to `DEFERRED.md` with severity, effort, reason, release gate | User chose "save for later" |
-| **Accepted** | User explicitly said "this is fine" | User chose "accept as-is" |
+| If the finding involves... | Refer to |
+|---------------------------|----------|
+| Navigation dead ends or broken links | `/ui-path-radar` |
+| Visual layout, spacing, color issues | `/ui-enhancer-radar [ViewName]` |
+| Data loss through a complete user cycle | `/roundtrip-radar [workflow]` |
+| Overall release readiness | `/capstone-radar` |
 
-### Self-Resolution (end of every run)
-
-After all waves complete (or if the user chose "plan only"), check `findings_deferred` in this session. If any exist, present:
-
-```
-You have [N] unresolved findings from this audit:
-
-| # | Finding | Severity | Effort |
-|---|---------|----------|--------|
-| 1 | ... | ... | ... |
-
-Every finding needs a decision:
-1. **Fix now** — enter wave workflow for these items
-2. **Plan it** — add to DEFERRED.md (tracked, reviewed before release)
-3. **Accept as-is** — explicitly sign off (removed from tracking)
-4. **Explain more** — walk through what each finding means
-```
-
-For each finding, the user chooses Fix / Plan / Accept. Update the handoff YAML accordingly:
-- Fix → move to `findings_fixed` after wave completes
-- Plan → move to `findings_planned`, write to `DEFERRED.md`
-- Accept → move to `findings_accepted`
-
-### `fix-deferred` Subcommand
-
-When invoked via `/data-model-radar fix-deferred`:
-
-1. Read own handoff YAML (`.agents/ui-audit/data-model-radar-handoff.yaml`)
-2. Extract `findings_deferred` list
-3. If empty → "No deferred findings from previous data-model-radar runs."
-4. If non-empty → present findings table (already rated from original run)
-5. For each finding, ask: Fix now / Plan it / Accept as-is
-6. Fix items enter the wave workflow. Plan items go to DEFERRED.md. Accept items go to `findings_accepted`.
-7. Update handoff YAML with resolved statuses
-
-### `verify` Subcommand (lightweight re-check)
-
-When invoked via `/data-model-radar verify`:
-
-1. Read own handoff YAML (`.agents/ui-audit/data-model-radar-handoff.yaml`)
-2. If no handoff exists → "No previous audit to verify. Run `/data-model-radar` first."
-3. For each finding in `findings_fixed[]`, `findings_deferred[]`, and `for_capstone_radar.blockers[]`:
-   - Grep the codebase for the pattern the finding describes
-   - Classify: **Still present** / **Resolved** (code changed) / **Changed** (different issue now)
-4. Update the handoff YAML:
-   - Resolved findings → move to `findings_fixed[]` with note "verified resolved by code change"
-   - Changed findings → update description, re-rate severity
-   - Still present → no change
-5. Print summary: "[N] verified, [M] resolved since last audit, [K] still present, [J] changed"
-
-**When to use:** After another skill fixes issues that touch your domain (e.g., roundtrip-radar fixes backup gaps that data-model-radar flagged). Much faster than a full re-audit (~5 min vs ~30 min).
-
-### Startup Check
-
-On every invocation, check for `DEFERRED.md` at the project root. If it exists and contains data-model-radar items:
-
-```
-📋 You have [N] planned items from previous data-model-radar audits in DEFERRED.md.
-   [M] are pre-release priority. Run `/data-model-radar fix-deferred` to resolve them.
-```
-
-### DEFERRED.md Format
-
-If DEFERRED.md doesn't exist, create it when the first item is planned. Format:
-
-```markdown
-# Deferred Findings
-
-Items intentionally deferred from radar audits. Review before each release.
-
-| # | Finding | Source | Severity | Release Gate | Effort | Reason | Date | Review By |
-|---|---------|--------|----------|-------------|--------|--------|------|-----------|
-| 1 | CloudKit syncs 20% of Item fields | data-model-radar | HIGH | Post-release | Large | Needs architecture decision | 2026-03-24 | 2026-06-24 |
-```
-
-**Release Gate values:**
-- **Pre-release** — must fix before App Store submission
-- **Post-release** — tracked for next update cycle
-- **Next major** — deferred to next major version
-
-**Review By:** Default 90 days from deferral date. Capstone flags overdue items.
+Do NOT refer to data-model-radar (that's this skill). Do NOT refer to a skill already running in this session.
 
 ---
 
 ## Cross-Skill Handoff
 
 Data Model Radar is the **foundation layer** of the radar family. Run it first — its findings feed every other skill.
-
-### Cross-Skill Resolution (after fixing any finding)
-
-When a fix resolves a finding that originated from ANOTHER skill's handoff, update that skill's handoff YAML. Read the other skill's handoff, find the matching finding in `findings_deferred[]` or `for_capstone_radar.blockers[]`, move it to `findings_fixed[]` (or `resolved[]`) with the fix commit hash and `resolved_by: "data-model-radar"`. This prevents stale handoffs from blocking capstone's ship recommendation.
 
 ### On Completion — Write Handoff
 
@@ -717,29 +554,6 @@ audit_depth: <full | partial | quick>
 domains_verified: [1, 2, 3, 4, 5, 6, 7]
 domains_at_quick_depth: []
 domains_skipped: []
-
-findings_fixed:
-  - finding: "<description>"
-    severity: "<CRITICAL|HIGH|MEDIUM|LOW>"
-    fix_commit: "<git hash>"
-
-findings_deferred:
-  - finding: "<description>"
-    severity: "<CRITICAL|HIGH|MEDIUM|LOW>"
-    reason: "<why deferred>"
-
-findings_planned:
-  - finding: "<description>"
-    severity: "<CRITICAL|HIGH|MEDIUM|LOW>"
-    release_gate: "<Pre-release|Post-release|Next major>"
-    reason: "<why deferred>"
-    deferred_md_row: true
-
-findings_accepted:
-  - finding: "<description>"
-    severity: "<CRITICAL|HIGH|MEDIUM|LOW>"
-    reason: "<why accepted>"
-    accepted_date: "<ISO 8601>"
 
 for_roundtrip_radar:
   # Serialization gaps = workflow-specific data loss
@@ -786,12 +600,28 @@ serialization_coverage:
 
 **Honesty rule:** The handoff must distinguish "verified clean" from "not checked." Use `_verified: true/false` for each serialization target. Capstone-radar uses these flags to determine how much credit to give.
 
-### On Startup — Read Handoffs
+### On Startup — Read Handoffs (MANDATORY)
 
-Check for handoff files from other skills:
-- `.agents/ui-audit/roundtrip-radar-handoff.yaml` — workflow-specific data issues that trace to model gaps
-- `.agents/ui-audit/ui-path-radar-handoff.yaml` — dead UI that may indicate dead model fields
-- `.agents/ui-audit/capstone-radar-handoff.yaml` — priority models from ship readiness audit
+Before starting Step 1, read ALL companion handoff YAMLs that exist:
+
+```
+Read .agents/ui-audit/roundtrip-radar-handoff.yaml (if exists)
+Read .agents/ui-audit/ui-path-radar-handoff.yaml (if exists)
+Read .agents/ui-audit/ui-enhancer-radar-handoff.yaml (if exists)
+Read .agents/ui-audit/capstone-radar-handoff.yaml (if exists)
+```
+
+**Parse `for_data_model_radar` sections.** Each companion can direct findings to this skill. Look for:
+- `for_data_model_radar.suspects[]` — models or fields another skill flagged as potentially wrong
+- `for_data_model_radar.priority_models[]` — models another skill wants audited first
+
+If found, incorporate as **priority targets** in the model audit order. These are not pre-confirmed findings — verify each one independently. If not found, proceed normally.
+
+**What each companion provides:**
+- roundtrip-radar — workflow-specific data issues that trace to model gaps
+- ui-path-radar — dead UI that may indicate dead model fields
+- ui-enhancer-radar — visual issues that may trace to missing/wrong model fields
+- capstone-radar — priority models from ship readiness grading
 
 **Automatic:** This file is always written so other audit skills can pick up where this one left off. No user action needed.
 
@@ -823,54 +653,27 @@ A grade without evidence is not a grade — it's a guess.
 
 ---
 
-## Compliance Self-Check (MANDATORY — run before final summary)
+## Finding Resolution Gate (MANDATORY before wrap-up)
 
-**Before writing the final summary, handoff YAML, or session wrap-up, execute this mechanical checklist. Do NOT skip it. Do NOT summarize without running it first.**
+**The audit cannot end until every finding has a terminal state.** The auditor does not get to decide which findings are "not worth asking about" — the user decides.
 
-### How to run
+Before writing the handoff file or presenting the wrap-up summary, verify:
 
-Review your own output from this session and fill in each row:
+1. **List all findings** from the session
+2. **Check each has a terminal state:** Fixed / Accepted / Deferred (with reason)
+3. **If any finding lacks a terminal state**, present it to the user via `AskUserQuestion` with options: Fix now / Accept / Defer
+4. **Only after all findings are resolved** can you write the handoff and wrap up
 
-```
-| # | Gate | Check | Pass? | Gaps |
-|---|------|-------|-------|------|
-| 1 | Table Format | Every findings table has 8 columns (Finding, Confidence, Urgency, Risk:Fix, Risk:NoFix, ROI, Blast Radius, Fix Effort) | ? | |
-| 2 | Test Gate | Every committed fix has a test — or a documented exemption (visual, dead code, singleton) | ? | |
-| 3 | Pattern Sweep | Every pattern found during sweep was presented with full rating table + Fix/Defer/Accept prompt | ? | |
-| 4 | Decision Prompts | Every design decision included "Explain pros/cons" option | ? | |
-| 5 | Finding Resolution | Every finding reached terminal state (Fixed, Planned, Accepted) — no orphaned "deferred" items | ? | |
-```
+**Why this exists:** The auditor's natural tendency is to classify LOW/MEDIUM findings as "noted" and move on — but "noted" is not a terminal state. The user may want it fixed, or may have context that changes the severity. Every finding deserves a decision, even if that decision is "accept as-is."
 
-### How to check each gate
+**Terminal states:**
+- **Fixed** — code was changed, tests pass
+- **Accepted** — user confirmed this is intentional or not worth fixing (with documented reason)
+- **Deferred** — user explicitly chose to defer (with reason and target timeframe)
 
-1. **Table Format:** Scan your output for any table containing findings or rated items. Count columns. If ANY table had fewer than 8, it fails.
-2. **Test Gate:** Count fixes committed. Count tests written. If fixes > tests + documented exemptions, it fails.
-3. **Pattern Sweep:** Check if any patterns were noted "for future" or "for the next workflow" without a decision prompt. If so, it fails.
-4. **Decision Prompts:** Check every `AskUserQuestion` that presented options for a design decision. If any lacked "Explain pros/cons", it fails.
-5. **Finding Resolution:** Check if any findings are still in "deferred" state without being moved to Planned (DEFERRED.md) or Accepted.
-
-### If ANY gate fails
-
-Print this BEFORE the summary:
-
-```
-⚠️ Compliance gap detected:
-
-| Gate | Items Missed |
-|------|-------------|
-| [gate name] | [specific items — e.g., "Findings D1-D8 presented in 5-column table instead of 8"] |
-
-Fixing now before completing the run...
-```
-
-Then fix the gap:
-- **Table Format fail:** Re-render the affected tables with all 8 columns
-- **Test Gate fail:** Write the missing tests before committing
-- **Pattern Sweep fail:** Present the missed patterns with full table + decision prompt
-- **Decision Prompt fail:** Note the gap in the handoff YAML as a process improvement
-- **Finding Resolution fail:** Present unresolved findings for Fix/Plan/Accept decision
-
-**Only after all gates pass (or gaps are fixed) may you write the final summary and handoff.**
+**Not terminal:**
+- "Noted" / "Observed" / "Documented" — these are descriptions, not decisions
+- Findings presented in a table but never asked about individually
 
 ---
 
@@ -881,71 +684,6 @@ Then fix the gap:
 2. Immediately `AskUserQuestion` for the next step
 3. NEVER leave a blank prompt
 
-**⚠️ CONTEXT EXHAUSTION GUARD:**
-
-Track tool calls during the session. After **50 tool calls**, apply these rules:
-1. Auto-downgrade new findings from `verified` to `probable (long context)` — LLM reasoning degrades over long conversations
-2. Print: "This session has used [N] tool calls. Findings after this point are marked `probable (long context)`. Consider splitting the remaining work to a new session for full verification accuracy."
-3. Tag all subsequent findings with `confidence_note: "assessed after 50+ tool calls — re-verify in fresh session"`
-4. In the handoff YAML, add `context_exhaustion_after: [N]` so the next session knows which findings need re-verification
-
-**On session split (new conversation picking up from handoff):**
-- Read the handoff YAML
-- If `context_exhaustion_after` is set, identify findings tagged `probable (long context)`
-- Re-verify those findings FIRST (grep + read actual code) and upgrade to `verified` if confirmed
-- Remove the `probable (long context)` tag after re-verification
-- Print: "Re-verified [N] findings from previous session's long-context zone. [M] confirmed, [K] retracted."
-
 **ANTI-SHORTCUT:** Do not hand-wave Domain 2 (Serialization) or Domain 5 (Field Usage). These are the two highest-value domains. If you find yourself writing "looks complete" or "no dead fields" without having grepped, stop and do the work.
 
 This reminder is placed at the end of the file because context compaction tends to preserve the beginning and end. If you are unsure whether to print the banner, **print it**.
-
-**⚠️ TABLE FORMAT GATE (MANDATORY — pre-output check before EVERY table):**
-
-Before outputting ANY table that contains findings, issues, deferred items, or rated items, run this mechanical check:
-
-1. Count the columns. If fewer than 8, STOP and rebuild.
-2. Verify ALL of these columns exist: **Finding | Confidence | Urgency | Risk: Fix | Risk: No Fix | ROI | Blast Radius | Fix Effort**
-3. If any column is missing, add it before displaying.
-
-This applies to ALL tables — no exceptions:
-- Findings tables, fix plan tables, batch decision tables
-- Summary tables, progress update tables, pattern sweep tables
-- Deferred item tables, resolution tables, comparison tables
-- ANY table where items have severity, urgency, or effort ratings
-
-Common rationalizations that are NOT valid exceptions:
-- "This is just a summary" → still needs all 8 columns
-- "This is a decision prompt" → still needs all 8 columns
-- "This is a quick list" → still needs all 8 columns
-- "I'm showing recommendations, not findings" → still needs all 8 columns
-- "The table would be too wide" → still needs all 8 columns (see terminal note below)
-
-**Terminal width reminder:** If the 8-column table renders as a vertical stack of items instead of horizontal rows, tell the user: "The table may appear stacked. Widen your terminal window or use full-screen mode for the intended horizontal layout."
-
-**⚠️ TEST GATE (MANDATORY — pre-commit check after EVERY fix):**
-
-Before committing ANY fix, run this mechanical check:
-
-1. Is there a test for this fix? If no, STOP.
-2. Write the test BEFORE or ALONGSIDE the fix — not "later."
-3. Run the tests: `xcodebuild test -scheme [TestScheme] -destination [simulator] -only-testing:[TestClass]` (or full test suite if quick). If any fail, fix before committing.
-4. If the fix is not unit-testable (pure visual, singleton dependency, view-layer), document WHY in a code comment and note it in the commit message.
-
-**What needs tests:**
-- Any logic change (math, conditionals, data flow)
-- Any model change (fields, relationships, computed properties)
-- Any serialization change (backup, CSV, CloudKit mapping)
-- Any state management change (lifecycle transitions, assignment cleanup)
-- Any new code path (new save path, new error handling)
-
-**What doesn't need tests (document why):**
-- Pure visual changes (color, spacing, font) — verified by eye in Canvas/simulator
-- Dead code removal — no behavior to test
-- Singleton method calls added (e.g., adding SpotlightManager.reindexAll) — integration test, not unit-testable without protocol mock
-
-**Common rationalizations that are NOT valid:**
-- "I'll write tests after all fixes" → No. Test with each fix.
-- "This is trivial" → Trivial fixes have trivial tests. Write them.
-- "Tests would slow us down" → Untested fixes are unverified fixes.
-- "The build passes" → Building is not testing.
