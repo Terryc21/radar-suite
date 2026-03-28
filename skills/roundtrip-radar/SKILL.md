@@ -1,7 +1,7 @@
 ---
 name: roundtrip-radar
 description: 'Per-journey code audit tracing data through complete user flows for bugs, data safety, performance, and round-trip completeness. Discovers workflows, audits each end-to-end, and rolls up cross-cutting issues. Triggers: "roundtrip audit", "trace user journey", "/roundtrip-radar".'
-version: 1.3.0
+version: 1.2.0
 author: Terry Nyberg
 license: MIT
 ---
@@ -9,8 +9,6 @@ license: MIT
 # Workflow Code Audit
 
 **YOU MUST EXECUTE THIS WORKFLOW. Do not just describe it.**
-
-**Genuine problems only:** Report real issues backed by evidence. Do not nitpick, invent issues, or inflate severity. If unsure whether something is a problem, say so — don't report it as a finding.
 
 This skill audits application workflows for bugs, data-safety issues, performance
 problems, and data round-trip completeness. It operates in three steps:
@@ -56,7 +54,7 @@ Store the experience level as `USER_EXPERIENCE` and apply to ALL output for the 
 
 **Subsequent workflows:** Do NOT re-ask the full setup questions. Instead, show a one-line reminder before each workflow:
 ```
-Using: [Beginner] mode, [Auto-fix] or [Review first], [Display only]. Type "adjust" to change, or press Enter to continue.
+Using: [Beginner] mode, [Auto-fix small issues], [Display only]. Type "adjust" to change, or press Enter to continue.
 ```
 If the user types "adjust", re-ask only the question(s) they want to change. Users may want to adjust experience level after a few workflows (beginner explanations may feel too simple, expert too terse).
 
@@ -95,32 +93,6 @@ tput cols
 ```
 
 If the user later says "show full table", "wide table", or "full ratings", re-render the most recent findings table in full 8-column format regardless of terminal width. Apply to ALL tables in the session.
-
----
-
-## Version Check (on first invocation — silent on failure)
-
-On startup, check if a newer version exists. Run in background, do not block the audit:
-
-```bash
-curl -sf https://raw.githubusercontent.com/Terryc21/radar-suite/main/skills/roundtrip-radar/VERSION 2>/dev/null
-```
-
-- If the remote version is newer than `1.3.0`, print one line before proceeding:
-  > Update available: roundtrip-radar v[remote] (you have v1.3.0). Run `git -C ~/.claude/skills/roundtrip-radar pull` or visit https://github.com/Terryc21/radar-suite
-- If curl fails, remote is same/older, or command times out — skip silently. Never block the audit for a version check.
-
----
-
-## Xcode MCP Integration (Optional)
-
-On startup, silently check if Xcode MCP tools are available (e.g., attempt to list tools or check for `xcrun mcpbridge`).
-
-- **Available:** Set `XCODE_MCP = true`, note in audit header: `Xcode MCP: available`
-- **Not available:** Set `XCODE_MCP = false`, skip silently. Do not prompt user to install.
-
-**When XCODE_MCP = true, use these tools:**
-- `BuildProject` — verify fix compilation after each wave
 
 ---
 
@@ -242,6 +214,58 @@ A solo developer's codebase reflects multiple versions of themselves — early c
 - "This was documented as intentional [quote]. Given what you've built since then, does this still match your intent?"
 
 **Never frame findings as criticism.** Every finding is an opportunity for current-self to revisit past-self's decisions — not a judgment on past-self's competence. Early code worked. It shipped. It just reflects an earlier stage of understanding.
+
+---
+
+## Audit Methodology (MANDATORY — governs scanning)
+
+Three principles to minimize false negatives. These apply before domain-specific scanning begins.
+
+### Principle 1: Enumerate-Then-Verify
+
+For domains tagged `enumerate-required`: list ALL candidate files first, then verify each uses the correct pattern. Do NOT rely on grep alone to discover violations.
+
+```
+WRONG (search-and-hope):
+  1. Grep for known anti-pattern → 2. Report matches → 3. Grade
+
+RIGHT (enumerate-then-verify):
+  1. Enumerate ALL files containing the subject
+  2. Subtract verified-clean skip list
+  3. For EACH file, verify correct pattern exists
+  4. Report files where correct pattern is MISSING
+```
+
+**Why:** Grep finds what you search for but cannot find what you don't search for. A violation may have no searchable code signature (e.g., an element that inherits default styling with no explicit code). Grep-only scanning missed 57% of violations in real-world testing.
+
+**When to use:** Apply to domains where violations can be the absence of a correct pattern, not just the presence of a wrong one. Domains where every violation has a unique searchable signature (force unwraps, hardcoded strings) remain `grep-sufficient`. Scan-method tags (`grep-sufficient`, `enumerate-required`, `mixed`) are on each check category below.
+
+### Principle 2: File-Scoped Skip Lists
+
+A resolved finding applies to THAT FILE ONLY. Files that call, import, or depend on a resolved file need independent verification. Do not propagate "clean" status across a call graph.
+
+**Why:** Marking a helper file as "fixed" caused an audit to skip 8 view files that used the helper. The helper was fixed. The views calling it weren't.
+
+### Principle 3: Negative Pattern Matching
+
+To find "X without Y," search for X first, then verify Y exists around it. If neither correct pattern nor anti-pattern is found, that is a negative match.
+
+**Negative match ranking (3 tiers):**
+
+| Tier | Name | Criteria | Presentation |
+|------|------|----------|-------------|
+| A | Almost certain | Same file has verified violations OR sibling files use correct pattern | Present with verified findings |
+| B | Probable | View/file type strongly implies the pattern applies | "Likely needs fixing" section |
+| C | Possible | Subject exists without correct pattern, but context is ambiguous | "Review these" section |
+
+**Ranking factors (in priority order):**
+1. Proximity to verified violations in the same file (highest signal)
+2. Sibling file consistency (do similar files use the correct pattern?)
+3. View type / context (settings rows vs system picker options vs status badges)
+4. Element size / prominence (large prominent elements vs small subtle indicators)
+5. Code recency via git blame (recent edits more likely missed the pattern)
+
+**For projects without a style guide:** Infer conventions from codebase majority patterns. Tag findings as `inferred-convention` (Tier B max). After the audit, offer to generate a starter CLAUDE.md from inferred conventions.
 
 ---
 
@@ -457,14 +481,14 @@ Example:
 
 ### What to Check
 
-1. **Data safety** — destructive operations, transaction boundaries, edge cases
-2. **Error handling** — missing catches, silent failures, user-facing error messages
-3. **Concurrency** — `@MainActor` compliance, Task isolation, ModelContext thread safety
-4. **Performance** — `@Query` without predicates, O(n²) loops, main-thread blocking
-5. **Contract mismatches** — constants vs hardcoded strings, keys defined in one file but consumed in another
-6. **Round-trip completeness** — does data survive a full create → export → import/restore cycle?
-7. **Interruption paths** — dismiss mid-operation, app backgrounding, rotation, cancel
-8. **Tests** — update broken tests, add tests for P0-P1 fixes where logic is testable
+1. **Data safety** `enumerate-required` — destructive operations, transaction boundaries, edge cases
+2. **Error handling** `mixed` — missing catches, silent failures, user-facing error messages
+3. **Concurrency** `mixed` — `@MainActor` compliance, Task isolation, ModelContext thread safety
+4. **Performance** `grep-sufficient` — `@Query` without predicates, O(n²) loops, main-thread blocking
+5. **Contract mismatches** `grep-sufficient` — constants vs hardcoded strings, keys defined in one file but consumed in another
+6. **Round-trip completeness** `enumerate-required` — does data survive a full create → export → import/restore cycle?
+7. **Interruption paths** `enumerate-required` — dismiss mid-operation, app backgrounding, rotation, cancel
+8. **Tests** `enumerate-required` — update broken tests, add tests for P0-P1 fixes where logic is testable
 
 ### Verification Template (MANDATORY per workflow)
 
@@ -605,29 +629,6 @@ Format:
 
 ---
 
-## Findings by File (auto-generated after findings table)
-
-After the main findings table, re-group all findings by file path:
-
-```
-### Findings by File
-
-**Sources/Managers/BackupManager.swift** (3 findings)
-- #1 (🔴 CRITICAL) — one-line summary
-- #5 (🟡 HIGH) — one-line summary
-- #9 (🟢 MEDIUM) — one-line summary
-
-**Sources/ViewModels/AddItemViewModel.swift** (1 finding)
-- #3 (🟡 HIGH) — one-line summary
-```
-
-- Sort files by highest-severity finding first (files with CRITICAL first)
-- Finding numbers match the main table for cross-reference
-- Skip this section entirely if fewer than 3 total findings
-- For Senior/Expert users, omit the "no findings" file list
-
----
-
 ## Fix Application Workflow
 
 After presenting the Fix Plan, apply fixes in **waves**. Each wave is a phase from the Fix Plan. After each wave (including commits), **always** print the progress banner and auto-prompt for the next wave.
@@ -660,14 +661,7 @@ For each pattern found and fixed in this workflow:
 
 ### Progress Banner (CRITICAL — BLOCKING requirement)
 
-**HARD GATE: After EVERY wave, EVERY commit, and EVERY build verification, your response MUST end with the progress banner + `AskUserQuestion`. If your response does not end with `AskUserQuestion`, you have violated this rule. Check before sending.**
-
-**This includes:**
-- After `git commit` → banner + AskUserQuestion (not just "committed" or "ready to push")
-- After `xcodebuild build` succeeds → banner + AskUserQuestion (not just "build passed")
-- After all fixes in a wave are applied → banner + AskUserQuestion
-- After wrapping up a workflow → banner + AskUserQuestion for next workflow
-- After all workflows done → banner + AskUserQuestion for wrap-up/next-skill
+**This is a BLOCKING requirement.** After EVERY wave and EVERY commit, your NEXT output MUST be the progress banner followed by the next-wave `AskUserQuestion`. Do not output anything else first. Do not wait for user input. Do not leave a blank prompt.
 
 After completing each wave, **always** print:
 
@@ -728,23 +722,6 @@ report files if they were written.]
 3. Rank the top 5 remaining deferred items by impact using the Issue Rating table format
 
 Deliver results according to the user's output preference from Step 1.
-
----
-
-## Inline Cross-Skill Referrals
-
-When a finding primarily belongs to another skill's domain, append this line to the finding:
-
-`→ Deeper analysis: /[skill-name] [relevant-command]`
-
-| If the finding involves... | Refer to |
-|---------------------------|----------|
-| Missing/incomplete model fields | `/data-model-radar [ModelName]` |
-| Navigation dead ends or broken links | `/ui-path-radar` |
-| Visual layout, spacing, color issues | `/ui-enhancer-radar [ViewName]` |
-| Overall release readiness | `/capstone-radar` |
-
-Do NOT refer to roundtrip-radar (that's this skill). Do NOT refer to a skill already running in this session.
 
 ---
 
@@ -823,33 +800,6 @@ If found, incorporate as **priority targets** in workflow selection. These are n
 - Model gaps from data-model-radar → trace through the workflow that creates/edits that model
 
 If not found, proceed normally.
-
----
-
-## Finding Resolution Gate (MANDATORY before wrap-up)
-
-**The audit cannot end until every finding has a terminal state.** The auditor does not get to decide which findings are "not worth asking about" — the user decides.
-
-Before writing the handoff file or presenting the wrap-up summary:
-
-1. List all findings from the session
-2. Check each has a terminal state: **Fixed** / **Accepted** / **Deferred** (with reason)
-3. If any finding lacks a terminal state, present it to the user via `AskUserQuestion`
-4. Only after all findings are resolved can you write the handoff and wrap up
-
-**Not terminal:** "Noted" / "Observed" / "Documented" — these are descriptions, not decisions. Findings presented in a table but never asked about individually are not resolved.
-
-### User Experience Gate (applies to all findings)
-
-Before accepting a "Deferred (Post-release)" classification, check: **When this feature fails, does the user discover it silently, eventually, or immediately and visibly?**
-
-- **Silent** — Post-release deferral OK.
-- **Eventually** — Post-release acceptable if documented.
-- **Immediately and visibly** — **Cannot be Post-release. Must be Pre-release regardless of fix effort.**
-
-### Deferred Finding Re-evaluation (on startup)
-
-When reading existing DEFERRED.md or handoff files at startup, re-evaluate every deferred finding against the User Experience Gate. If a Post-release finding would be immediately visible to users, challenge the deferral.
 
 ---
 

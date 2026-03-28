@@ -1,7 +1,7 @@
 ---
 name: data-model-radar
 description: 'Audits SwiftData/Core Data model layer for field completeness, serialization gaps, relationship integrity, semantic ambiguity, dead fields, and migration safety. Finds model-layer bugs that manifest as workflow bugs. Triggers: "audit models", "model radar", "/data-model-radar".'
-version: 1.3.0
+version: 1.2.0
 author: Terry Nyberg
 license: MIT
 allowed-tools: [Read, Grep, Glob, Bash, Edit, Write, AskUserQuestion]
@@ -17,8 +17,6 @@ metadata:
 **YOU MUST EXECUTE THIS WORKFLOW. Do not just describe it.**
 
 **Anti-shortcut rule:** Do not claim a domain is "clean" without evidence. Every domain grade must cite specific files read and patterns checked. "No dead fields detected from structural analysis" without grepping is a failing grade for the auditor, not a passing grade for the model.
-
-**Genuine problems only:** Report real issues backed by evidence. Do not nitpick, invent issues, or inflate severity. If unsure whether something is a problem, say so — don't report it as a finding.
 
 ## Quick Commands
 
@@ -95,33 +93,6 @@ tput cols
   - **"I've widened it" (Recommended)** — Re-run `tput cols` to confirm. If tput still reports the old width (terminal resize doesn't always propagate to the shell), trust the user and use full tables anyway.
   - **"Use compact tables"** — Use compact 3-column table with finding text on separate lines below each row.
   - **"Skip check"** — Use full table regardless (user accepts wrapping).
-
----
-
-## Version Check (on first invocation — silent on failure)
-
-On startup, check if a newer version exists. Run in background, do not block the audit:
-
-```bash
-curl -sf https://raw.githubusercontent.com/Terryc21/radar-suite/main/skills/data-model-radar/VERSION 2>/dev/null
-```
-
-- If the remote version is newer than `1.3.0`, print one line before proceeding:
-  > Update available: data-model-radar v[remote] (you have v1.3.0). Run `git -C ~/.claude/skills/data-model-radar pull` or visit https://github.com/Terryc21/radar-suite
-- If curl fails, remote is same/older, or command times out — skip silently. Never block the audit for a version check.
-
----
-
-## Xcode MCP Integration (Optional)
-
-On startup, silently check if Xcode MCP tools are available (e.g., attempt to list tools or check for `xcrun mcpbridge`).
-
-- **Available:** Set `XCODE_MCP = true`, note in audit header: `Xcode MCP: available`
-- **Not available:** Set `XCODE_MCP = false`, skip silently. Do not prompt user to install.
-
-**When XCODE_MCP = true, use these tools:**
-- `BuildProject` — verify model changes compile after fixes
-- `DocumentationSearch` — check deprecated API references in migration findings
 
 ---
 
@@ -244,6 +215,58 @@ A solo developer's codebase reflects multiple versions of themselves — early c
 
 ---
 
+## Audit Methodology (MANDATORY — governs scanning)
+
+Three principles to minimize false negatives. These apply before domain-specific scanning begins.
+
+### Principle 1: Enumerate-Then-Verify
+
+For domains tagged `enumerate-required`: list ALL candidate files first, then verify each uses the correct pattern. Do NOT rely on grep alone to discover violations.
+
+```
+WRONG (search-and-hope):
+  1. Grep for known anti-pattern → 2. Report matches → 3. Grade
+
+RIGHT (enumerate-then-verify):
+  1. Enumerate ALL files containing the subject
+  2. Subtract verified-clean skip list
+  3. For EACH file, verify correct pattern exists
+  4. Report files where correct pattern is MISSING
+```
+
+**Why:** Grep finds what you search for but cannot find what you don't search for. A violation may have no searchable code signature (e.g., an element that inherits default styling with no explicit code). Grep-only scanning missed 57% of violations in real-world testing.
+
+**When to use:** Apply to domains where violations can be the absence of a correct pattern, not just the presence of a wrong one. Domains where every violation has a unique searchable signature (force unwraps, hardcoded strings) remain `grep-sufficient`. Scan-method tags (`grep-sufficient`, `enumerate-required`, `mixed`) are on each domain heading below.
+
+### Principle 2: File-Scoped Skip Lists
+
+A resolved finding applies to THAT FILE ONLY. Files that call, import, or depend on a resolved file need independent verification. Do not propagate "clean" status across a call graph.
+
+**Why:** Marking a helper file as "fixed" caused an audit to skip 8 view files that used the helper. The helper was fixed. The views calling it weren't.
+
+### Principle 3: Negative Pattern Matching
+
+To find "X without Y," search for X first, then verify Y exists around it. If neither correct pattern nor anti-pattern is found, that is a negative match.
+
+**Negative match ranking (3 tiers):**
+
+| Tier | Name | Criteria | Presentation |
+|------|------|----------|-------------|
+| A | Almost certain | Same file has verified violations OR sibling files use correct pattern | Present with verified findings |
+| B | Probable | View/file type strongly implies the pattern applies | "Likely needs fixing" section |
+| C | Possible | Subject exists without correct pattern, but context is ambiguous | "Review these" section |
+
+**Ranking factors (in priority order):**
+1. Proximity to verified violations in the same file (highest signal)
+2. Sibling file consistency (do similar files use the correct pattern?)
+3. View type / context (settings rows vs system picker options vs status badges)
+4. Element size / prominence (large prominent elements vs small subtle indicators)
+5. Code recency via git blame (recent edits more likely missed the pattern)
+
+**For projects without a style guide:** Infer conventions from codebase majority patterns. Tag findings as `inferred-convention` (Tier B max). After the audit, offer to generate a starter CLAUDE.md from inferred conventions.
+
+---
+
 ## Audit Depth
 
 Each domain can be run at two depths:
@@ -290,16 +313,6 @@ Fields with `InCents`/`Price`/`Value`/`Cost`, identity fields (`cloudSyncID`, `o
 
 **Signal 6: The "looks clean" feeling (meta-signal).**
 When you feel confident about a domain without having produced its required artifact — that IS the signal to stop and do the work. Confidence without evidence is the #1 predictor of shallow work.
-
-**Signal 7: First-impression failure risk (user experience).**
-When this feature fails, does the user discover it:
-- **Silently** — data is wrong but nothing looks broken (e.g., backup missing 7 fields — user won't notice until restore). Deferral OK.
-- **Eventually** — user notices after repeated use (e.g., CSV export missing columns — noticed when opening the spreadsheet). Medium priority.
-- **Immediately and visibly** — user sees the failure the first time they try (e.g., sync between devices — missing data is obvious on the second device). **Ship blocker regardless of fix effort.**
-
-The effort to fix a finding determines timeline. It does NOT determine whether the fix blocks shipping. A trivial fix and a massive fix can both be ship blockers if the user hits them immediately.
-
-**Rule:** Any finding where the user immediately and visibly encounters the failure cannot be gated as Post-release in DEFERRED.md.
 
 ### Risk-Ranking Output
 
@@ -375,22 +388,143 @@ Ask setup questions:
 - Delivery: Display only / Report / Both
 - Presence: Normal / Hands-free / Pre-approved
 
-### Domain Reference Loading
+### Domain 1: Field Completeness `enumerate-required`
 
-Load domain definitions from `references/domains.md`:
+**What to check:**
+- Are there fields that *should* exist based on how the model is used?
+  - Grep for hardcoded strings/enums that could be model fields (e.g., `"inherited"` string where an `acquisitionType` enum should exist)
+  - Check if sibling models have fields this model lacks (e.g., all models have `cloudSyncID` except one)
+- Are enums complete? Check every `switch` statement — are there `default` cases hiding missing enum values?
+- Are optional fields appropriately optional? (Should `warrantyMonths` really be non-optional with default 12?)
 
-`Read ~/.claude/skills/data-model-radar/references/domains.md`
+**Output per finding:** What field is missing, why it should exist, which code paths would use it.
 
-**Full audit:** Read all domains.
-**Single domain commands:** Read the full file but focus on the requested domain:
+### Domain 2: Serialization Coverage `enumerate-required`
 
-| Command | Focus on |
-|---------|----------|
-| `serialization` | Domain 2 only |
-| `relationships` | Domain 3 only |
-| `migration` | Domain 6 only |
-| `dead-fields` | Domain 5 only |
+**MANDATORY CHECKLIST — verify each target explicitly:**
 
+For the model being audited, check ALL applicable serialization targets. Do not skip any.
+
+- [ ] **Backup struct** — Read the `BackupXxx` struct. Diff every model field against backup fields. List gaps.
+- [ ] **CSV export** — Find the CSV export code (e.g., `CSVExportManager`, `ExportManager`). Read it. List which model fields map to CSV columns and which don't.
+- [ ] **CSV import** — Find the CSV import code (e.g., `CSVImportManager`). Read it. List which CSV columns map back to model fields. The export→import gap is where data loss hides.
+- [ ] **CloudKit sync** — Find CKRecord mapping code (e.g., `CloudSyncManager`, `SharedZoneSyncManager`). List synced fields.
+- [ ] **JSON API** — If the model receives data from an API, check the response mapping.
+
+**Do not report a target as "covered" without reading the actual code.** "Backup looks complete" without reading BackupItem is not verification.
+
+**Method:**
+1. Read the model — list all stored properties (exclude `@Transient` computed properties)
+2. Read each serialization struct/function listed above
+3. Diff: model fields NOT in serialization = potential data loss on round-trip
+4. For each gap, determine: intentional exclusion or oversight?
+
+**Output:** Side-by-side coverage table:
+
+```
+| Field | Model | Backup | CSV Export | CSV Import | CloudKit |
+|-------|:-----:|:------:|:---------:|:----------:|:--------:|
+| title | yes | yes | yes | yes | yes |
+| cloudSyncID | yes | yes | no | no | yes |
+| documents | yes | no | no | no | yes |
+```
+
+Mark fields not checked with `?` instead of yes/no. The table must be honest about what was verified.
+
+### Verification Template (MANDATORY for Domain 2)
+
+Before grading serialization coverage, produce this pre-populated table. Read the model file first to get all stored properties, then fill in each cell by reading the actual serialization code.
+
+```
+| Field | Model | Backup | CSV Export | CSV Import | CloudKit | Receipt |
+|-------|:-----:|:------:|:---------:|:----------:|:--------:|---------|
+| [field1] | yes | ? | ? | ? | ? | (fill after reading each target) |
+| [field2] | yes | ? | ? | ? | ? | |
+```
+
+Rules:
+- `yes` = confirmed by reading the code (include file:line in Receipt column)
+- `no` = confirmed absent by reading the code
+- `?` = not yet checked
+- A domain grade CANNOT be produced while any cell contains `?` for a target you claimed to check
+- If you skip a target (e.g., don't read CloudKit), mark the entire column as `not checked` — don't fill in `?` and then grade as if you checked it
+
+### Domain 3: Relationship Integrity `mixed`
+
+**What to check:**
+- Every `@Relationship` has a correct `deleteRule` (`.cascade`, `.nullify`, `.deny`, `.noAction`)
+- Every `@Relationship` has an `inverse` specified
+- Cascade chains don't create unexpected data loss (deleting Item cascades to Photos, which is correct — but does it also cascade to SharedZone records?)
+- Orphan risk: can child objects exist without a parent? (e.g., PhotoAttachment with `item: Item? = nil`)
+- Circular relationships: A → B → A
+
+**Method:**
+1. Grep for all `@Relationship` declarations
+2. For each, verify: deleteRule, inverse, optional vs required
+3. Build a relationship graph and check for orphan paths
+
+### Domain 4: Semantic Clarity `enumerate-required`
+
+**What to check:**
+- **nil vs zero:** For every `Int?` field, is there UI or documentation that distinguishes "not set" from "zero"? (e.g., `priceInCents: Int?` — nil = not entered, 0 = free. But does the UI show this difference?)
+- **Missing type distinctions:** Are there fields where a single type carries multiple meanings? (e.g., `priceInCents` used for both new and used purchases — should there be separate fields?)
+- **Boolean ambiguity:** `isEstimatedPrice` — does `false` mean "confirmed exact" or "user never set this flag"?
+- **String fields that should be enums:** Fields like `disposalMethodRaw: String` — is the enum complete? Are there raw strings in the codebase that don't match any enum case?
+
+### Domain 5: Field Usage Mapping `mixed`
+
+**What to check:**
+- **Dead fields:** Model properties that are never read in any view, ViewModel, or manager. Set during creation but never displayed or used in calculations.
+- **Phantom fields:** Values shown in the UI that are computed on-the-fly and never stored. If the computation inputs change, the displayed value changes retroactively (e.g., donation FMV recalculated from condition).
+- **Write-only fields:** Set by the user but never read back (data goes in but nothing comes out).
+- **Read-only fields:** Displayed but never settable by the user (may be intentional for computed fields, but worth flagging if the user might want to override).
+
+**Method (Deep — required for High-risk models):**
+
+For models with >20 fields, use a **stratified sampling strategy** instead of grepping all fields:
+
+1. **All recently added fields** (from git log in Step 0) — highest risk for being unwired
+2. **All currency fields** (`*InCents`, `*Price*`, `*Value*`, `*Cost*`) — money = high risk
+3. **All optional fields** (`var x: Type? = nil`) — more likely to be dead than required fields
+4. **All fields with "raw" suffix** (`*Raw`) — enum storage, check if enum is used anywhere
+5. **Random sample of remaining fields** (5-10) to spot-check
+
+For each sampled field:
+```
+Grep pattern="\.fieldName" glob="**/*.swift" path="Sources/" output_mode="files_with_matches"
+```
+
+Flag: 0 read hits in Sources/ (excluding the model file itself and Tests/) = dead field candidate. Verify by reading one suspected consumer.
+
+**Method (Quick — for Low-risk models):**
+1. List all stored properties
+2. Check for obvious dead patterns: fields with no corresponding UI label, fields added but never referenced in any view
+3. Label grade as `(quick)` — not fully verified
+
+### Domain 6: Migration Safety `enumerate-required`
+
+**What to check (Deep — read the actual schema files):**
+1. **Read the VersionedSchema file** — `Glob pattern="**/*Schema*.swift"` or `**/*Migration*.swift"`
+2. **Verify the latest schema version includes all current model fields.** Diff the schema's model definition against the actual model. Any field in the model but not in the latest schema version = migration gap.
+3. Does a `SchemaMigrationPlan` exist with proper stage ordering?
+4. Are there fields added without migration? (SwiftData handles simple additions automatically, but relationship changes or type changes need explicit migration)
+5. Has the model changed since the last migration version? Compare timestamps: `git log -1 --format="%ai" -- Sources/Models/Item.swift` vs `git log -1 --format="%ai" -- Sources/Models/AppSchema.swift`
+6. Are there `@Attribute` modifiers that affect storage (`.externalStorage`, `.unique`) — are these in the migration plan?
+
+**Do not say "migration infrastructure exists" without reading the schema file.** That's the same as saying "backup exists" without reading BackupItem.
+
+### Domain 7: Cross-Model Consistency `enumerate-required`
+
+**Minimum model requirement:** This domain requires reading at least 3 models to be meaningful. When auditing a single model, this domain outputs one of:
+
+- **If 3+ models are being audited this session:** Full cross-model comparison.
+- **If single model audit:** Read 2-3 additional model files (pick the highest-relationship models from Step 0) to compare patterns, then grade. Label as `(partial — N models compared)`.
+
+**What to check:**
+- **Identifier strategy:** Do all models use the same approach? (Some use `cloudSyncID`, some use `persistentModelID.hashValue`, some use UUID — should be consistent)
+- **Timestamp conventions:** `timestamp`, `createdAt`, `date` — same concept, different names across models?
+- **Naming patterns:** `priceInCents` vs `deductibleInCents` vs `fairMarketValue` (not in cents?) — consistent currency representation?
+- **Shared protocol conformances:** Do models that should be `Sendable` all conform? Do models with `cloudSyncID` all use it the same way?
 
 ---
 
@@ -443,29 +577,6 @@ When multiple models duplicate the same pattern, extract to a shared protocol or
 
 ---
 
-## Findings by File (auto-generated after findings table)
-
-After the main findings table, re-group all findings by file path:
-
-```
-### Findings by File
-
-**Sources/Models/Item.swift** (3 findings)
-- #1 (🔴 CRITICAL) — one-line summary
-- #5 (🟡 HIGH) — one-line summary
-- #9 (🟢 MEDIUM) — one-line summary
-
-**Sources/Managers/BackupManager.swift** (1 finding)
-- #3 (🟡 HIGH) — one-line summary
-```
-
-- Sort files by highest-severity finding first (files with CRITICAL first)
-- Finding numbers match the main table for cross-reference
-- Skip this section entirely if fewer than 3 total findings
-- For Senior/Expert users, omit the "no findings" file list
-
----
-
 ## Fix Application Workflow
 
 Apply fixes in **waves** with progress tracking.
@@ -492,14 +603,7 @@ Scale the number of waves to finding severity:
 
 ### Progress Banner (CRITICAL — BLOCKING requirement)
 
-**HARD GATE: After EVERY wave, EVERY commit, and EVERY build verification, your response MUST end with the progress banner + `AskUserQuestion`. If your response does not end with `AskUserQuestion`, you have violated this rule. Check before sending.**
-
-**This includes:**
-- After `git commit` → banner + AskUserQuestion (not just "committed" or "ready to push")
-- After `xcodebuild build` succeeds → banner + AskUserQuestion (not just "build passed")
-- After all fixes in a wave are applied → banner + AskUserQuestion
-- After wrapping up a model → banner + AskUserQuestion for next model
-- After all models done → banner + AskUserQuestion for wrap-up/next-skill
+**After EVERY wave and EVERY commit, your NEXT output MUST be the progress banner followed by the next-wave `AskUserQuestion`. Do not output anything else first. Do not leave a blank prompt.**
 
 After completing each wave, **always** print:
 
@@ -527,23 +631,6 @@ Progress: [N] of [total] models checked | [X] issues fixed | [Y] deferred
 ```
 
 Then ask: "Ready to check the next model?" with options including **"Explain more"** — what this model is and why it matters.
-
----
-
-## Inline Cross-Skill Referrals
-
-When a finding primarily belongs to another skill's domain, append this line to the finding:
-
-`→ Deeper analysis: /[skill-name] [relevant-command]`
-
-| If the finding involves... | Refer to |
-|---------------------------|----------|
-| Navigation dead ends or broken links | `/ui-path-radar` |
-| Visual layout, spacing, color issues | `/ui-enhancer-radar [ViewName]` |
-| Data loss through a complete user cycle | `/roundtrip-radar [workflow]` |
-| Overall release readiness | `/capstone-radar` |
-
-Do NOT refer to data-model-radar (that's this skill). Do NOT refer to a skill already running in this session.
 
 ---
 
@@ -660,53 +747,6 @@ Verified toItem() restore at line 342-546. CSV export NOT checked (CSVExportMana
 ```
 
 A grade without evidence is not a grade — it's a guess.
-
----
-
-## Finding Resolution Gate (MANDATORY before wrap-up)
-
-**The audit cannot end until every finding has a terminal state.** The auditor does not get to decide which findings are "not worth asking about" — the user decides.
-
-Before writing the handoff file or presenting the wrap-up summary, verify:
-
-1. **List all findings** from the session
-2. **Check each has a terminal state:** Fixed / Accepted / Deferred (with reason)
-3. **If any finding lacks a terminal state**, present it to the user via `AskUserQuestion` with options: Fix now / Accept / Defer
-4. **Only after all findings are resolved** can you write the handoff and wrap up
-
-**Why this exists:** The auditor's natural tendency is to classify LOW/MEDIUM findings as "noted" and move on — but "noted" is not a terminal state. The user may want it fixed, or may have context that changes the severity. Every finding deserves a decision, even if that decision is "accept as-is."
-
-**Terminal states:**
-- **Fixed** — code was changed, tests pass
-- **Accepted** — user confirmed this is intentional or not worth fixing (with documented reason)
-- **Deferred** — user explicitly chose to defer (with reason and target timeframe)
-
-**Not terminal:**
-- "Noted" / "Observed" / "Documented" — these are descriptions, not decisions
-- Findings presented in a table but never asked about individually
-
-### User Experience Gate (applies to all findings)
-
-Before accepting a "Deferred (Post-release)" classification, check:
-
-**When this feature fails, does the user discover it silently, eventually, or immediately and visibly?**
-
-- **Silent** — user won't notice unless they hit an edge case. Post-release deferral OK.
-- **Eventually** — user notices after repeated use. Post-release acceptable if documented.
-- **Immediately and visibly** — user sees the failure the first time they try the feature. **Cannot be Post-release. Must be Pre-release regardless of fix effort.**
-
-Effort determines how long the fix takes. It does NOT determine whether the fix blocks shipping.
-
-### Deferred Finding Re-evaluation (on startup)
-
-When this skill reads existing DEFERRED.md or handoff files at startup, **re-evaluate every deferred finding** against the User Experience Gate:
-
-1. Read all `findings_deferred` entries from handoff YAMLs and DEFERRED.md
-2. For each: "Would a user hit this immediately and visibly?"
-3. If yes and it's gated as Post-release: **challenge the deferral** — present to user with updated severity recommendation
-4. If no: carry forward as-is
-
-A finding deferred as "Post-release" in session 1 should be re-challenged in session 2. Severity can change as understanding grows.
 
 ---
 

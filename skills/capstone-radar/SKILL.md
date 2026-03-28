@@ -1,7 +1,7 @@
 ---
 name: capstone-radar
 description: 'Unified A-F grading and ship/no-ship decisions for the 5-skill radar family. Aggregates companion handoffs, owns 5 grep-reliable domains, tracks velocity, celebrates improvements. Triggers: "capstone radar", "can I ship", "grade codebase", "/capstone-radar".'
-version: 3.2.0
+version: 3.1.0
 author: Terry Nyberg
 license: MIT
 ---
@@ -11,8 +11,6 @@ license: MIT
 **YOU MUST EXECUTE THIS WORKFLOW. Do not just describe it.**
 
 **Required output:** Every finding MUST include Urgency, Risk, ROI, and Blast Radius ratings. Do not omit these ratings.
-
-**Genuine problems only:** Report real issues backed by evidence. Do not nitpick, invent issues, or inflate severity. If unsure whether something is a problem, say so — don't report it as a finding.
 
 Capstone Radar is the **aggregator + gap filler** for the 5-skill radar family. It consumes findings from 4 companion skills, runs its own scans for 5 domains the companions don't cover, grades everything on one unified scale, and makes the ship/no-ship decision.
 
@@ -26,7 +24,6 @@ It does NOT:
 - `/capstone-radar` — Full analysis — checks everything and reads findings from other audits you've run
 - `/capstone-radar quick` — Quick check — only looks at its own areas, ignores other audit results
 - `/capstone-radar report` — No scanning, re-grade from existing handoff files only
-- `/capstone-radar resolve` — Resolve all deferred findings across all 5 skills
 
 ---
 
@@ -56,33 +53,6 @@ On first invocation, ask the user two questions in a single `AskUserQuestion` ca
 - **Senior/Expert**: "5 owned + 4 consumed domains. Velocity. Heatmap. Ship/no-ship."
 
 Store the experience level as `USER_EXPERIENCE` and apply to ALL output for the session.
-
----
-
-## Version Check (on first invocation — silent on failure)
-
-On startup, check if a newer version exists. Run in background, do not block the audit:
-
-```bash
-curl -sf https://raw.githubusercontent.com/Terryc21/radar-suite/main/skills/capstone-radar/VERSION 2>/dev/null
-```
-
-- If the remote version is newer than `3.2.0`, print one line before proceeding:
-  > Update available: capstone-radar v[remote] (you have v3.2.0). Run `git -C ~/.claude/skills/capstone-radar pull` or visit https://github.com/Terryc21/radar-suite
-- If curl fails, remote is same/older, or command times out — skip silently. Never block the audit for a version check.
-
----
-
-## Xcode MCP Integration (Optional)
-
-On startup, silently check if Xcode MCP tools are available (e.g., attempt to list tools or check for `xcrun mcpbridge`).
-
-- **Available:** Set `XCODE_MCP = true`, note in audit header: `Xcode MCP: available`
-- **Not available:** Set `XCODE_MCP = false`, skip silently. Do not prompt user to install.
-
-**When XCODE_MCP = true, use these tools:**
-- `BuildProject` — verify build health domain (own scan)
-- `DocumentationSearch` — check deprecated API findings in code hygiene domain
 
 ---
 
@@ -207,6 +177,58 @@ A solo developer's codebase reflects multiple versions of themselves — early c
 
 ---
 
+## Audit Methodology (MANDATORY — governs scanning)
+
+Three principles to minimize false negatives. These apply before domain-specific scanning begins.
+
+### Principle 1: Enumerate-Then-Verify
+
+For domains tagged `enumerate-required`: list ALL candidate files first, then verify each uses the correct pattern. Do NOT rely on grep alone to discover violations.
+
+```
+WRONG (search-and-hope):
+  1. Grep for known anti-pattern → 2. Report matches → 3. Grade
+
+RIGHT (enumerate-then-verify):
+  1. Enumerate ALL files containing the subject
+  2. Subtract verified-clean skip list
+  3. For EACH file, verify correct pattern exists
+  4. Report files where correct pattern is MISSING
+```
+
+**Why:** Grep finds what you search for but cannot find what you don't search for. A violation may have no searchable code signature (e.g., an element that inherits default styling with no explicit code). Grep-only scanning missed 57% of violations in real-world testing.
+
+**When to use:** Apply to domains where violations can be the absence of a correct pattern, not just the presence of a wrong one. Domains where every violation has a unique searchable signature (force unwraps, hardcoded strings) remain `grep-sufficient`. Scan-method tags (`grep-sufficient`, `enumerate-required`, `mixed`) are on each domain heading below.
+
+### Principle 2: File-Scoped Skip Lists
+
+A resolved finding applies to THAT FILE ONLY. Files that call, import, or depend on a resolved file need independent verification. Do not propagate "clean" status across a call graph.
+
+**Why:** Marking a helper file as "fixed" caused an audit to skip 8 view files that used the helper. The helper was fixed. The views calling it weren't.
+
+### Principle 3: Negative Pattern Matching
+
+To find "X without Y," search for X first, then verify Y exists around it. If neither correct pattern nor anti-pattern is found, that is a negative match.
+
+**Negative match ranking (3 tiers):**
+
+| Tier | Name | Criteria | Presentation |
+|------|------|----------|-------------|
+| A | Almost certain | Same file has verified violations OR sibling files use correct pattern | Present with verified findings |
+| B | Probable | View/file type strongly implies the pattern applies | "Likely needs fixing" section |
+| C | Possible | Subject exists without correct pattern, but context is ambiguous | "Review these" section |
+
+**Ranking factors (in priority order):**
+1. Proximity to verified violations in the same file (highest signal)
+2. Sibling file consistency (do similar files use the correct pattern?)
+3. View type / context (settings rows vs system picker options vs status badges)
+4. Element size / prominence (large prominent elements vs small subtle indicators)
+5. Code recency via git blame (recent edits more likely missed the pattern)
+
+**For projects without a style guide:** Infer conventions from codebase majority patterns. Tag findings as `inferred-convention` (Tier B max). After the audit, offer to generate a starter CLAUDE.md from inferred conventions.
+
+---
+
 ## Terminal Width Check (MANDATORY — run first)
 
 Before ANY output, check terminal width:
@@ -290,9 +312,6 @@ For each handoff found:
    - data-model-radar: `serialization_coverage` (model field coverage stats)
    - roundtrip-radar: `cross_cutting_patterns[]` (patterns affecting multiple workflows)
 4. Record which companions were found vs missing
-5. Parse `findings_deferred[]` — these are unresolved items that must be resolved before ship/no-ship
-6. Parse `findings_planned[]` — these are tracked in DEFERRED.md (already resolved to "planned")
-7. Parse `findings_accepted[]` — these are explicitly signed off (already resolved)
 
 **Score consumed domains:** Start at 95 (generous baseline — companion ran a full audit and only escalated the worst items). Deduct:
 - Per CRITICAL blocker: **-15**
@@ -365,7 +384,7 @@ Run grep-based scans for the 5 domains capstone owns. Apply Verification Rule (S
 
 ### Shared Grep Patterns
 
-**Code Hygiene:**
+**Code Hygiene** `grep-sufficient`:
 ```
 Grep pattern="// TODO|// FIXME|// HACK|// XXX" glob="**/*.swift" output_mode="count"
 Grep pattern="as!" glob="**/*.swift"
@@ -373,7 +392,7 @@ Grep pattern="try!" glob="**/*.swift"
 ```
 Also check file sizes: `Glob pattern="**/*.swift"` then read line counts for files that appear large. Flag files >1000 lines.
 
-**Test Health:**
+**Test Health** `grep-sufficient`:
 ```
 Grep pattern="import Testing" glob="**/*Test*.swift" output_mode="count"
 Grep pattern="import XCTest" glob="**/*Test*.swift" output_mode="count"
@@ -383,14 +402,14 @@ Glob pattern="**/*Test.swift"
 ```
 Calculate test-to-source ratio: test files / (total swift files - test files).
 
-**Security Basics:**
+**Security Basics** `grep-sufficient`:
 ```
 Grep pattern="(api[_-]?key|secret[_-]?key|password|token)\s*[:=]\s*[\"'][^\"']+[\"']" glob="**/*.swift" -i
 Grep pattern="UserDefaults.*\.(password|token|secret|apiKey)" glob="**/*.swift" -i
 Grep pattern="http://(?!localhost|127\.0\.0\.1)" glob="**/*.swift"
 ```
 
-**Dependency Health:**
+**Dependency Health** `grep-sufficient`:
 ```bash
 stat -f "%Sm" -t "%Y-%m-%d" Package.resolved 2>/dev/null || echo "no Package.resolved"
 ```
@@ -399,7 +418,7 @@ Grep pattern="\.exact\(|\.upToNextMajor\(|\.upToNextMinor\(|from:" path="Package
 ```
 Count packages in Package.resolved.
 
-**Build Health:**
+**Build Health** `grep-sufficient`:
 ```bash
 find . -name "*.xcscheme" -not -path "*/.build/*" | wc -l
 ```
@@ -632,107 +651,6 @@ Run `git log -1 --format="%H %s %an %ai" -- {file}` for each regression file.
 
 ---
 
-## Step 8.5: Finding Resolution Gate (MANDATORY)
-
-**Rule:** Capstone CANNOT issue a ship recommendation while `findings_deferred` is non-empty in ANY handoff YAML. All findings must be terminal (fixed, planned, or accepted).
-
-### 8.5.1: Collect All Deferred Findings
-
-Read all 5 handoff YAMLs and collect every `findings_deferred` entry:
-
-```
-Read .agents/ui-audit/data-model-radar-handoff.yaml → findings_deferred[]
-Read .agents/ui-audit/ui-path-radar-handoff.yaml → findings_deferred[]
-Read .agents/ui-audit/roundtrip-radar-handoff.yaml → findings_deferred[]
-Read .agents/ui-audit/ui-enhancer-radar-handoff.yaml → findings_deferred[]
-Read .agents/ui-audit/capstone-radar-handoff.yaml → findings_deferred[] (own)
-```
-
-Also read `DEFERRED.md` at project root for previously planned items.
-
-### 8.5.2: Staleness Validation
-
-For each planned item in DEFERRED.md, validate it still applies:
-- Grep for the pattern the finding describes (e.g., if finding says "CloudKit syncs 20%", grep for CKRecordMapper field count)
-- If code changed since the finding was written, flag: "This finding may be resolved — verify before removing"
-- If `review_by` date has passed, flag: "This item is overdue for review (deferred [N] days ago)"
-
-### 8.5.3: Present Unified Deferred List
-
-If any `findings_deferred` exist across any handoff:
-
-```
-## Unresolved Findings (must be resolved before ship/no-ship)
-
-You have [N] unresolved findings across [M] audit areas:
-
-| # | Finding | Source | Severity | Effort |
-|---|---------|--------|----------|--------|
-| 1 | CloudKit syncs 20% | data-model-radar | HIGH | Large |
-| 2 | Dead fields (12) | data-model-radar | MEDIUM | Small |
-| 3 | ... | ... | ... | ... |
-
-Ship/no-ship recommendation is blocked until all findings are resolved.
-
-Every finding needs a decision:
-1. **Resolve them now** — I'll group by source skill and fix each group
-2. **Batch decide** — mark each as Fix / Plan / Accept in one pass
-3. **Skip resolution** — proceed to grading (deferred items will lower grades)
-4. **Explain more** — walk through what each finding means
-```
-
-### 8.5.4: Resolution Paths
-
-**"Resolve them now":** Group findings by source skill, then for each group:
-1. Print: "[N] findings from [skill-name] — running fix-deferred workflow"
-2. Enter that skill's fix-deferred flow (wave workflow for Fix items, DEFERRED.md for Plan items)
-3. After each skill completes, return to capstone for the next group
-4. After all groups resolved, re-read handoff YAMLs and proceed to Step 9
-
-**"Batch decide":** Present each finding and ask Fix / Plan / Accept:
-- **Fix** items get grouped by skill for fix-deferred workflow
-- **Plan** items go to DEFERRED.md with Release Gate (Pre-release / Post-release / Next major)
-- **Accept** items go to `findings_accepted` in the source handoff YAML
-
-**"Skip resolution":** Proceed to grading, but:
-- Each domain with unresolved deferred findings gets a grade penalty (-5 per deferred item)
-- Ship recommendation includes: "[N] unresolved findings not factored into grades"
-- This is the "escape hatch" — not recommended but available
-
-### 8.5.5: DEFERRED.md Management
-
-Capstone owns the DEFERRED.md file. On every run:
-
-1. **Read** existing DEFERRED.md entries
-2. **Validate** each entry still applies (staleness check)
-3. **Add** newly planned items from this session
-4. **Remove** items that were fixed (check if finding still exists in code)
-5. **Flag** overdue items (review_by date passed)
-6. **Sync back to handoff YAMLs** — for every item added to DEFERRED.md, move it from `findings_deferred` to `findings_planned` in the source handoff YAML. This prevents the next capstone run from seeing the same item as both deferred (YAML) and planned (DEFERRED.md).
-
-**Handoff YAML sync rule:** After ANY write to DEFERRED.md, re-read the source handoff YAML for each newly planned item, move the entry from `findings_deferred[]` to `findings_planned[]` (adding `deferred_md_row: true` and `release_gate`), and write the updated YAML. This is not optional — desync between DEFERRED.md and handoff YAMLs causes double-counting in future runs.
-
-DEFERRED.md format:
-
-```markdown
-# Deferred Findings
-
-Items intentionally deferred from radar audits. Review before each release.
-
-| # | Finding | Source | Severity | Release Gate | Effort | Reason | Date | Review By |
-|---|---------|--------|----------|-------------|--------|--------|------|-----------|
-| 1 | CloudKit syncs 20% of Item fields | data-model-radar | HIGH | Post-release | Large | Needs architecture decision | 2026-03-24 | 2026-06-24 |
-```
-
-**Release Gate values:**
-- **Pre-release** — must fix before App Store submission (blocks SHIP recommendation)
-- **Post-release** — tracked for next update cycle (does not block SHIP)
-- **Next major** — deferred to next major version (does not block SHIP)
-
-**Review By:** Default 90 days from deferral date.
-
----
-
 ## Step 9: Ship Recommendation
 
 | Recommendation | Criteria |
@@ -771,66 +689,7 @@ Ship recommendation is based on {N}/10 domains. Run missing companions for full 
 
 ---
 
-## Inline Cross-Skill Referrals
-
-When a finding primarily belongs to a companion skill's domain, append this line to the finding:
-
-`→ Deeper analysis: /[skill-name] [relevant-command]`
-
-| If the finding involves... | Refer to |
-|---------------------------|----------|
-| Missing/incomplete model fields | `/data-model-radar [ModelName]` |
-| Navigation dead ends or broken links | `/ui-path-radar` |
-| Visual layout, spacing, color issues | `/ui-enhancer-radar [ViewName]` |
-| Data loss through a complete user cycle | `/roundtrip-radar [workflow]` |
-
-Do NOT refer to capstone-radar (that's this skill). Do NOT refer to a skill already running in this session.
-
----
-
 ## Step 10: Output + Follow-up
-
-### Release Status Summary
-
-After grading and resolution, ALWAYS present this summary:
-
-```
-## Release Status
-
-### Pre-Release Blockers (must fix before shipping)
-| # | Finding | Source | Severity | Effort |
-|---|---------|--------|----------|--------|
-(items from findings_deferred with release_gate = Pre-release, plus CRITICAL/HIGH unresolved)
-
-### Post-Release Improvements (tracked for next update)
-| # | Finding | Source | Severity | Effort |
-|---|---------|--------|----------|--------|
-(items from DEFERRED.md with release_gate = Post-release or Next major)
-
-### Accepted (explicitly signed off)
-- [finding] (accepted [date])
-
-### Fixed This Session
-- [finding] (commit [hash])
-```
-
-This summary is the **final output** of the radar suite. It answers: "What's left to do, and when?"
-
-### Findings by File
-
-After the Release Status tables, re-group all findings (owned + companion) by file path:
-
-```
-**Sources/Managers/BackupManager.swift** (3 findings)
-- #1 [data-model-radar] (🔴 CRITICAL) — one-line summary
-- #5 [roundtrip-radar] (🟡 HIGH) — one-line summary
-- #9 [capstone-radar] (🟢 MEDIUM) — one-line summary
-```
-
-- Include source skill in brackets for companion findings
-- Sort files by highest-severity finding first
-- Skip if fewer than 3 total findings
-- For Senior/Expert users, omit the "no findings" file list
 
 ### Write Report
 
@@ -1004,13 +863,7 @@ Adjust ALL output (grades, findings, recommendations, domain summaries) based on
 
 ## Step Progress Banner (CRITICAL — BLOCKING requirement)
 
-**HARD GATE: After EVERY step, EVERY commit, and EVERY build verification, your response MUST end with the progress banner + `AskUserQuestion`. If your response does not end with `AskUserQuestion`, you have violated this rule. Check before sending.**
-
-**This includes:**
-- After `git commit` → banner + AskUserQuestion (not just "committed" or "ready to push")
-- After `xcodebuild build` succeeds → banner + AskUserQuestion (not just "build passed")
-- After completing a step → banner + AskUserQuestion
-- After all steps done → banner + AskUserQuestion for wrap-up
+**After EVERY step and EVERY commit, your NEXT output MUST be the progress banner followed by the next-step `AskUserQuestion`. Do not output anything else first. Do not leave a blank prompt.**
 
 After completing each step, **always** print this banner:
 
@@ -1058,69 +911,6 @@ Capstone is both the **entry point** ("what should I audit?") and the **exit poi
 
 ---
 
-## Decision Prompt Rules (MANDATORY — all user-facing decisions)
-
-Every `AskUserQuestion` that presents a design decision, implementation choice, or finding resolution MUST include an **"Explain pros/cons"** option:
-
-- **[Recommended option] (Recommended)** — [one-line description]
-- **[Alternative(s)]** — [one-line description each]
-- **Accept as-is** — [why this is safe to leave] (where applicable)
-- **Explain pros/cons** — Walk through the tradeoffs before deciding
-
-If the user selects "Explain pros/cons": present a brief analysis (3-5 bullets), then re-prompt with the same options (minus "Explain pros/cons").
-
-**Never silently note findings "for future."** Every finding discovered during the audit must be presented with the full Issue Rating Table and a decision prompt (Fix / Defer / Accept / Explain pros/cons).
-
----
-
-## Compliance Self-Check (MANDATORY — run before final summary)
-
-**Before writing the final summary, handoff YAML, or session wrap-up, execute this mechanical checklist. Do NOT skip it. Do NOT summarize without running it first.**
-
-Review your own output from this session and fill in each row:
-
-```
-| # | Gate | Check | Pass? | Gaps |
-|---|------|-------|-------|------|
-| 1 | Table Format | Every findings table has 8 columns (Finding, Confidence, Urgency, Risk:Fix, Risk:NoFix, ROI, Blast Radius, Fix Effort) | ? | |
-| 2 | Test Gate | Every committed fix has a test — or a documented exemption (visual, dead code, singleton) | ? | |
-| 3 | Resolution Gate | All deferred findings across all handoffs resolved to terminal state before ship recommendation | ? | |
-| 4 | Decision Prompts | Every design decision included "Explain pros/cons" option | ? | |
-| 5 | Grade Honesty | Every grade states N/10 domains audited and verification depth | ? | |
-| 6 | Risk-Ranking | Step 3.5 risk-ranking was produced before Step 4 scans | ? | |
-```
-
-**If ANY gate fails**, print the gap, fix it, then proceed. See data-model-radar SKILL.md for full gate-checking instructions.
-
----
-
-## Finding Resolution Gate (MANDATORY before wrap-up)
-
-**The audit cannot end until every finding has a terminal state.** The auditor does not get to decide which findings are "not worth asking about" — the user decides.
-
-Before writing the handoff file or presenting the wrap-up summary:
-
-1. List all findings from the session
-2. Check each has a terminal state: **Fixed** / **Accepted** / **Deferred** (with reason)
-3. If any finding lacks a terminal state, present it to the user via `AskUserQuestion`
-4. Only after all findings are resolved can you write the handoff and wrap up
-
-**Not terminal:** "Noted" / "Observed" / "Documented" — these are descriptions, not decisions. Findings presented in a table but never asked about individually are not resolved.
-
-### User Experience Gate (applies to all findings)
-
-Before accepting a "Deferred (Post-release)" classification, check: **When this feature fails, does the user discover it silently, eventually, or immediately and visibly?**
-
-- **Silent** — Post-release deferral OK.
-- **Eventually** — Post-release acceptable if documented.
-- **Immediately and visibly** — **Cannot be Post-release. Must be Pre-release regardless of fix effort.**
-
-### Deferred Finding Re-evaluation (on startup)
-
-When reading existing DEFERRED.md or handoff files at startup, re-evaluate every deferred finding against the User Experience Gate. If a Post-release finding would be immediately visible to users, challenge the deferral.
-
----
-
 ## REMINDER (End-of-File — Survives Context Compaction)
 
 **CRITICAL:** After EVERY step, EVERY commit, and EVERY domain transition:
@@ -1129,60 +919,6 @@ When reading existing DEFERRED.md or handoff files at startup, re-evaluate every
 3. NEVER leave a blank prompt
 
 This reminder is placed at the end of the file because context compaction tends to preserve the beginning and end. If you are unsure whether to print the banner, **print it**.
-
-**⚠️ CONTEXT EXHAUSTION GUARD:**
-
-Track tool calls during the session. After **50 tool calls**, auto-downgrade new findings from `verified` to `probable (long context)`. Print a warning suggesting the user split the session. Tag findings with `confidence_note`. In the handoff YAML, add `context_exhaustion_after: [N]`. On session split, the next session re-verifies those findings FIRST and upgrades to `verified` if confirmed. See data-model-radar SKILL.md for full context exhaustion logic.
-
-**⚠️ TABLE FORMAT GATE (MANDATORY — pre-output check before EVERY table):**
-
-Before outputting ANY table that contains findings, issues, deferred items, or rated items, run this mechanical check:
-
-1. Count the columns. If fewer than 8, STOP and rebuild.
-2. Verify ALL of these columns exist: **Finding | Confidence | Urgency | Risk: Fix | Risk: No Fix | ROI | Blast Radius | Fix Effort**
-3. If any column is missing, add it before displaying.
-
-This applies to ALL tables — no exceptions:
-- Findings tables, fix plan tables, batch decision tables
-- Summary tables, progress update tables, pattern sweep tables
-- Deferred item tables, resolution tables, comparison tables
-- ANY table where items have severity, urgency, or effort ratings
-
-Common rationalizations that are NOT valid exceptions:
-- "This is just a summary" → still needs all 8 columns
-- "This is a decision prompt" → still needs all 8 columns
-- "This is a quick list" → still needs all 8 columns
-- "I'm showing recommendations, not findings" → still needs all 8 columns
-- "The table would be too wide" → still needs all 8 columns (see terminal note below)
-
-**Terminal width reminder:** If the 8-column table renders as a vertical stack of items instead of horizontal rows, tell the user: "The table may appear stacked. Widen your terminal window or use full-screen mode for the intended horizontal layout."
-
-**⚠️ TEST GATE (MANDATORY — pre-commit check after EVERY fix):**
-
-Before committing ANY fix, run this mechanical check:
-
-1. Is there a test for this fix? If no, STOP.
-2. Write the test BEFORE or ALONGSIDE the fix — not "later."
-3. Run the tests: `xcodebuild test -scheme [TestScheme] -destination [simulator] -only-testing:[TestClass]` (or full test suite if quick). If any fail, fix before committing.
-4. If the fix is not unit-testable (pure visual, singleton dependency, view-layer), document WHY in a code comment and note it in the commit message.
-
-**What needs tests:**
-- Any logic change (math, conditionals, data flow)
-- Any model change (fields, relationships, computed properties)
-- Any serialization change (backup, CSV, CloudKit mapping)
-- Any state management change (lifecycle transitions, assignment cleanup)
-- Any new code path (new save path, new error handling)
-
-**What doesn't need tests (document why):**
-- Pure visual changes (color, spacing, font) — verified by eye in Canvas/simulator
-- Dead code removal — no behavior to test
-- Singleton method calls added (e.g., adding SpotlightManager.reindexAll) — integration test, not unit-testable without protocol mock
-
-**Common rationalizations that are NOT valid:**
-- "I'll write tests after all fixes" → No. Test with each fix.
-- "This is trivial" → Trivial fixes have trivial tests. Write them.
-- "Tests would slow us down" → Untested fixes are unverified fixes.
-- "The build passes" → Building is not testing.
 
 **GRADE HONESTY:** Every overall grade must state N/10 domains audited. Every owned domain grade must state verification depth (deep/sampled/spot-checked). When companions are missing, add the hygiene-only disclaimer. Do not produce a clean A+ from surface grep patterns — that grade disguises the unknown risk in unaudited companion domains.
 

@@ -1,7 +1,7 @@
 ---
 name: ui-path-radar
 description: 'UI path tracer for SwiftUI/UIKit apps. 5-layer audit: discover entry points, trace flows, detect dead ends and broken promises, evaluate UX impact, verify data wiring. Supports targeted trace, diff against previous audits, and handoff to planning skills. Triggers: "trace UI paths", "find dead ends", "/ui-path-radar".'
-version: 3.5.0
+version: 3.4.0
 author: Terry Nyberg
 license: MIT
 allowed-tools: [Read, Grep, Glob, Bash, Edit, Write, AskUserQuestion]
@@ -17,8 +17,6 @@ metadata:
 You are performing a systematic UI path audit on this SwiftUI application.
 
 **Required output:** Every finding MUST include Urgency, Risk, ROI, and Blast Radius ratings using the Issue Rating Table format. Do not omit these ratings.
-
-**Genuine problems only:** Report real issues backed by evidence. Do not nitpick, invent issues, or inflate severity. If unsure whether something is a problem, say so — don't report it as a finding.
 
 ## Quick Commands
 
@@ -302,33 +300,6 @@ Store the result as `TERMINAL_WIDE` (true/false) and apply to ALL tables in the 
 
 ---
 
-## Version Check (on first invocation — silent on failure)
-
-On startup, check if a newer version exists. Run in background, do not block the audit:
-
-```bash
-curl -sf https://raw.githubusercontent.com/Terryc21/radar-suite/main/skills/ui-path-radar/VERSION 2>/dev/null
-```
-
-- If the remote version is newer than `3.5.0`, print one line before proceeding:
-  > Update available: ui-path-radar v[remote] (you have v3.5.0). Run `git -C ~/.claude/skills/ui-path-radar pull` or visit https://github.com/Terryc21/radar-suite
-- If curl fails, remote is same/older, or command times out — skip silently. Never block the audit for a version check.
-
----
-
-## Xcode MCP Integration (Optional)
-
-On startup, silently check if Xcode MCP tools are available (e.g., attempt to list tools or check for `xcrun mcpbridge`).
-
-- **Available:** Set `XCODE_MCP = true`, note in audit header: `Xcode MCP: available`
-- **Not available:** Set `XCODE_MCP = false`, skip silently. Do not prompt user to install.
-
-**When XCODE_MCP = true, use these tools:**
-- `RenderPreview` — verify navigation destinations exist and render correctly
-- `BuildProject` — verify fix compilation after each wave
-
----
-
 ## Plain Language Communication (MANDATORY)
 
 All user-facing prompts must be understandable by someone who has never used this skill before. Apply these rules to every `AskUserQuestion`, progress banner, and completion message:
@@ -450,6 +421,58 @@ A solo developer's codebase reflects multiple versions of themselves — early c
 
 ---
 
+## Audit Methodology (MANDATORY — governs scanning)
+
+Three principles to minimize false negatives. These apply before domain-specific scanning begins.
+
+### Principle 1: Enumerate-Then-Verify
+
+For domains tagged `enumerate-required`: list ALL candidate files first, then verify each uses the correct pattern. Do NOT rely on grep alone to discover violations.
+
+```
+WRONG (search-and-hope):
+  1. Grep for known anti-pattern → 2. Report matches → 3. Grade
+
+RIGHT (enumerate-then-verify):
+  1. Enumerate ALL files containing the subject
+  2. Subtract verified-clean skip list
+  3. For EACH file, verify correct pattern exists
+  4. Report files where correct pattern is MISSING
+```
+
+**Why:** Grep finds what you search for but cannot find what you don't search for. A violation may have no searchable code signature (e.g., an element that inherits default styling with no explicit code). Grep-only scanning missed 57% of violations in real-world testing.
+
+**When to use:** Apply to domains where violations can be the absence of a correct pattern, not just the presence of a wrong one. Domains where every violation has a unique searchable signature (force unwraps, hardcoded strings) remain `grep-sufficient`. Scan-method tags (`grep-sufficient`, `enumerate-required`, `mixed`) are on each layer heading below.
+
+### Principle 2: File-Scoped Skip Lists
+
+A resolved finding applies to THAT FILE ONLY. Files that call, import, or depend on a resolved file need independent verification. Do not propagate "clean" status across a call graph.
+
+**Why:** Marking a helper file as "fixed" caused an audit to skip 8 view files that used the helper. The helper was fixed. The views calling it weren't.
+
+### Principle 3: Negative Pattern Matching
+
+To find "X without Y," search for X first, then verify Y exists around it. If neither correct pattern nor anti-pattern is found, that is a negative match.
+
+**Negative match ranking (3 tiers):**
+
+| Tier | Name | Criteria | Presentation |
+|------|------|----------|-------------|
+| A | Almost certain | Same file has verified violations OR sibling files use correct pattern | Present with verified findings |
+| B | Probable | View/file type strongly implies the pattern applies | "Likely needs fixing" section |
+| C | Possible | Subject exists without correct pattern, but context is ambiguous | "Review these" section |
+
+**Ranking factors (in priority order):**
+1. Proximity to verified violations in the same file (highest signal)
+2. Sibling file consistency (do similar files use the correct pattern?)
+3. View type / context (settings rows vs system picker options vs status badges)
+4. Element size / prominence (large prominent elements vs small subtle indicators)
+5. Code recency via git blame (recent edits more likely missed the pattern)
+
+**For projects without a style guide:** Infer conventions from codebase majority patterns. Tag findings as `inferred-convention` (Tier B max). After the audit, offer to generate a starter CLAUDE.md from inferred conventions.
+
+---
+
 When invoked, perform the audit:
 
 ### If no arguments or "full":
@@ -463,7 +486,7 @@ When invoked, perform the audit:
 Run all 5 layers sequentially, outputting findings to `.ui-path-radar/` in the project root.
 **Between layers, print:** `⏱ ✓ Step [N] of 5 complete: [plain description of what was done] — starting Step [N+1]: [plain description of what's next]`
 
-### If "layer1" or "discovery":
+### If "layer1" or "discovery": `enumerate-required`
 
 **Before starting**, count Swift files and print an estimate:
 ```
@@ -574,7 +597,7 @@ After the tables, list:
 - Count by depth level
 - Recommended flows to audit in Layer 2 (flagged entries first, deepest paths second)
 
-### If "layer2" or "trace" (no path argument):
+### If "layer2" or "trace" (no path argument): `enumerate-required`
 
 **Before starting, print:**
 ```
@@ -605,7 +628,7 @@ Targeted flow trace — trace a specific user journey described in natural langu
 5. Document the trace and any issues found
 6. Output: Issue Rating Table for any findings, plus the step-by-step trace
 
-### If "layer3" or "issues":
+### If "layer3" or "issues": `mixed`
 
 **Before starting, print:**
 ```
@@ -645,7 +668,7 @@ Rules:
 - Layer 3 cannot produce a grade while any flagged entry has `?` in Verified
 - Retracted findings stay in the table with strikethrough — they prove you checked, not just confirmed
 
-### If "layer4" or "evaluate":
+### If "layer4" or "evaluate": `enumerate-required`
 
 **Before starting, print:**
 ```
@@ -671,7 +694,7 @@ Rules:
 4. **After each evaluation, print:** `⏱ Layer 4: ✓ Issue [N]/[total] — [confidence] — [D/E/F/R scores]`
 5. Output to `layer4-semantic-evaluation.md`
 
-### If "layer5" or "data-wiring" or "wiring":
+### If "layer5" or "data-wiring" or "wiring": `enumerate-required`
 
 **Before starting, print:**
 ```
@@ -844,29 +867,6 @@ All findings MUST be presented in this format, sorted by Urgency then ROI:
 
 ---
 
-## Findings by File (auto-generated after findings table)
-
-After the main findings table, re-group all findings by file path:
-
-```
-### Findings by File
-
-**Sources/Views/Navigation/AppNavigationView.swift** (3 findings)
-- #1 (🔴 CRITICAL) — one-line summary
-- #5 (🟡 HIGH) — one-line summary
-- #9 (🟢 MEDIUM) — one-line summary
-
-**Sources/Features/Settings/SettingsView.swift** (1 finding)
-- #3 (🟡 HIGH) — one-line summary
-```
-
-- Sort files by highest-severity finding first (files with CRITICAL first)
-- Finding numbers match the main table for cross-reference
-- Skip this section entirely if fewer than 3 total findings
-- For Senior/Expert users, omit the "no findings" file list
-
----
-
 ## Fix Application Workflow
 
 After presenting findings, apply fixes in **waves**. After each wave (including commits), **always** print the progress banner and auto-prompt for the next wave. Never leave the user with a blank prompt.
@@ -886,14 +886,7 @@ Skip empty waves.
 
 ### Progress Banner (MANDATORY after every wave)
 
-**HARD GATE: After EVERY wave, EVERY commit, and EVERY build verification, your response MUST end with the progress banner + `AskUserQuestion`. If your response does not end with `AskUserQuestion`, you have violated this rule. Check before sending.**
-
-**This includes:**
-- After `git commit` → banner + AskUserQuestion (not just "committed" or "ready to push")
-- After `xcodebuild build` succeeds → banner + AskUserQuestion (not just "build passed")
-- After all fixes in a wave are applied → banner + AskUserQuestion
-- After wrapping up a layer → banner + AskUserQuestion for next layer
-- After all layers done → banner + AskUserQuestion for wrap-up/next-skill
+**CRITICAL — BLOCKING requirement.** After EVERY wave and EVERY commit, your NEXT output MUST be the progress banner followed by the next-wave `AskUserQuestion`. Do not output anything else first. Do not wait for user input. Do not leave a blank prompt.
 
 After completing each wave, **always** print:
 
@@ -978,23 +971,6 @@ Optional field suggesting how planning skills might batch issues:
 
 ---
 
-## Inline Cross-Skill Referrals
-
-When a finding primarily belongs to another skill's domain, append this line to the finding:
-
-`→ Deeper analysis: /[skill-name] [relevant-command]`
-
-| If the finding involves... | Refer to |
-|---------------------------|----------|
-| Missing/incomplete model fields | `/data-model-radar [ModelName]` |
-| Visual layout, spacing, color issues | `/ui-enhancer-radar [ViewName]` |
-| Data loss through a complete user cycle | `/roundtrip-radar [workflow]` |
-| Overall release readiness | `/capstone-radar` |
-
-Do NOT refer to ui-path-radar (that's this skill). Do NOT refer to a skill already running in this session.
-
----
-
 ## Cross-Skill Handoff
 
 UI Path Radar complements **data-model-radar** (model layer), **roundtrip-radar** (data safety), **ui-enhancer-radar** (visual quality), and **capstone-radar** (ship readiness). Findings from one skill inform the others.
@@ -1056,33 +1032,6 @@ If found, incorporate as **priority targets** in the appropriate audit layer. Th
 - capstone-radar — priority navigation areas from ship readiness grading
 
 If not found, proceed normally — the other skills may not be installed or haven't been run yet.
-
----
-
-## Finding Resolution Gate (MANDATORY before wrap-up)
-
-**The audit cannot end until every finding has a terminal state.** The auditor does not get to decide which findings are "not worth asking about" — the user decides.
-
-Before writing the handoff file or presenting the wrap-up summary:
-
-1. List all findings from the session
-2. Check each has a terminal state: **Fixed** / **Accepted** / **Deferred** (with reason)
-3. If any finding lacks a terminal state, present it to the user via `AskUserQuestion`
-4. Only after all findings are resolved can you write the handoff and wrap up
-
-**Not terminal:** "Noted" / "Observed" / "Documented" — these are descriptions, not decisions. Findings presented in a table but never asked about individually are not resolved.
-
-### User Experience Gate (applies to all findings)
-
-Before accepting a "Deferred (Post-release)" classification, check: **When this feature fails, does the user discover it silently, eventually, or immediately and visibly?**
-
-- **Silent** — Post-release deferral OK.
-- **Eventually** — Post-release acceptable if documented.
-- **Immediately and visibly** — **Cannot be Post-release. Must be Pre-release regardless of fix effort.**
-
-### Deferred Finding Re-evaluation (on startup)
-
-When reading existing DEFERRED.md or handoff files at startup, re-evaluate every deferred finding against the User Experience Gate. If a Post-release finding would be immediately visible to users, challenge the deferral.
 
 ---
 
