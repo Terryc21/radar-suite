@@ -15,6 +15,8 @@ One install gives you a complete audit pipeline — from data model integrity to
 - **Session persistence** — Preferences carry across skills and sessions (no re-answering setup questions)
 - **Checkpoint & resume** — Audits auto-save progress; resume after interruption or context exhaustion
 - **Batch mode** — Approve fixes in waves instead of one-by-one
+- **Fix timing control** — Choose when fixes happen: after each skill, recommended-only per skill, or all after capstone
+- **Post-capstone fix session** — Deferred findings are never dropped; presented as a backlog after the final grade
 - **Accepted risks** — Mark findings as "accept risk" to suppress in future audits
 - **Shared core** — ~530 lines of duplication removed; consistent behavior across all skills
 - **Streamlined setup** — One 4-question prompt instead of multiple scattered questions
@@ -87,6 +89,8 @@ Each skill has a `VERSION` file and a `version:` field in its SKILL.md frontmatt
 4. /ui-enhancer-radar      Reviews visual quality of each screen
         ↓ findings flow to...
 5. /capstone-radar         Gives overall grade + ship/no-ship decision
+        ↓ deferred findings flow to...
+6. Post-capstone fixes     Fix deferred backlog from all skills
 ```
 
 You can also run any skill individually — they work standalone. The findings handoff just makes them smarter when run together.
@@ -102,6 +106,20 @@ You can also run any skill individually — they work standalone. The findings h
 **ui-enhancer-radar** found spacing inconsistencies, missing empty states, and color contrast issues that would cause App Store accessibility rejection.
 
 **capstone-radar** aggregated all findings into a B+ grade with 2 critical blockers preventing release.
+
+## When Fixes Happen
+
+At the start of every audit, you choose when findings get fixed:
+
+| Option | What Happens |
+|--------|-------------|
+| **Fix recommended after each skill** (default) | After each skill, fix high-urgency + low-effort findings immediately. Defer the rest to a post-capstone fix session. Best balance of speed and thoroughness. |
+| **Fix all after each skill** | Fix every finding before moving to the next skill. Most thorough, but slower. |
+| **Fix all after capstone** | Run all 5 skills first for the full picture, then fix everything in one session using the capstone report as a punch list. Fastest audit, largest fix backlog. |
+
+The default option uses a simple rule: fix now if the finding is high urgency, low effort, and touches 2 files or fewer. Everything else benefits from the full audit picture — capstone might reveal it's part of a larger pattern, or deprioritize it entirely.
+
+**No finding is silently dropped.** After capstone completes, the suite presents all deferred findings as a fix backlog. Each one either gets fixed, explicitly deferred to `DEFERRED.md`, or accepted as a design choice.
 
 ## Finding Resolution
 
