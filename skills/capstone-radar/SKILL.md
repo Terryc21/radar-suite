@@ -1,16 +1,13 @@
 ---
 name: capstone-radar
 description: 'Unified A-F grading and ship/no-ship decisions for the 5-skill radar family. Aggregates companion handoffs, owns 5 grep-reliable domains, tracks velocity, celebrates improvements. Triggers: "capstone radar", "can I ship", "grade codebase", "/capstone-radar".'
-version: 3.1.0
+version: 3.3.0
 author: Terry Nyberg
 license: MIT
+inherits: radar-suite-core.md
 ---
 
 # Capstone Radar
-
-**YOU MUST EXECUTE THIS WORKFLOW. Do not just describe it.**
-
-**Required output:** Every finding MUST include Urgency, Risk, ROI, and Blast Radius ratings. Do not omit these ratings.
 
 Capstone Radar is the **aggregator + gap filler** for the 5-skill radar family. It consumes findings from 4 companion skills, runs its own scans for 5 domains the companions don't cover, grades everything on one unified scale, and makes the ship/no-ship decision.
 
@@ -21,9 +18,88 @@ It does NOT:
 
 ## Usage
 
-- `/capstone-radar` — Full analysis — checks everything and reads findings from other audits you've run
-- `/capstone-radar quick` — Quick check — only looks at its own areas, ignores other audit results
-- `/capstone-radar report` — No scanning, re-grade from existing handoff files only
+| Command | Description |
+|---------|-------------|
+| `/capstone-radar` | Full analysis — checks everything and reads companion handoffs |
+| `/capstone-radar quick` | Quick check — own domains only, ignores companion results |
+| `/capstone-radar report` | No scanning, re-grade from existing handoff files only |
+| `/capstone-radar diff` | Compare against previous audit — show resolved/new issues |
+
+---
+
+## Diff Command
+
+**Audit comparison** — compare current codebase against a previous audit to show what changed.
+
+### Usage
+
+```
+/capstone-radar diff
+/capstone-radar diff 2026-03-15
+```
+
+### How It Works
+
+1. **Find previous audit** — Read the most recent (or specified date) `.agents/research/*-capstone-audit.md`
+2. **Parse previous findings** — Extract all issues from the GRADES_YAML block and findings tables
+3. **Re-check each finding:**
+   - Read the file at the reported line number
+   - Check if the problematic pattern still exists
+   - Classify as: ✅ RESOLVED, 🔴 STILL OPEN, 📁 FILE CHANGED
+4. **Scan for new issues** — Quick grep scan for new violations not in previous report
+5. **Output diff summary**
+
+### Output Format
+
+```
+Audit Diff: 2026-03-15 → 2026-03-29
+
+Summary:
+  ✅ Resolved: 8 issues fixed since last audit
+  🔴 Still Open: 3 issues remain
+  🆕 New: 2 new issues detected
+  📁 Changed: 4 files modified (may need re-verification)
+
+Grade Trend:
+  Overall: B [83] → B+ [87] ↑
+  Code Hygiene: B- → A- ↑
+  Security Basics: A → A (stable)
+  Test Health: C → C+ ↑
+
+Resolved Issues:
+| # | Finding | Was | File | Resolved By |
+|---|---------|-----|------|-------------|
+| 1 | TODO marker in production | 🟡 HIGH | CloudSyncManager.swift:142 | Commit abc123 |
+
+Still Open:
+| # | Finding | Urgency | File | Age |
+|---|---------|---------|------|-----|
+| 1 | Force unwrap in error path | 🟡 HIGH | BackupManager.swift:89 | 14 days |
+
+New Issues:
+| # | Finding | Urgency | Risk: Fix | Risk: No Fix | ROI | Blast Radius | Fix Effort |
+```
+
+### When to Use
+
+- **Pre-release check** — "What's changed since our last audit?"
+- **Progress tracking** — Verify issues are being resolved over time
+- **Regression detection** — Catch new issues introduced since last audit
+
+### Velocity Tracking
+
+If 3+ previous audits exist, show trend line:
+```
+Grade Velocity (last 5 audits):
+  Build 21: C+ [78]
+  Build 22: B- [80]
+  Build 23: B  [84]
+  Build 24: B+ [87]
+  Build 25: B+ [88] ← current
+
+Trend: Improving (+2.5 pts/build avg)
+Projection: A- by Build 28 at current rate
+```
 
 ---
 
@@ -56,209 +132,9 @@ Store the experience level as `USER_EXPERIENCE` and apply to ALL output for the 
 
 ---
 
-## Plain Language Communication (MANDATORY)
+## Shared Patterns
 
-All user-facing prompts must be understandable by someone who has never used this skill before:
-
-1. **Describe grades by what they mean** ("your backup system has a critical gap — 2 data types aren't saved") not just letter grades
-2. **Describe the ship/no-ship decision in plain terms** ("safe to release" / "has issues that should be fixed first" / "has critical problems that could lose user data")
-3. **Add an "Explain more" option** to every transition `AskUserQuestion`
-4. **Define jargon on first use:**
-   - "Companion skill" → one of the other audit tools that checks a specific area (data models, navigation, etc.)
-   - "Handoff" → a file another audit tool wrote with its findings, which this tool reads
-   - "Ship/no-ship" → whether the app is ready to release to the App Store
-   - "Domain" → an area of the codebase being graded (e.g., "Data Safety", "Navigation", "Performance")
-5. **Exception:** If user selected Senior/Expert experience level, terse references are acceptable
-
-### Final Report Prompt Template
-
-```
-## Release Readiness: [SHIP / SHIP WITH CAUTION / DO NOT SHIP]
-
-**Overall Grade: [letter]** — [one plain sentence explaining what this means]
-
-Top issues to address:
-1. [plain description] — [urgency]
-2. [plain description] — [urgency]
-
-Areas of strength:
-- [plain description]
-
-You can:
-1. **See the full report** — detailed grades for all [N] areas
-2. **Start fixing critical issues** — [one-line description of what gets fixed first]
-3. **Explain more** — I'll walk through what each grade means
-```
-
----
-
-## Work Receipts (MANDATORY — every verified finding)
-
-Every finding tagged as `verified` must include a **work receipt** — proof of what was actually checked. No receipt = automatic downgrade to `probable`.
-
-A work receipt includes:
-- **File read:** the specific file path and line range that was read
-- **Pattern searched:** the grep pattern or search term used
-- **Evidence found:** the specific code that confirms the finding (quote 1-3 lines)
-
-**Example — with receipt (verified):**
-```
-Finding: Room column not imported in CSV
-Receipt: Read CSVImportManager.swift:420-447. Searched for `item.room =` — 0 matches.
-  Canonical mapping exists at line 45 (`"room": "Room"`) but createItemFromRow never sets item.room.
-Confidence: verified
-```
-
-**Example — without receipt (downgraded):**
-```
-Finding: Room column not imported in CSV
-Receipt: none (structural analysis only)
-Confidence: probable (no file evidence — upgrade to verified by reading CSVImportManager.swift)
-```
-
-**Rule:** If you catch yourself writing "verified" without having produced a receipt, stop and either produce the receipt or downgrade to "probable." The receipt is not documentation for the user — it is a structural constraint that prevents claiming depth you didn't achieve.
-
----
-
-## Contradiction Detection (MANDATORY — before final grades)
-
-Before presenting any domain grade, run this mechanical check:
-
-1. **Findings vs grade:** If a domain has any CRITICAL findings, the grade cannot be above C. If it has any HIGH findings, the grade cannot be above B+. If the calculated score produces a higher grade than these caps allow, lower the grade to the cap and note: "Grade capped from [calculated] to [capped] due to [N] [severity] findings."
-
-2. **Cross-reference handoff vs grade:** If the handoff file for a domain lists blockers, the grade for that domain cannot be A. The handoff represents what was actually found — the grade must be consistent.
-
-3. **Self-consistency:** If two findings in the same report contradict each other (e.g., "backup is comprehensive" in Domain 2 but "InsuranceProfile missing from backup" in the findings table), flag the contradiction explicitly and resolve it before grading.
-
-These checks are mechanical — no judgment needed, just arithmetic and string matching. Run them automatically as the last step before presenting grades.
-
----
-
-## Finding Classification (MANDATORY)
-
-Classify every finding into one of three categories. Do not report all findings as the same type.
-
-### 1. Bug
-Code does something wrong. The behavior contradicts the developer's intent.
-- Example: Edit form drops secondary categories on save
-
-### 2. Stale Code
-Code was correct when written but the codebase grew around it. Detectable via git history.
-- Check: `git log -1 -- <file>` for last modification date
-- Check: model/dependency field count at that date vs now
-- If the model grew significantly and the code didn't keep up → stale code
-- Example: CKRecordMapper mapped 36 of 40 fields when extracted. Model grew to 85+ fields. Mapper only grew to 39.
-- Present as: "This code was last updated [date] when [model] had [N] fields. [Model] now has [M] fields. [M-N] fields were added after this code was written. Was this intentional?"
-
-### 3. Design Choice
-Intentionally limited scope with documented evidence.
-- Requires: CLAUDE.md section, code comment explaining the limitation, or consistent pattern across the codebase
-- If no documentation exists, classify as Stale Code, not Design Choice
-- Present as: "Documented decision: [quote from docs]. If this no longer reflects your intent, reclassify as stale code."
-
-### Why This Matters
-"Design choice" is often a euphemism for "built under time pressure, never revisited." The distinction between categories 2 and 3 is the presence of evidence. Without evidence, assume stale — the developer can always correct you.
-
-### Developer Growth Awareness (how to frame findings)
-
-A solo developer's codebase reflects multiple versions of themselves — early code reflects early understanding. Frame findings accordingly:
-
-**For bugs:** Direct and specific. "This code does X when it should do Y."
-
-**For stale code:** Frame as growth, not failure. Show the developer their own progress:
-- "You've since adopted [better pattern] in [newer file] — this older file uses the earlier approach."
-- "This was written [date] when the model had [N] fields. You've added [M-N] fields since then. The [feature] didn't keep up."
-- "Your current code in [newer file] handles this correctly. This older code predates that pattern."
-
-**For design choices:** Respect the decision but invite reconsideration:
-- "This was documented as intentional [quote]. Given what you've built since then, does this still match your intent?"
-
-**Never frame findings as criticism.** Every finding is an opportunity for current-self to revisit past-self's decisions — not a judgment on past-self's competence. Early code worked. It shipped. It just reflects an earlier stage of understanding.
-
----
-
-## Audit Methodology (MANDATORY — governs scanning)
-
-Three principles to minimize false negatives. These apply before domain-specific scanning begins.
-
-### Principle 1: Enumerate-Then-Verify
-
-For domains tagged `enumerate-required`: list ALL candidate files first, then verify each uses the correct pattern. Do NOT rely on grep alone to discover violations.
-
-```
-WRONG (search-and-hope):
-  1. Grep for known anti-pattern → 2. Report matches → 3. Grade
-
-RIGHT (enumerate-then-verify):
-  1. Enumerate ALL files containing the subject
-  2. Subtract verified-clean skip list
-  3. For EACH file, verify correct pattern exists
-  4. Report files where correct pattern is MISSING
-```
-
-**Why:** Grep finds what you search for but cannot find what you don't search for. A violation may have no searchable code signature (e.g., an element that inherits default styling with no explicit code). Grep-only scanning missed 57% of violations in real-world testing.
-
-**When to use:** Apply to domains where violations can be the absence of a correct pattern, not just the presence of a wrong one. Domains where every violation has a unique searchable signature (force unwraps, hardcoded strings) remain `grep-sufficient`. Scan-method tags (`grep-sufficient`, `enumerate-required`, `mixed`) are on each domain heading below.
-
-### Principle 2: File-Scoped Skip Lists
-
-A resolved finding applies to THAT FILE ONLY. Files that call, import, or depend on a resolved file need independent verification. Do not propagate "clean" status across a call graph.
-
-**Why:** Marking a helper file as "fixed" caused an audit to skip 8 view files that used the helper. The helper was fixed. The views calling it weren't.
-
-### Principle 3: Negative Pattern Matching
-
-To find "X without Y," search for X first, then verify Y exists around it. If neither correct pattern nor anti-pattern is found, that is a negative match.
-
-**Negative match ranking (3 tiers):**
-
-| Tier | Name | Criteria | Presentation |
-|------|------|----------|-------------|
-| A | Almost certain | Same file has verified violations OR sibling files use correct pattern | Present with verified findings |
-| B | Probable | View/file type strongly implies the pattern applies | "Likely needs fixing" section |
-| C | Possible | Subject exists without correct pattern, but context is ambiguous | "Review these" section |
-
-**Ranking factors (in priority order):**
-1. Proximity to verified violations in the same file (highest signal)
-2. Sibling file consistency (do similar files use the correct pattern?)
-3. View type / context (settings rows vs system picker options vs status badges)
-4. Element size / prominence (large prominent elements vs small subtle indicators)
-5. Code recency via git blame (recent edits more likely missed the pattern)
-
-**For projects without a style guide:** Infer conventions from codebase majority patterns. Tag findings as `inferred-convention` (Tier B max). After the audit, offer to generate a starter CLAUDE.md from inferred conventions.
-
----
-
-## Terminal Width Check (MANDATORY — run first)
-
-Before ANY output, check terminal width:
-```bash
-tput cols
-```
-
-- **160+ columns** — Use full 8-column Issue Rating Table. Proceed immediately.
-- **Under 160 columns** — **Prompt the user first** using `AskUserQuestion`:
-
-  **Question:** "Your terminal is [N] columns wide. The full Issue Rating Table needs 160+ columns. Want to widen it now?"
-  - **"I've widened it" (Recommended)** — Re-run `tput cols` to confirm. If tput still reports the old width (terminal resize doesn't always propagate to the shell), trust the user and use full tables anyway.
-  - **"Use compact tables"** — Use compact 3-column table with finding text on separate lines below each row:
-    ```
-    | # | Urgency | Fix Effort |
-    |---|---------|------------|
-    | 1 | HIGH | Small      |
-    |   `activeImporterKind` never assigned — file importer silently drops files |
-    |   `EnhancedItemDetailView.swift:93` |
-    ```
-    Full 8-column table goes to report file only.
-  - **"Skip check"** — Use full 8-column table regardless (user accepts wrapping).
-
-  If the user chose compact mode, **after each compact table, print:**
-
-```
-Compact table (terminal: [N] cols). Say "show full table" for all 8 columns.
-```
-
-If the user later says "show full table", "wide table", or "full ratings", re-render the most recent findings table in full 8-column format regardless of terminal width. Apply to ALL tables in the session.
+See `radar-suite-core.md` for: Table Format, Plain Language Communication, Work Receipts, Contradiction Detection, Finding Classification, Audit Methodology, Context Exhaustion, Progress Banner, Issue Rating Tables, Handoff YAML schema.
 
 ---
 
@@ -795,30 +671,57 @@ recommendation: "ship" | "conditional" | "no-ship"
 overall_grade: "<letter grade>"
 overall_score: <numeric>
 
+# File timestamps — enables staleness detection by consuming skills
+file_timestamps:
+  <file path>: "<ISO 8601 mod date>"
+  # one entry per unique file referenced in findings
+
 for_roundtrip_radar:
   priority_workflows:
     - domain: "<e.g., Data Safety>"
       grade: "<letter>"
       reason: "<why this domain scored low>"
+      group_hint: "<optional, e.g. 'data_safety', 'error_handling'>"
 
 for_ui_path_radar:
   priority_areas:
     - domain: "<e.g., Navigation/UX>"
       grade: "<letter>"
       reason: "<specific issues found>"
+      group_hint: "<optional batching suggestion>"
 
 for_ui_enhancer_radar:
   priority_views:
     - domain: "<e.g., Visual Quality>"
       grade: "<letter>"
       reason: "<specific gaps>"
+      group_hint: "<optional batching suggestion>"
 
 for_data_model_radar:
   priority_models:
     - domain: "<e.g., Model Layer>"
       grade: "<letter>"
       reason: "<specific model issues>"
+      group_hint: "<optional batching suggestion>"
 ```
+
+### File Timestamps
+
+For each unique file path referenced across all findings, record its modification date:
+
+```bash
+stat -f "%Sm" -t "%Y-%m-%dT%H:%M:%SZ" "<file path>"
+```
+
+Enables consuming skills to detect **staleness** — if a file changed after the audit, affected findings may need re-verification.
+
+### Group Hints
+
+Optional field for batching related issues. Common hints:
+- `security_basics` — secrets, credentials, http URLs
+- `test_health` — missing tests, test gaps
+- `code_hygiene` — TODOs, force unwraps, large files
+- `build_health` — scheme issues, dependency problems
 
 **Automatic:** This file is always written so other audit skills can pick up where this one left off. No user action needed.
 
@@ -911,15 +814,10 @@ Capstone is both the **entry point** ("what should I audit?") and the **exit poi
 
 ---
 
-## REMINDER (End-of-File — Survives Context Compaction)
+## End Reminder
 
-**CRITICAL:** After EVERY step, EVERY commit, and EVERY domain transition:
-1. Print the progress banner (step-level)
-2. Immediately `AskUserQuestion` for the next step
-3. NEVER leave a blank prompt
+After every step/commit: print progress banner → `AskUserQuestion` → never blank prompt.
 
-This reminder is placed at the end of the file because context compaction tends to preserve the beginning and end. If you are unsure whether to print the banner, **print it**.
+**Grade honesty:** State N/10 domains audited. State verification depth (deep/sampled/spot-checked). No clean A+ from surface greps alone.
 
-**GRADE HONESTY:** Every overall grade must state N/10 domains audited. Every owned domain grade must state verification depth (deep/sampled/spot-checked). When companions are missing, add the hygiene-only disclaimer. Do not produce a clean A+ from surface grep patterns — that grade disguises the unknown risk in unaudited companion domains.
-
-**RISK-RANKING:** Do not start Step 4 without producing the risk-ranking table from Step 3.5. Verify riskiest domains first, not easiest first.
+**Risk-ranking:** Produce Step 3.5 risk-ranking table before Step 4. Verify riskiest domains first.

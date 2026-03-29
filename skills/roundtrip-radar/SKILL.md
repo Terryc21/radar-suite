@@ -1,14 +1,13 @@
 ---
 name: roundtrip-radar
-description: 'Per-journey code audit tracing data through complete user flows for bugs, data safety, performance, and round-trip completeness. Discovers workflows, audits each end-to-end, and rolls up cross-cutting issues. Triggers: "roundtrip audit", "trace user journey", "/roundtrip-radar".'
-version: 1.2.0
+description: 'Per-journey code audit tracing data through complete user flows for bugs, data safety, performance, and round-trip completeness. Discovers workflows, audits each end-to-end, rolls up cross-cutting issues, and supports natural-language flow tracing. Triggers: "roundtrip audit", "trace user journey", "/roundtrip-radar".'
+version: 1.4.0
 author: Terry Nyberg
 license: MIT
+inherits: radar-suite-core.md
 ---
 
-# Workflow Code Audit
-
-**YOU MUST EXECUTE THIS WORKFLOW. Do not just describe it.**
+# Roundtrip Radar
 
 This skill audits application workflows for bugs, data-safety issues, performance
 problems, and data round-trip completeness. It operates in three steps:
@@ -19,10 +18,67 @@ problems, and data round-trip completeness. It operates in three steps:
 
 ## Usage
 
-- `/workflow-code-audit discover` — Run Step 0 only
-- `/workflow-code-audit [WORKFLOW_NAME]` — Run Step 1 for a specific workflow
-- `/workflow-code-audit rollup` — Run Step 2 after all individual audits
-- `/workflow-code-audit` (no args) — Start with Step 0, then prompt for Step 1
+| Command | Description |
+|---------|-------------|
+| `/roundtrip-radar` | Start with Step 0 (discover), then prompt for Step 1 |
+| `/roundtrip-radar discover` | Run Step 0 only — find all workflows |
+| `/roundtrip-radar [WORKFLOW]` | Run Step 1 for a specific workflow |
+| `/roundtrip-radar rollup` | Run Step 2 — cross-cutting analysis |
+| `/roundtrip-radar trace "A → B → C"` | Trace a specific user flow path (see below) |
+| `/roundtrip-radar diff` | Compare findings against previous audit |
+
+---
+
+## Trace Command
+
+**Targeted flow tracing** — trace a specific user journey described in natural language.
+
+### Usage
+
+```
+/roundtrip-radar trace "Dashboard → Add Item → Photo → Save"
+/roundtrip-radar trace "Settings, Export, CSV, Email"
+```
+
+### How It Works
+
+1. **Parse the path** — Split on `→`, `->`, or `,` into discrete steps
+2. **Identify code locations** — For each step, search for:
+   - View names matching the step
+   - Sheet triggers, navigation actions
+   - Button labels, action handlers
+3. **Trace step by step** — For each transition:
+   - File and line number
+   - State changes (sheet presentations, navigation, @State mutations)
+   - Data transformations (what model fields are read/written)
+4. **Check for issues at each step:**
+   - Is data preserved between steps? (Round-trip completeness)
+   - Are there error paths that lose context? (Error handling)
+   - Is the user's intent preserved? (Data safety)
+   - Are there race conditions? (Concurrency)
+5. **Output** — Issue Rating Table for findings + step-by-step trace with receipts
+
+### Output Format
+
+```
+Trace: Dashboard → Add Item → Photo → Save
+
+| Step | Action | File | Lines | Data In | Data Out | Finding |
+|------|--------|------|-------|---------|----------|---------|
+| 1 | Dashboard tap "Add" | DashboardView.swift | 142-145 | — | activeSheet = .addItem | ok |
+| 2 | Add Item sheet presents | AddItemView.swift | 1-50 | Item.draft | item.title, item.category | ok |
+| 3 | Photo picker | PhotoPicker.swift | 23-89 | item.id | PhotoAttachment | ⚠️ orientation lost |
+| 4 | Save item | ItemViewModel.swift | 112-134 | item + attachments | modelContext.save() | ok |
+
+Issues Found:
+| # | Finding | Urgency | Risk: Fix | Risk: No Fix | ROI | Blast Radius | Fix Effort |
+```
+
+### When to Use
+
+- **Debugging a specific user report** — "When I add a photo and save, the orientation is wrong"
+- **Verifying a fix** — Trace the exact path to confirm data flows correctly
+- **Pre-release spot check** — Trace critical paths without a full audit
 
 ---
 
@@ -60,212 +116,9 @@ If the user types "adjust", re-ask only the question(s) they want to change. Use
 
 ---
 
-## Terminal Width Check (MANDATORY — run first)
+## Shared Patterns
 
-Before ANY output, check terminal width:
-```bash
-tput cols
-```
-
-- **160+ columns** → Use full 8-column Issue Rating Table. Proceed immediately.
-- **Under 160 columns** → **Prompt the user first** using `AskUserQuestion`:
-
-  **Question:** "Your terminal is [N] columns wide. The full Issue Rating Table needs 160+ columns. Want to widen it now?"
-  - **"I've widened it" (Recommended)** — Re-run `tput cols` to confirm. If tput still reports the old width (terminal resize doesn't always propagate to the shell), trust the user and use full tables anyway.
-  - **"Use compact tables"** — Use compact 3-column table with finding text on separate lines below each row:
-    ```
-    | # | Urgency | Fix Effort |
-    |---|---------|------------|
-    | 1 | 🟡 HIGH | Small      |
-    |   `activeImporterKind` never assigned — file importer silently drops files |
-    |   `EnhancedItemDetailView.swift:93` |
-    | 2 | ⚪ LOW  | Trivial    |
-    |   `showingAddImageMenu` declared but never used — dead code |
-    |   `EnhancedItemDetailView.swift:94` |
-    ```
-    Full 8-column table goes to report file only (if report delivery was selected).
-  - **"Skip check"** — Use full 8-column table regardless (user accepts wrapping).
-
-  If the user chose compact mode, **after each compact table, print:**
-
-```
-📐 Compact table (terminal: [N] cols). Say "show full table" for all 8 columns.
-```
-
-If the user later says "show full table", "wide table", or "full ratings", re-render the most recent findings table in full 8-column format regardless of terminal width. Apply to ALL tables in the session.
-
----
-
-## Plain Language Communication (MANDATORY)
-
-All user-facing prompts must be understandable by someone who has never used this skill before. Apply these rules to every `AskUserQuestion`, progress banner, and completion message:
-
-1. **Describe what was found** in plain terms ("data lost when exporting and re-importing", "backup doesn't save your insurance settings") — not jargon ("serialization gap in round-trip")
-2. **Describe next steps by what they DO**, not by skill name ("check your data models for missing fields" not "proceed to data-model-radar")
-3. **Describe options by outcome and time cost** ("Fix the data loss bugs now (~20 min)" not "Wave 2: Cross-cutting fixes")
-4. **Add an "Explain more" option** to every transition `AskUserQuestion` so users can get context without slowing down experienced users
-5. **Define jargon on first use:**
-   - "Round-trip" → when data goes through a complete cycle (e.g., create → export → import) and comes back intact
-   - "Workflow" → a complete user task from start to finish (e.g., "add an item", "create a backup")
-   - "Wave" → "fix batch" (a group of related fixes applied together)
-   - "Handoff" → a file this skill writes so other audit skills can pick up where it left off
-   - "Cross-cutting" → an issue that appears in multiple workflows (not just one)
-   - "Blast radius" → how many files a fix touches
-6. **Exception:** If user selected Senior/Expert experience level, terse references are acceptable
-
-### Completion Prompt Template
-
-When all workflows are audited, use this pattern:
-
-```
-I traced [X] user workflows end-to-end and found [Y] issues:
-- [N] data loss risks (data doesn't survive the complete cycle)
-- [N] silent failures (operations appear to succeed but data is wrong/missing)
-- [N] other issues
-
-You can:
-1. **Fix the data loss issues now** (~[time]) — prevents users from losing data
-2. **Fix just the quick wins** (~[time]) — [one-line description]
-3. **Keep auditing other areas first** — I'll check [plain description] next
-4. **Explain more** — I'll walk through what each issue means before you decide
-```
-
----
-
-## Work Receipts (MANDATORY — every verified finding)
-
-Every finding tagged as `verified` must include a **work receipt** — proof of what was actually checked. No receipt = automatic downgrade to `probable`.
-
-A work receipt includes:
-- **File read:** the specific file path and line range that was read
-- **Pattern searched:** the grep pattern or search term used
-- **Evidence found:** the specific code that confirms the finding (quote 1-3 lines)
-
-**Example — with receipt (verified):**
-```
-Finding: Room column not imported in CSV
-Receipt: Read CSVImportManager.swift:420-447. Searched for `item.room =` — 0 matches.
-  Canonical mapping exists at line 45 (`"room": "Room"`) but createItemFromRow never sets item.room.
-Confidence: verified
-```
-
-**Example — without receipt (downgraded):**
-```
-Finding: Room column not imported in CSV
-Receipt: none (structural analysis only)
-Confidence: probable (no file evidence — upgrade to verified by reading CSVImportManager.swift)
-```
-
-**Rule:** If you catch yourself writing "verified" without having produced a receipt, stop and either produce the receipt or downgrade to "probable." The receipt is not documentation for the user — it is a structural constraint that prevents claiming depth you didn't achieve.
-
----
-
-## Contradiction Detection (MANDATORY — before final grades)
-
-Before presenting any domain grade, run this mechanical check:
-
-1. **Findings vs grade:** If a domain has any CRITICAL findings, the grade cannot be above C. If it has any HIGH findings, the grade cannot be above B+. If the calculated score produces a higher grade than these caps allow, lower the grade to the cap and note: "Grade capped from [calculated] to [capped] due to [N] [severity] findings."
-
-2. **Cross-reference handoff vs grade:** If the handoff file for a domain lists blockers, the grade for that domain cannot be A. The handoff represents what was actually found — the grade must be consistent.
-
-3. **Self-consistency:** If two findings in the same report contradict each other (e.g., "backup is comprehensive" in Domain 2 but "InsuranceProfile missing from backup" in the findings table), flag the contradiction explicitly and resolve it before grading.
-
-These checks are mechanical — no judgment needed, just arithmetic and string matching. Run them automatically as the last step before presenting grades.
-
----
-
-## Finding Classification (MANDATORY)
-
-Classify every finding into one of three categories. Do not report all findings as the same type.
-
-### 1. Bug
-Code does something wrong. The behavior contradicts the developer's intent.
-- Example: Edit form drops secondary categories on save
-
-### 2. Stale Code
-Code was correct when written but the codebase grew around it. Detectable via git history.
-- Check: `git log -1 -- <file>` for last modification date
-- Check: model/dependency field count at that date vs now
-- If the model grew significantly and the code didn't keep up → stale code
-- Example: CKRecordMapper mapped 36 of 40 fields when extracted. Model grew to 85+ fields. Mapper only grew to 39.
-- Present as: "This code was last updated [date] when [model] had [N] fields. [Model] now has [M] fields. [M-N] fields were added after this code was written. Was this intentional?"
-
-### 3. Design Choice
-Intentionally limited scope with documented evidence.
-- Requires: CLAUDE.md section, code comment explaining the limitation, or consistent pattern across the codebase
-- If no documentation exists, classify as Stale Code, not Design Choice
-- Present as: "Documented decision: [quote from docs]. If this no longer reflects your intent, reclassify as stale code."
-
-### Why This Matters
-"Design choice" is often a euphemism for "built under time pressure, never revisited." The distinction between categories 2 and 3 is the presence of evidence. Without evidence, assume stale — the developer can always correct you.
-
-### Developer Growth Awareness (how to frame findings)
-
-A solo developer's codebase reflects multiple versions of themselves — early code reflects early understanding. Frame findings accordingly:
-
-**For bugs:** Direct and specific. "This code does X when it should do Y."
-
-**For stale code:** Frame as growth, not failure. Show the developer their own progress:
-- "You've since adopted [better pattern] in [newer file] — this older file uses the earlier approach."
-- "This was written [date] when the model had [N] fields. You've added [M-N] fields since then. The [feature] didn't keep up."
-- "Your current code in [newer file] handles this correctly. This older code predates that pattern."
-
-**For design choices:** Respect the decision but invite reconsideration:
-- "This was documented as intentional [quote]. Given what you've built since then, does this still match your intent?"
-
-**Never frame findings as criticism.** Every finding is an opportunity for current-self to revisit past-self's decisions — not a judgment on past-self's competence. Early code worked. It shipped. It just reflects an earlier stage of understanding.
-
----
-
-## Audit Methodology (MANDATORY — governs scanning)
-
-Three principles to minimize false negatives. These apply before domain-specific scanning begins.
-
-### Principle 1: Enumerate-Then-Verify
-
-For domains tagged `enumerate-required`: list ALL candidate files first, then verify each uses the correct pattern. Do NOT rely on grep alone to discover violations.
-
-```
-WRONG (search-and-hope):
-  1. Grep for known anti-pattern → 2. Report matches → 3. Grade
-
-RIGHT (enumerate-then-verify):
-  1. Enumerate ALL files containing the subject
-  2. Subtract verified-clean skip list
-  3. For EACH file, verify correct pattern exists
-  4. Report files where correct pattern is MISSING
-```
-
-**Why:** Grep finds what you search for but cannot find what you don't search for. A violation may have no searchable code signature (e.g., an element that inherits default styling with no explicit code). Grep-only scanning missed 57% of violations in real-world testing.
-
-**When to use:** Apply to domains where violations can be the absence of a correct pattern, not just the presence of a wrong one. Domains where every violation has a unique searchable signature (force unwraps, hardcoded strings) remain `grep-sufficient`. Scan-method tags (`grep-sufficient`, `enumerate-required`, `mixed`) are on each check category below.
-
-### Principle 2: File-Scoped Skip Lists
-
-A resolved finding applies to THAT FILE ONLY. Files that call, import, or depend on a resolved file need independent verification. Do not propagate "clean" status across a call graph.
-
-**Why:** Marking a helper file as "fixed" caused an audit to skip 8 view files that used the helper. The helper was fixed. The views calling it weren't.
-
-### Principle 3: Negative Pattern Matching
-
-To find "X without Y," search for X first, then verify Y exists around it. If neither correct pattern nor anti-pattern is found, that is a negative match.
-
-**Negative match ranking (3 tiers):**
-
-| Tier | Name | Criteria | Presentation |
-|------|------|----------|-------------|
-| A | Almost certain | Same file has verified violations OR sibling files use correct pattern | Present with verified findings |
-| B | Probable | View/file type strongly implies the pattern applies | "Likely needs fixing" section |
-| C | Possible | Subject exists without correct pattern, but context is ambiguous | "Review these" section |
-
-**Ranking factors (in priority order):**
-1. Proximity to verified violations in the same file (highest signal)
-2. Sibling file consistency (do similar files use the correct pattern?)
-3. View type / context (settings rows vs system picker options vs status badges)
-4. Element size / prominence (large prominent elements vs small subtle indicators)
-5. Code recency via git blame (recent edits more likely missed the pattern)
-
-**For projects without a style guide:** Infer conventions from codebase majority patterns. Tag findings as `inferred-convention` (Tier B max). After the audit, offer to generate a starter CLAUDE.md from inferred conventions.
+See `radar-suite-core.md` for: Table Format, Plain Language Communication, Work Receipts, Contradiction Detection, Finding Classification, Audit Methodology, Context Exhaustion, Progress Banner, Issue Rating Tables, Handoff YAML schema.
 
 ---
 
@@ -739,6 +592,12 @@ date: <ISO 8601>
 project: <project name>
 workflows_audited: <count>
 
+# File timestamps — enables staleness detection by consuming skills
+# If a file changed after the audit, affected issues may need re-verification
+file_timestamps:
+  <file path>: "<ISO 8601 mod date>"
+  # one entry per unique file referenced in issues
+
 for_ui_path_radar:
   # Data issues that may have navigation/entry-point implications
   suspects:
@@ -746,6 +605,7 @@ for_ui_path_radar:
       finding: "<data safety issue found>"
       file: "<file:line>"
       question: "<does the UI reflect this data issue?>"
+      group_hint: "<optional, e.g. 'data_loss', 'silent_failure'>"
 
 for_ui_enhancer_radar:
   # Dead code, orphaned UI, or views with broken data backing
@@ -753,6 +613,7 @@ for_ui_enhancer_radar:
     - view: "<view file>"
       finding: "<data issue that affects this view>"
       action: "verify data binding or remove dead UI"
+      group_hint: "<optional batching suggestion>"
 
 for_capstone_radar:
   # Critical/high findings that affect ship readiness
@@ -760,13 +621,33 @@ for_capstone_radar:
     - finding: "<description>"
       urgency: "<CRITICAL|HIGH>"
       workflow: "<workflow name>"
+      group_hint: "<optional batching suggestion>"
 
 cross_cutting_patterns:
   # Patterns found across multiple workflows — useful for all skills
   - pattern: "<e.g., Double() price parsing>"
     workflows_affected: ["Backup", "Edit Item", "CSV Import"]
     status: "fixed" | "deferred"
+    group_hint: "<optional, e.g. 'price_parsing', 'id_handling'>"
 ```
+
+### File Timestamps
+
+For each unique file path referenced across all issues, record its modification date at audit time:
+
+```bash
+# Get file mod date (macOS)
+stat -f "%Sm" -t "%Y-%m-%dT%H:%M:%SZ" "<file path>"
+```
+
+This enables consuming skills to detect **staleness** — if a file changed after the audit, affected issues may need re-verification before acting on them.
+
+### Group Hints
+
+Optional field suggesting how consuming skills might batch related issues:
+- Issues with the same `group_hint` are candidates for a single fix task
+- Consuming skills are free to ignore hints and group differently
+- Common hints: `data_loss`, `silent_failure`, `round_trip_gap`, `error_handling`, `concurrency`
 
 **Automatic:** This file is always written so other audit skills can pick up where this one left off. No user action needed.
 
@@ -803,11 +684,6 @@ If not found, proceed normally.
 
 ---
 
-## REMINDER (End-of-File — Survives Context Compaction)
+## End Reminder
 
-**CRITICAL:** After EVERY fix batch (wave), EVERY commit, and EVERY workflow transition:
-1. Print the progress banner (wave-level or workflow-level)
-2. Immediately `AskUserQuestion` for the next step
-3. NEVER leave a blank prompt
-
-This reminder is placed at the end of the file because context compaction tends to preserve the beginning and end. If you are unsure whether to print the banner, **print it**.
+After every wave/commit/workflow: print progress banner → `AskUserQuestion` → never blank prompt.

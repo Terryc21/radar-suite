@@ -3,9 +3,21 @@
 ![GitHub stars](https://img.shields.io/github/stars/Terryc21/radar-suite?style=flat)
 ![GitHub forks](https://img.shields.io/github/forks/Terryc21/radar-suite?style=flat)
 
-**5 audit skills for Claude Code that find bugs in your Swift/SwiftUI app before your users do.**
+**6 audit skills for Claude Code that find bugs in your Swift/SwiftUI app before your users do.**
 
 One install gives you a complete audit pipeline — from data model integrity to visual quality to release readiness.
+
+## What's New in v2.0
+
+**Major architecture overhaul** focused on UX and token efficiency:
+
+- **Unified entry point** — `/radar-suite` routes to any skill or runs the full audit sequence
+- **Session persistence** — Preferences carry across skills and sessions (no re-answering setup questions)
+- **Checkpoint & resume** — Audits auto-save progress; resume after interruption or context exhaustion
+- **Batch mode** — Approve fixes in waves instead of one-by-one
+- **Accepted risks** — Mark findings as "accept risk" to suppress in future audits
+- **Shared core** — ~530 lines of duplication removed; consistent behavior across all skills
+- **Streamlined setup** — One 4-question prompt instead of multiple scattered questions
 
 ## How is Radar Suite different from other code auditing skills?
 
@@ -21,6 +33,7 @@ Most auditors are the building code. Radar Suite is the home inspector.
 
 | Skill | What It Checks |
 |-------|---------------|
+| **radar-suite** | Unified entry point — routes to any skill or runs full audit sequence |
 | **data-model-radar** | Your data definitions — are fields backed up correctly? Does CSV export lose data? Are database relationships safe? |
 | **ui-path-radar** | Navigation flows — can users reach every feature? Are there dead ends or broken links? |
 | **roundtrip-radar** | Data round-trips — does data survive backup→restore, export→import, create→edit→save? |
@@ -54,14 +67,22 @@ Each skill has a `VERSION` file and a `version:` field in its SKILL.md frontmatt
 
 ## Recommended Run Order
 
-Each skill writes findings that the next one can read, so running them in order gives the best results:
+**Easiest:** Use the unified entry point:
+
+```
+/radar-suite full    # Runs all 5 skills in optimal order
+/radar-suite         # Interactive menu to choose skill or full audit
+/radar-suite resume  # Continue from last checkpoint
+```
+
+**Manual order:** Each skill writes findings that the next one can read:
 
 ```
 1. /data-model-radar      Checks data definitions (the foundation)
         ↓ findings flow to...
-2. /ui-path-radar          Traces navigation and user flows
+2. /roundtrip-radar        Verifies data survives complete cycles
         ↓ findings flow to...
-3. /roundtrip-radar        Verifies data survives complete cycles
+3. /ui-path-radar          Traces navigation and user flows
         ↓ findings flow to...
 4. /ui-enhancer-radar      Reviews visual quality of each screen
         ↓ findings flow to...

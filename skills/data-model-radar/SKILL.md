@@ -1,10 +1,11 @@
 ---
 name: data-model-radar
 description: 'Audits SwiftData/Core Data model layer for field completeness, serialization gaps, relationship integrity, semantic ambiguity, dead fields, and migration safety. Finds model-layer bugs that manifest as workflow bugs. Triggers: "audit models", "model radar", "/data-model-radar".'
-version: 1.2.0
+version: 1.4.0
 author: Terry Nyberg
 license: MIT
 allowed-tools: [Read, Grep, Glob, Bash, Edit, Write, AskUserQuestion]
+inherits: radar-suite-core.md
 metadata:
   tier: execution
   category: analysis
@@ -13,8 +14,6 @@ metadata:
 # Data Model Radar
 
 > Audits the @Model layer for completeness, consistency, and round-trip integrity. Finds model-layer bugs before they manifest as workflow bugs.
-
-**YOU MUST EXECUTE THIS WORKFLOW. Do not just describe it.**
 
 **Anti-shortcut rule:** Do not claim a domain is "clean" without evidence. Every domain grade must cite specific files read and patterns checked. "No dead fields detected from structural analysis" without grepping is a failing grade for the auditor, not a passing grade for the model.
 
@@ -79,191 +78,9 @@ Using: [Beginner] mode, [Auto-fix] or [Review first], [Display only]. Type "adju
 
 ---
 
-## Terminal Width Check (MANDATORY — run first)
+## Shared Patterns
 
-Before ANY output, check terminal width:
-```bash
-tput cols
-```
-
-- **160+ columns** → Use full Issue Rating Table. Proceed immediately.
-- **Under 160 columns** → **Prompt the user first** using `AskUserQuestion`:
-
-  **Question:** "Your terminal is [N] columns wide. The full Issue Rating Table needs 160+ columns. Want to widen it now?"
-  - **"I've widened it" (Recommended)** — Re-run `tput cols` to confirm. If tput still reports the old width (terminal resize doesn't always propagate to the shell), trust the user and use full tables anyway.
-  - **"Use compact tables"** — Use compact 3-column table with finding text on separate lines below each row.
-  - **"Skip check"** — Use full table regardless (user accepts wrapping).
-
----
-
-## Plain Language Communication (MANDATORY)
-
-All user-facing prompts must be understandable by someone who has never used this skill before. Apply these rules to every `AskUserQuestion`, progress banner, and completion message:
-
-1. **Describe what was found** in plain terms ("2 critical backup gaps, 3 import bugs") — not internal categories ("2 Domain 2 findings, 3 Domain 5 findings")
-2. **Describe next steps by what they DO**, not by skill name ("check your UI flows for dead ends" not "proceed to ui-path-radar")
-3. **Describe options by outcome and time cost** ("Fix backup gaps now (~15 min)" not "Wave 2: Schema additions")
-4. **Add an "Explain more" option** to every transition `AskUserQuestion` so users can get context without slowing down experienced users
-5. **Define jargon on first use:**
-   - "Domain" → "check area" or "audit category" (a focused area of analysis)
-   - "Wave" → "fix batch" (a group of related fixes applied together)
-   - "Handoff" → a file this skill writes so other audit skills can pick up where it left off
-   - "Serialization" → saving/loading data to backup, CSV, or cloud sync
-   - "Blast radius" → how many files a fix touches
-6. **Exception:** If user selected Senior/Expert experience level, terse references are acceptable
-
-### Completion Prompt Template
-
-When all models are audited, use this pattern (not skill names):
-
-```
-I found [X] issues in your data models:
-- [N] critical (brief description of worst ones)
-- [N] high / [N] medium / [N] low
-
-You can:
-1. **Fix the critical issues now** (~[time]) — [one-line description of what gets fixed]
-2. **Fix just the quick wins** (~[time]) — [one-line description]
-3. **Keep auditing other areas first** — I'll check [plain description of next skill's purpose] next, then fix everything together at the end
-4. **Explain more** — I'll walk through what each issue means before you decide
-```
-
----
-
-## Work Receipts (MANDATORY — every verified finding)
-
-Every finding tagged as `verified` must include a **work receipt** — proof of what was actually checked. No receipt = automatic downgrade to `probable`.
-
-A work receipt includes:
-- **File read:** the specific file path and line range that was read
-- **Pattern searched:** the grep pattern or search term used
-- **Evidence found:** the specific code that confirms the finding (quote 1-3 lines)
-
-**Example — with receipt (verified):**
-```
-Finding: Room column not imported in CSV
-Receipt: Read CSVImportManager.swift:420-447. Searched for `item.room =` — 0 matches.
-  Canonical mapping exists at line 45 (`"room": "Room"`) but createItemFromRow never sets item.room.
-Confidence: verified
-```
-
-**Example — without receipt (downgraded):**
-```
-Finding: Room column not imported in CSV
-Receipt: none (structural analysis only)
-Confidence: probable (no file evidence — upgrade to verified by reading CSVImportManager.swift)
-```
-
-**Rule:** If you catch yourself writing "verified" without having produced a receipt, stop and either produce the receipt or downgrade to "probable." The receipt is not documentation for the user — it is a structural constraint that prevents claiming depth you didn't achieve.
-
----
-
-## Contradiction Detection (MANDATORY — before final grades)
-
-Before presenting any domain grade, run this mechanical check:
-
-1. **Findings vs grade:** If a domain has any CRITICAL findings, the grade cannot be above C. If it has any HIGH findings, the grade cannot be above B+. If the calculated score produces a higher grade than these caps allow, lower the grade to the cap and note: "Grade capped from [calculated] to [capped] due to [N] [severity] findings."
-
-2. **Cross-reference handoff vs grade:** If the handoff file for a domain lists blockers, the grade for that domain cannot be A. The handoff represents what was actually found — the grade must be consistent.
-
-3. **Self-consistency:** If two findings in the same report contradict each other (e.g., "backup is comprehensive" in Domain 2 but "InsuranceProfile missing from backup" in the findings table), flag the contradiction explicitly and resolve it before grading.
-
-These checks are mechanical — no judgment needed, just arithmetic and string matching. Run them automatically as the last step before presenting grades.
-
----
-
-## Finding Classification (MANDATORY)
-
-Classify every finding into one of three categories. Do not report all findings as the same type.
-
-### 1. Bug
-Code does something wrong. The behavior contradicts the developer's intent.
-- Example: Edit form drops secondary categories on save
-
-### 2. Stale Code
-Code was correct when written but the codebase grew around it. Detectable via git history.
-- Check: `git log -1 -- <file>` for last modification date
-- Check: model/dependency field count at that date vs now
-- If the model grew significantly and the code didn't keep up → stale code
-- Example: CKRecordMapper mapped 36 of 40 fields when extracted. Model grew to 85+ fields. Mapper only grew to 39.
-- Present as: "This code was last updated [date] when [model] had [N] fields. [Model] now has [M] fields. [M-N] fields were added after this code was written. Was this intentional?"
-
-### 3. Design Choice
-Intentionally limited scope with documented evidence.
-- Requires: CLAUDE.md section, code comment explaining the limitation, or consistent pattern across the codebase
-- If no documentation exists, classify as Stale Code, not Design Choice
-- Present as: "Documented decision: [quote from docs]. If this no longer reflects your intent, reclassify as stale code."
-
-### Why This Matters
-"Design choice" is often a euphemism for "built under time pressure, never revisited." The distinction between categories 2 and 3 is the presence of evidence. Without evidence, assume stale — the developer can always correct you.
-
-### Developer Growth Awareness (how to frame findings)
-
-A solo developer's codebase reflects multiple versions of themselves — early code reflects early understanding. Frame findings accordingly:
-
-**For bugs:** Direct and specific. "This code does X when it should do Y."
-
-**For stale code:** Frame as growth, not failure. Show the developer their own progress:
-- "You've since adopted [better pattern] in [newer file] — this older file uses the earlier approach."
-- "This was written [date] when the model had [N] fields. You've added [M-N] fields since then. The [feature] didn't keep up."
-- "Your current code in [newer file] handles this correctly. This older code predates that pattern."
-
-**For design choices:** Respect the decision but invite reconsideration:
-- "This was documented as intentional [quote]. Given what you've built since then, does this still match your intent?"
-
-**Never frame findings as criticism.** The developer who builds tools to audit their own code is already doing something most developers don't. Every finding is an opportunity for current-self to revisit past-self's decisions — not a judgment on past-self's competence. Early code worked. It shipped. It just reflects an earlier stage of understanding.
-
----
-
-## Audit Methodology (MANDATORY — governs scanning)
-
-Three principles to minimize false negatives. These apply before domain-specific scanning begins.
-
-### Principle 1: Enumerate-Then-Verify
-
-For domains tagged `enumerate-required`: list ALL candidate files first, then verify each uses the correct pattern. Do NOT rely on grep alone to discover violations.
-
-```
-WRONG (search-and-hope):
-  1. Grep for known anti-pattern → 2. Report matches → 3. Grade
-
-RIGHT (enumerate-then-verify):
-  1. Enumerate ALL files containing the subject
-  2. Subtract verified-clean skip list
-  3. For EACH file, verify correct pattern exists
-  4. Report files where correct pattern is MISSING
-```
-
-**Why:** Grep finds what you search for but cannot find what you don't search for. A violation may have no searchable code signature (e.g., an element that inherits default styling with no explicit code). Grep-only scanning missed 57% of violations in real-world testing.
-
-**When to use:** Apply to domains where violations can be the absence of a correct pattern, not just the presence of a wrong one. Domains where every violation has a unique searchable signature (force unwraps, hardcoded strings) remain `grep-sufficient`. Scan-method tags (`grep-sufficient`, `enumerate-required`, `mixed`) are on each domain heading below.
-
-### Principle 2: File-Scoped Skip Lists
-
-A resolved finding applies to THAT FILE ONLY. Files that call, import, or depend on a resolved file need independent verification. Do not propagate "clean" status across a call graph.
-
-**Why:** Marking a helper file as "fixed" caused an audit to skip 8 view files that used the helper. The helper was fixed. The views calling it weren't.
-
-### Principle 3: Negative Pattern Matching
-
-To find "X without Y," search for X first, then verify Y exists around it. If neither correct pattern nor anti-pattern is found, that is a negative match.
-
-**Negative match ranking (3 tiers):**
-
-| Tier | Name | Criteria | Presentation |
-|------|------|----------|-------------|
-| A | Almost certain | Same file has verified violations OR sibling files use correct pattern | Present with verified findings |
-| B | Probable | View/file type strongly implies the pattern applies | "Likely needs fixing" section |
-| C | Possible | Subject exists without correct pattern, but context is ambiguous | "Review these" section |
-
-**Ranking factors (in priority order):**
-1. Proximity to verified violations in the same file (highest signal)
-2. Sibling file consistency (do similar files use the correct pattern?)
-3. View type / context (settings rows vs system picker options vs status badges)
-4. Element size / prominence (large prominent elements vs small subtle indicators)
-5. Code recency via git blame (recent edits more likely missed the pattern)
-
-**For projects without a style guide:** Infer conventions from codebase majority patterns. Tag findings as `inferred-convention` (Tier B max). After the audit, offer to generate a starter CLAUDE.md from inferred conventions.
+See `radar-suite-core.md` for: Table Format, Plain Language Communication, Work Receipts, Contradiction Detection, Finding Classification, Audit Methodology, Context Exhaustion, Progress Banner, Issue Rating Tables, Handoff YAML schema.
 
 ---
 
@@ -652,6 +469,11 @@ domains_verified: [1, 2, 3, 4, 5, 6, 7]
 domains_at_quick_depth: []
 domains_skipped: []
 
+# File timestamps — enables staleness detection by consuming skills
+file_timestamps:
+  <file path>: "<ISO 8601 mod date>"
+  # one entry per unique file referenced in issues
+
 for_roundtrip_radar:
   # Serialization gaps = workflow-specific data loss
   suspects:
@@ -659,18 +481,21 @@ for_roundtrip_radar:
       finding: "<e.g., DocumentAttachment not in BackupItem>"
       model: "<model name>"
       field: "<field name>"
+      group_hint: "<optional, e.g. 'backup_gaps', 'csv_gaps', 'cloudkit_gaps'>"
 
 for_ui_path_radar:
   # Dead fields may indicate dead UI paths
   suspects:
     - view: "<view that might reference this field>"
       finding: "<e.g., field exists but no UI reads it>"
+      group_hint: "<optional batching suggestion>"
 
 for_ui_enhancer_radar:
   # Semantic ambiguity affects how fields should be displayed
   suspects:
     - view: "<view displaying this field>"
       finding: "<e.g., nil vs 0 not distinguished in UI>"
+      group_hint: "<optional batching suggestion>"
 
 for_capstone_radar:
   # Model-layer blockers
@@ -678,6 +503,7 @@ for_capstone_radar:
     - finding: "<description>"
       urgency: "<CRITICAL|HIGH>"
       domain: "Data Safety"
+      group_hint: "<optional batching suggestion>"
 
 serialization_coverage:
   # Summary table for roundtrip-radar to reference
@@ -694,6 +520,25 @@ serialization_coverage:
     missing_from_backup: ["field1", "field2"]
     missing_from_csv_export: ["field3", "field4"]
 ```
+
+### File Timestamps
+
+For each unique file path referenced across all issues, record its modification date:
+
+```bash
+stat -f "%Sm" -t "%Y-%m-%dT%H:%M:%SZ" "<file path>"
+```
+
+Enables consuming skills to detect **staleness** — if a model file changed after the audit, serialization coverage data may be stale.
+
+### Group Hints
+
+Optional field for batching related issues. Common hints:
+- `backup_gaps` — fields missing from backup
+- `csv_gaps` — fields missing from CSV export/import
+- `cloudkit_gaps` — fields missing from CloudKit sync
+- `dead_fields` — model fields with no UI reads
+- `semantic_ambiguity` — nil vs zero not distinguished
 
 **Honesty rule:** The handoff must distinguish "verified clean" from "not checked." Use `_verified: true/false` for each serialization target. Capstone-radar uses these flags to determine how much credit to give.
 
@@ -750,13 +595,8 @@ A grade without evidence is not a grade — it's a guess.
 
 ---
 
-## REMINDER (End-of-File — Survives Context Compaction)
+## End Reminder
 
-**CRITICAL:** After EVERY wave, EVERY commit, and EVERY model transition:
-1. Print the progress banner (wave-level or model-level)
-2. Immediately `AskUserQuestion` for the next step
-3. NEVER leave a blank prompt
+After every step: print progress banner → `AskUserQuestion` → never blank prompt.
 
-**ANTI-SHORTCUT:** Do not hand-wave Domain 2 (Serialization) or Domain 5 (Field Usage). These are the two highest-value domains. If you find yourself writing "looks complete" or "no dead fields" without having grepped, stop and do the work.
-
-This reminder is placed at the end of the file because context compaction tends to preserve the beginning and end. If you are unsure whether to print the banner, **print it**.
+**Anti-shortcut:** Domain 2 (Serialization) and Domain 5 (Field Usage) require actual grep verification. No "looks complete" without evidence.

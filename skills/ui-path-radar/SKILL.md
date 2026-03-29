@@ -1,10 +1,11 @@
 ---
 name: ui-path-radar
-description: 'UI path tracer for SwiftUI/UIKit apps. 5-layer audit: discover entry points, trace flows, detect dead ends and broken promises, evaluate UX impact, verify data wiring. Supports targeted trace, diff against previous audits, and handoff to planning skills. Triggers: "trace UI paths", "find dead ends", "/ui-path-radar".'
-version: 3.4.0
+description: 'UI path tracer for SwiftUI/UIKit apps. 5-layer audit with 30 issue categories: discover entry points, trace flows, detect dead ends and broken promises, evaluate UX impact, verify data wiring. Supports targeted trace, diff against previous audits, and handoff to planning skills. Triggers: "trace UI paths", "find dead ends", "/ui-path-radar".'
+version: 3.7.0
 author: Terry Nyberg
 license: MIT
 allowed-tools: [Read, Grep, Glob, Bash, Edit, Write, AskUserQuestion]
+inherits: radar-suite-core.md
 metadata:
   tier: execution
   category: analysis
@@ -54,6 +55,8 @@ UI Path Radar uses a 5-layer approach:
 | Dead End | 🔴 CRITICAL | Entry point leads nowhere |
 | Wrong Destination | 🔴 CRITICAL | Entry point leads to wrong place |
 | Mock Data | 🔴 CRITICAL | Feature shows fabricated data when real data exists |
+| Destructive Without Confirmation | 🔴 CRITICAL | Delete/clear happens immediately without confirmation dialog |
+| Silent State Reset | 🔴 CRITICAL | In-progress work lost when navigating away and back (form clears, selections lost) |
 | Incomplete Navigation | 🟡 HIGH | User must scroll/search after landing |
 | Missing Auto-Activation | 🟡 HIGH | Expected mode/state not set |
 | Unwired Data | 🟡 HIGH | Model data exists but feature ignores it |
@@ -64,11 +67,19 @@ UI Path Radar uses a 5-layer approach:
 | Context Dropping | 🟡 HIGH | Navigation path loses item context between platforms or via notifications |
 | Notification Nav Fragility | 🟡 HIGH | Untyped NotificationCenter dict used for navigation context |
 | Sheet Presentation Asymmetry | 🟡 HIGH | Different presentation mechanisms per platform for same feature |
+| Empty State Missing | 🟡 HIGH | No guidance when list/view is empty — users think app is broken |
+| Error Recovery Missing | 🟡 HIGH | Error displayed but no retry button or recovery path |
+| Keyboard Obscures Input | 🟡 HIGH | Text field covered by keyboard with no scroll adjustment (iOS) |
+| Permission Denied Dead End | 🟡 HIGH | Permission denied but no explanation or path to Settings |
+| Modal Stacking | 🟡 HIGH | Multiple sheets/alerts open on top of each other |
 | Two-Step Flow | 🟢 MEDIUM | Intermediate selection required |
 | Missing Feedback | 🟢 MEDIUM | No confirmation of success |
 | Gesture-Only Action | 🟢 MEDIUM | Feature only accessible via swipe/long-press |
 | Loading State Trap | 🟢 MEDIUM | Spinner with no cancel/timeout/escape |
 | Stale Navigation Context | 🟢 MEDIUM | Cached context with no clearing/validation mechanism |
+| Phantom Touch Target | 🟢 MEDIUM | Visual element looks tappable but isn't (icon without action, card without nav) |
+| Race Condition UX | 🟢 MEDIUM | User can trigger conflicting operations simultaneously (double-tap, edit while sync) |
+| Invisible Selection | 🟢 MEDIUM | Item is selected/active but visual indicator missing or too subtle |
 | Inconsistent Pattern | ⚪ LOW | Same feature accessed differently |
 | Orphaned Code | ⚪ LOW | Feature exists but no entry point |
 
@@ -264,212 +275,9 @@ Store the experience level as `USER_EXPERIENCE` and apply to ALL output for the 
 
 ---
 
-### Terminal Width Check (MANDATORY — run first)
+## Shared Patterns
 
-Before ANY output, check terminal width:
-```bash
-tput cols
-```
-
-- **160+ columns** → Use full 8-column Issue Rating Table. Proceed immediately.
-- **Under 160 columns** → **Prompt the user first** using `AskUserQuestion`:
-
-  **Question:** "Your terminal is [N] columns wide. The full Issue Rating Table needs 160+ columns. Want to widen it now?"
-  - **"I've widened it" (Recommended)** — Re-run `tput cols` to confirm. If tput still reports the old width (terminal resize doesn't always propagate to the shell), trust the user and use full tables anyway.
-  - **"Use compact tables"** — Use compact 3-column table with finding text on separate lines below each row:
-    ```
-    | # | Urgency | Fix Effort |
-    |---|---------|------------|
-    | 1 | 🟡 HIGH | Small      |
-    |   `activeImporterKind` never assigned — file importer silently drops files |
-    |   `EnhancedItemDetailView.swift:93` |
-    | 2 | ⚪ LOW  | Trivial    |
-    |   `showingAddImageMenu` declared but never used — dead code |
-    |   `EnhancedItemDetailView.swift:94` |
-    ```
-    Full 8-column table goes to report file only (if report delivery was selected).
-  - **"Skip check"** — Use full 8-column table regardless (user accepts wrapping).
-
-  If the user chose compact mode, **after each compact table, print:**
-
-```
-📐 Compact table (terminal: [N] cols). Say "show full table" for all 8 columns.
-```
-
-Store the result as `TERMINAL_WIDE` (true/false) and apply to ALL tables in the session — discovery tables, issue tables, and summaries. If the user later says "show full table", "wide table", or "full ratings", re-render the most recent findings table in full 8-column format regardless of terminal width.
-
----
-
-## Plain Language Communication (MANDATORY)
-
-All user-facing prompts must be understandable by someone who has never used this skill before. Apply these rules to every `AskUserQuestion`, progress banner, and completion message:
-
-1. **Describe what was found** in plain terms ("3 dead-end screens, 2 navigation bugs") — not internal categories ("3 Layer 3 findings")
-2. **Describe next steps by what they DO**, not by skill name ("check your data models for backup gaps" not "proceed to data-model-radar")
-3. **Describe options by outcome and time cost** ("Fix navigation dead ends now (~10 min)" not "Wave 1: Safe fixes")
-4. **Add an "Explain more" option** to every transition `AskUserQuestion` so users can get context without slowing down experienced users
-5. **Define jargon on first use:**
-   - "Layer" → "step" or "analysis phase" (a stage in the audit process)
-   - "Wave" → "fix batch" (a group of related fixes applied together)
-   - "Handoff" → a file this skill writes so other audit skills can pick up where it left off
-   - "Dead end" → a screen the user can reach but can't navigate away from
-   - "Broken promise" → a button or link that appears but doesn't work or leads nowhere
-   - "Entry point" → a way to reach a feature (tab, button, deep link, etc.)
-6. **Exception:** If user selected Senior/Expert experience level, terse references are acceptable
-
-### Completion Prompt Template
-
-When the audit is complete, use this pattern:
-
-```
-I found [X] issues in your app's navigation and user flows:
-- [N] dead ends (screens users can't leave)
-- [N] broken paths (buttons/links that don't work)
-- [N] missing features (advertised but not reachable)
-
-You can:
-1. **Fix the critical issues now** (~[time]) — [one-line description]
-2. **Fix just the quick wins** (~[time]) — [one-line description]
-3. **Keep auditing other areas first** — I'll check [plain description of next analysis] next
-4. **Explain more** — I'll walk through what each issue means before you decide
-```
-
----
-
-## Work Receipts (MANDATORY — every verified finding)
-
-Every finding tagged as `verified` must include a **work receipt** — proof of what was actually checked. No receipt = automatic downgrade to `probable`.
-
-A work receipt includes:
-- **File read:** the specific file path and line range that was read
-- **Pattern searched:** the grep pattern or search term used
-- **Evidence found:** the specific code that confirms the finding (quote 1-3 lines)
-
-**Example — with receipt (verified):**
-```
-Finding: Room column not imported in CSV
-Receipt: Read CSVImportManager.swift:420-447. Searched for `item.room =` — 0 matches.
-  Canonical mapping exists at line 45 (`"room": "Room"`) but createItemFromRow never sets item.room.
-Confidence: verified
-```
-
-**Example — without receipt (downgraded):**
-```
-Finding: Room column not imported in CSV
-Receipt: none (structural analysis only)
-Confidence: probable (no file evidence — upgrade to verified by reading CSVImportManager.swift)
-```
-
-**Rule:** If you catch yourself writing "verified" without having produced a receipt, stop and either produce the receipt or downgrade to "probable." The receipt is not documentation for the user — it is a structural constraint that prevents claiming depth you didn't achieve.
-
----
-
-## Contradiction Detection (MANDATORY — before final grades)
-
-Before presenting any domain grade, run this mechanical check:
-
-1. **Findings vs grade:** If a domain has any CRITICAL findings, the grade cannot be above C. If it has any HIGH findings, the grade cannot be above B+. If the calculated score produces a higher grade than these caps allow, lower the grade to the cap and note: "Grade capped from [calculated] to [capped] due to [N] [severity] findings."
-
-2. **Cross-reference handoff vs grade:** If the handoff file for a domain lists blockers, the grade for that domain cannot be A. The handoff represents what was actually found — the grade must be consistent.
-
-3. **Self-consistency:** If two findings in the same report contradict each other (e.g., "backup is comprehensive" in Domain 2 but "InsuranceProfile missing from backup" in the findings table), flag the contradiction explicitly and resolve it before grading.
-
-These checks are mechanical — no judgment needed, just arithmetic and string matching. Run them automatically as the last step before presenting grades.
-
----
-
-## Finding Classification (MANDATORY)
-
-Classify every finding into one of three categories. Do not report all findings as the same type.
-
-### 1. Bug
-Code does something wrong. The behavior contradicts the developer's intent.
-- Example: Edit form drops secondary categories on save
-
-### 2. Stale Code
-Code was correct when written but the codebase grew around it. Detectable via git history.
-- Check: `git log -1 -- <file>` for last modification date
-- Check: model/dependency field count at that date vs now
-- If the model grew significantly and the code didn't keep up → stale code
-- Example: CKRecordMapper mapped 36 of 40 fields when extracted. Model grew to 85+ fields. Mapper only grew to 39.
-- Present as: "This code was last updated [date] when [model] had [N] fields. [Model] now has [M] fields. [M-N] fields were added after this code was written. Was this intentional?"
-
-### 3. Design Choice
-Intentionally limited scope with documented evidence.
-- Requires: CLAUDE.md section, code comment explaining the limitation, or consistent pattern across the codebase
-- If no documentation exists, classify as Stale Code, not Design Choice
-- Present as: "Documented decision: [quote from docs]. If this no longer reflects your intent, reclassify as stale code."
-
-### Why This Matters
-"Design choice" is often a euphemism for "built under time pressure, never revisited." The distinction between categories 2 and 3 is the presence of evidence. Without evidence, assume stale — the developer can always correct you.
-
-### Developer Growth Awareness (how to frame findings)
-
-A solo developer's codebase reflects multiple versions of themselves — early code reflects early understanding. Frame findings accordingly:
-
-**For bugs:** Direct and specific. "This code does X when it should do Y."
-
-**For stale code:** Frame as growth, not failure. Show the developer their own progress:
-- "You've since adopted [better pattern] in [newer file] — this older file uses the earlier approach."
-- "This was written [date] when the model had [N] fields. You've added [M-N] fields since then. The [feature] didn't keep up."
-- "Your current code in [newer file] handles this correctly. This older code predates that pattern."
-
-**For design choices:** Respect the decision but invite reconsideration:
-- "This was documented as intentional [quote]. Given what you've built since then, does this still match your intent?"
-
-**Never frame findings as criticism.** Every finding is an opportunity for current-self to revisit past-self's decisions — not a judgment on past-self's competence. Early code worked. It shipped. It just reflects an earlier stage of understanding.
-
----
-
-## Audit Methodology (MANDATORY — governs scanning)
-
-Three principles to minimize false negatives. These apply before domain-specific scanning begins.
-
-### Principle 1: Enumerate-Then-Verify
-
-For domains tagged `enumerate-required`: list ALL candidate files first, then verify each uses the correct pattern. Do NOT rely on grep alone to discover violations.
-
-```
-WRONG (search-and-hope):
-  1. Grep for known anti-pattern → 2. Report matches → 3. Grade
-
-RIGHT (enumerate-then-verify):
-  1. Enumerate ALL files containing the subject
-  2. Subtract verified-clean skip list
-  3. For EACH file, verify correct pattern exists
-  4. Report files where correct pattern is MISSING
-```
-
-**Why:** Grep finds what you search for but cannot find what you don't search for. A violation may have no searchable code signature (e.g., an element that inherits default styling with no explicit code). Grep-only scanning missed 57% of violations in real-world testing.
-
-**When to use:** Apply to domains where violations can be the absence of a correct pattern, not just the presence of a wrong one. Domains where every violation has a unique searchable signature (force unwraps, hardcoded strings) remain `grep-sufficient`. Scan-method tags (`grep-sufficient`, `enumerate-required`, `mixed`) are on each layer heading below.
-
-### Principle 2: File-Scoped Skip Lists
-
-A resolved finding applies to THAT FILE ONLY. Files that call, import, or depend on a resolved file need independent verification. Do not propagate "clean" status across a call graph.
-
-**Why:** Marking a helper file as "fixed" caused an audit to skip 8 view files that used the helper. The helper was fixed. The views calling it weren't.
-
-### Principle 3: Negative Pattern Matching
-
-To find "X without Y," search for X first, then verify Y exists around it. If neither correct pattern nor anti-pattern is found, that is a negative match.
-
-**Negative match ranking (3 tiers):**
-
-| Tier | Name | Criteria | Presentation |
-|------|------|----------|-------------|
-| A | Almost certain | Same file has verified violations OR sibling files use correct pattern | Present with verified findings |
-| B | Probable | View/file type strongly implies the pattern applies | "Likely needs fixing" section |
-| C | Possible | Subject exists without correct pattern, but context is ambiguous | "Review these" section |
-
-**Ranking factors (in priority order):**
-1. Proximity to verified violations in the same file (highest signal)
-2. Sibling file consistency (do similar files use the correct pattern?)
-3. View type / context (settings rows vs system picker options vs status badges)
-4. Element size / prominence (large prominent elements vs small subtle indicators)
-5. Code recency via git blame (recent edits more likely missed the pattern)
-
-**For projects without a style guide:** Infer conventions from codebase majority patterns. Tag findings as `inferred-convention` (Tier B max). After the audit, offer to generate a starter CLAUDE.md from inferred conventions.
+See `radar-suite-core.md` for: Table Format, Plain Language Communication, Work Receipts, Contradiction Detection, Finding Classification, Audit Methodology, Context Exhaustion, Progress Banner, Issue Rating Tables, Handoff YAML schema.
 
 ---
 
@@ -984,6 +792,11 @@ source: ui-path-radar
 date: <ISO 8601>
 project: <project name>
 
+# File timestamps — enables staleness detection by consuming skills
+file_timestamps:
+  <file path>: "<ISO 8601 mod date>"
+  # one entry per unique file referenced in issues
+
 for_roundtrip_radar:
   # Dead ends and broken promises suggest data flow issues
   suspects:
@@ -991,6 +804,7 @@ for_roundtrip_radar:
       finding: "<what was found>"
       file: "<file:line>"
       question: "<specific question for roundtrip-radar to verify>"
+      group_hint: "<optional, e.g. 'dead_ends', 'broken_promises'>"
 
 for_ui_enhancer_radar:
   # Dead buttons and orphaned views should be removed or fixed before visual audit
@@ -998,13 +812,33 @@ for_ui_enhancer_radar:
     - view: "<view file>"
       finding: "<what was found>"
       action: "remove or wire up before visual audit"
+      group_hint: "<optional batching suggestion>"
 
 for_capstone_radar:
   # Critical/high findings that affect ship readiness
   blockers:
     - finding: "<description>"
       urgency: "<CRITICAL|HIGH>"
+      group_hint: "<optional batching suggestion>"
 ```
+
+### File Timestamps
+
+For each unique file path referenced across all issues, record its modification date:
+
+```bash
+stat -f "%Sm" -t "%Y-%m-%dT%H:%M:%SZ" "<file path>"
+```
+
+Enables consuming skills to detect **staleness** — if a file changed after the audit, affected issues may need re-verification.
+
+### Group Hints
+
+Optional field for batching related issues. Common hints:
+- `dead_ends` — entry points leading nowhere
+- `broken_promises` — CTAs that don't honor their label
+- `orphaned_code` — features with no entry point
+- `platform_parity` — features broken on one platform
 
 **Automatic:** This file is always written so other audit skills can pick up where this one left off. No user action needed.
 
@@ -1035,11 +869,6 @@ If not found, proceed normally — the other skills may not be installed or have
 
 ---
 
-## REMINDER (End-of-File — Survives Context Compaction)
+## End Reminder
 
-**CRITICAL:** After EVERY wave, EVERY commit, and EVERY layer transition:
-1. Print the progress banner (wave-level or layer-level)
-2. Immediately `AskUserQuestion` for the next step
-3. NEVER leave a blank prompt
-
-This reminder is placed at the end of the file because context compaction tends to preserve the beginning and end. If you are unsure whether to print the banner, **print it**.
+After every layer/wave/commit: print progress banner → `AskUserQuestion` → never blank prompt.
