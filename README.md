@@ -21,6 +21,11 @@ One install gives you a complete audit pipeline — from data model integrity to
 - **Shared core** — ~530 lines of duplication removed; consistent behavior across all skills
 - **Streamlined setup** — One 4-question prompt instead of multiple scattered questions
 
+## What's New in v2.1
+
+- **Fix-Forward Bias** — Skills now recommend fixing over deferring by default. "Defer" is only recommended for Large effort items requiring architectural discussion. Prevents the pattern where following recommendations creates a growing backlog that never gets resolved.
+- **Test Hygiene** — Pattern sweep now includes stale test detection. After fixing code, the skill scans corresponding test files for assertions on changed values, tests for removed behavior, and tests that enforce old defaults. Stale tests are updated or removed alongside the fix.
+
 ## How is Radar Suite different from other code auditing skills?
 
 Most code auditing skills are pattern matchers. They look at code in isolation — this file, this function, this line — and compare it against known-good patterns. *"You used `@StateObject` where `@State` works." "This `try?` swallows an error."* They're fast, precise, and context-free. They don't need to know what your app does.
