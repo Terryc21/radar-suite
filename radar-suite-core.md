@@ -157,6 +157,39 @@ Options:
 
 ---
 
+## Fix-Forward Bias (MANDATORY)
+
+When presenting options with a "(Recommended)" label, **default to fixing over deferring** for any finding that is:
+- **In scope** — part of the current workflow/file being audited
+- **Reasonable effort** — Fix Effort is Trivial, Small, or Medium
+- **User is present** — not in hands-free mode
+
+### Why This Matters
+
+A pattern of "Recommended: Defer" teaches users to always defer, creating a growing backlog that makes the skill feel unproductive. Users — especially less experienced ones — will follow the recommended option. If that option is always "defer," they accumulate findings across multiple sessions without resolving them, and eventually conclude the skill isn't worth running.
+
+### Rules
+
+1. **Recommend fixing** when the finding is in scope and effort ≤ Medium. This is the default.
+2. **Recommend deferring** only when the fix requires:
+   - Large effort (60+ min)
+   - Architectural discussion or schema migration
+   - Cross-team coordination
+   - Changes outside the audited workflow that could destabilize unrelated features
+3. **Between-workflow prompts:** Recommend proceeding to the next workflow, not stopping. Only recommend stopping when context is genuinely running low or the session has been long.
+4. **Design decisions:** Recommend the most productive option (usually "fix now"), not the most conservative ("defer and discuss later"). Present the tradeoffs honestly, but don't default to caution when the fix is straightforward.
+5. **Never label "defer" or "stop" as Recommended** unless one of the conditions in rule 2 applies.
+
+### Wave Prompt Adjustment
+
+In the per-wave prompt, option ordering communicates priority:
+1. **Apply all (Recommended)** — always first, always recommended
+2. **Apply except [N,N]** — selective fix
+3. **Review individually** — more control
+4. **Skip wave** — last resort, never recommended
+
+---
+
 ## Plain Language Communication (MANDATORY)
 
 All user-facing prompts must be understandable by first-time users:
