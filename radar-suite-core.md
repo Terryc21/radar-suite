@@ -190,6 +190,40 @@ In the per-wave prompt, option ordering communicates priority:
 
 ---
 
+## Test Hygiene (MANDATORY)
+
+Fixes without tests are unverified code. But new tests alongside stale tests create a false sense of coverage.
+
+### Adding Tests
+
+Every fix must have a test. The test verifies the fix works — without it, you're shipping a code change you can't prove is correct. If the fix is in logic (not pure UI), write the test before moving to the next wave.
+
+### Removing or Revising Stale Tests
+
+During the pattern sweep (after fixes, before commit), scan test files that correspond to modified source files for:
+
+1. **Assertions on changed values** — a test that checks `version == "2.0"` when the code now writes `"2.5"` passes for the wrong reasons or fails for irrelevant ones
+2. **Tests for removed behavior** — if you deleted a code path, delete its test. A test for dead code is noise that obscures real coverage gaps.
+3. **Tests that verify old defaults** — if a fix changes a default value, fallback, or error message, find tests that assert the old default and update them
+
+### How to Find Stale Tests
+
+For each source file modified in the current wave:
+1. Search `Tests/` for the corresponding test file (e.g., `BackupManager.swift` → `BackupManagerTests.swift`)
+2. Grep the test file for string literals, constants, or field names that changed in your fix
+3. If a test asserts a value you just changed, update or remove it
+
+### The Geological Test Problem
+
+Tests are subject to the same geological layering as production code (Chapter 14). Early tests verify early assumptions. The app grows, the tests don't, and they either:
+- **Pass vacuously** — testing behavior that no longer matters
+- **Fail for the wrong reason** — asserting an old value that was intentionally changed
+- **Block correct fixes** — a test that enforces yesterday's behavior prevents today's improvement
+
+Treat test files as code that needs auditing, not as fixed ground truth.
+
+---
+
 ## Plain Language Communication (MANDATORY)
 
 All user-facing prompts must be understandable by first-time users:
