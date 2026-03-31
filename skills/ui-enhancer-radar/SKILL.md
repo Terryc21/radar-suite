@@ -1,7 +1,7 @@
 ---
 name: ui-enhancer-radar
 description: 'Systematic iOS/SwiftUI UI audit with design intent interview, 11-domain analysis (including Color Audit with adaptive Color Profile), element compaction, cross-view consistency checks, layout reorganization, design-aware push-back, App Store guardrails, and incremental apply with revert safety. 17 subcommands. Run /ui-enhancer-radar help for all commands. Triggers: "enhance this UI", "ui enhancer radar", "improve this view", "screen review", "ux audit".'
-version: 3.3.0
+version: 3.4.0
 author: Terry Nyberg
 license: MIT
 allowed-tools: [Read, Grep, Glob, Bash, Write, Edit, AskUserQuestion]
@@ -588,7 +588,59 @@ Before recommending individual element changes, check whether **reorganizing the
 | Accent consistency | Accent colors that clash in dark mode | Test all accent colors in both modes |
 | Material usage | Solid backgrounds where materials work better | Use `.ultraThinMaterial` for overlays |
 
-**Analysis:** If screenshot provided, check if the view uses light or dark mode. If code available, grep for hardcoded colors.
+**Analysis:** If screenshot provided, check if the view uses light or dark mode. If code available, run the automated checks below.
+
+> **CRITICAL: Do NOT delegate Domain 7 checks to Explore subagents.** Run each check directly using Grep/Read tools against the target view file(s). Subagent sampling causes false negatives.
+
+#### Automated Detection
+
+**Check 7a: Hardcoded colors**
+```bash
+# Find hardcoded Color.white, Color.black, Color(red:green:blue:), hex colors
+grep -n "Color\.white\|Color\.black\|Color(red:\|Color(hex:\|UIColor(red:\|NSColor(red:" <view_file>.swift
+
+# Find .foregroundColor(.white) / .foregroundStyle(.white)
+grep -n "foregroundColor(\.white)\|foregroundStyle(\.white)\|foregroundColor(\.black)\|foregroundStyle(\.black)" <view_file>.swift
+```
+
+**Safe patterns (do NOT flag):**
+```swift
+// ✅ Semantic colors
+.foregroundStyle(.primary)
+.background(Color(.systemBackground))
+
+// ✅ White text on intentionally colored backgrounds (e.g., Insights card pattern)
+// Check: if the background is a solid accent color, .white text is correct
+
+// ✅ Color.white/black in Color(light:dark:) adaptive initializers
+```
+
+**Check 7b: Background assumptions**
+```bash
+# Find non-adaptive backgrounds
+grep -n "\.background(Color\.white)\|\.background(\.white)\|\.background(Color\.black)" <view_file>.swift
+
+# Find hardcoded RGB backgrounds
+grep -n "\.background(Color(red:" <view_file>.swift
+```
+
+**Check 7c: Shadow visibility in dark mode**
+```bash
+# Find shadows with low opacity black (invisible in dark mode)
+grep -n "\.shadow(color:.*\.black.*opacity.*0\.[0-1]" <view_file>.swift
+
+# Find shadows without color parameter (default is black, may be invisible)
+grep -n "\.shadow(radius:" <view_file>.swift | grep -v "color:"
+```
+
+**Check 7d: Material opportunities**
+```bash
+# Find solid background overlays that could use materials
+grep -n "\.background(Color.*opacity\|\.background(\.ultraThin\|\.background(\.thin\|\.background(\.regular" <view_file>.swift
+
+# Find ZStack overlays with solid semi-transparent backgrounds
+grep -B3 -A3 "ZStack" <view_file>.swift | grep "opacity"
+```
 
 ---
 
@@ -606,7 +658,88 @@ Before recommending individual element changes, check whether **reorganizing the
 | Conditional complexity | Deep if/else chains in body | Extract to `@ViewBuilder` functions |
 | Animation cost | Heavy animations on low-end devices | Reduce or check Reduce Motion |
 
-**Analysis:** Read the SwiftUI file and check for known performance anti-patterns. Flag files over 500 lines that could benefit from extraction.
+**Analysis:** Read the SwiftUI file and run the automated checks below. Flag files over 500 lines that could benefit from extraction.
+
+> **CRITICAL: Do NOT delegate Domain 8 checks to Explore subagents.** Run each check directly.
+
+#### Automated Detection
+
+**Check 8a: Missing lazy containers**
+```bash
+# Find non-lazy VStack/HStack inside ScrollView with ForEach
+grep -n "ScrollView" <view_file>.swift
+# Then check: is the ForEach inside a VStack (not LazyVStack)?
+grep -B5 "ForEach" <view_file>.swift | grep "VStack\b" | grep -v "LazyVStack"
+```
+
+**Safe patterns (do NOT flag):**
+```swift
+// ✅ Small static lists (< 20 items) — lazy containers add overhead for small lists
+// ✅ VStack with fixed content (no ForEach)
+// ✅ LazyVStack already used
+```
+
+**Check 8b: GeometryReader in scroll contexts**
+```bash
+# Find GeometryReader usage
+grep -n "GeometryReader" <view_file>.swift
+
+# Check if it's inside a ScrollView or List (causes layout thrashing)
+grep -B10 "GeometryReader" <view_file>.swift | grep "ScrollView\|List {"
+```
+
+**Safe patterns (do NOT flag):**
+```swift
+// ✅ GeometryReader at the top level (not inside scroll)
+// ✅ .onGeometryChange modifier (proper replacement)
+// ✅ GeometryReader used only for initial measurement (cached in @State)
+```
+
+**Check 8c: Excessive @State count**
+```bash
+# Count @State variables in the view
+grep -c "@State " <view_file>.swift
+
+# Flag if > 8 @State vars in a single view (suggests consolidation needed)
+```
+
+**Check 8d: Heavy view body**
+```bash
+# Count lines in the body property (approximate)
+# Find "var body:" and count lines until next "var " or "func " at same indent
+grep -n "var body:" <view_file>.swift
+
+# Flag if body exceeds ~100 lines — extract to computed properties or subviews
+wc -l <view_file>.swift
+# Flag if total file > 500 lines
+```
+
+**Check 8e: Image decoding in body**
+```bash
+# Find UIImage/NSImage initialization in view body (should be async)
+grep -n "UIImage(data:\|UIImage(contentsOf\|NSImage(data:\|NSImage(contentsOf" <view_file>.swift
+
+# Find synchronous image loading
+grep -n "Data(contentsOf:" <view_file>.swift
+```
+
+**Check 8f: Animation without Reduce Motion check**
+```bash
+# Find .animation or withAnimation
+grep -n "\.animation(\|withAnimation" <view_file>.swift
+
+# Check if @Environment(\.accessibilityReduceMotion) is declared
+grep -n "accessibilityReduceMotion" <view_file>.swift
+
+# Flag: animations present but no reduce motion check
+```
+
+**Safe patterns (do NOT flag):**
+```swift
+// ✅ .animation(.default, value:) — implicit animations with value binding (low cost)
+// ✅ System animations (sheet presentation, navigation transitions)
+// ✅ Reduce Motion already checked
+```
 
 ---
 
@@ -643,6 +776,62 @@ When the view uses a shared component (e.g., `ContentIllustratedHeader`, `SheetH
 4. If there's a match, recommend enabling the parameter over keeping the custom UI
 
 **Note:** This domain is project-specific. If no design system docs are found, skip this domain and note that establishing a design system would benefit consistency.
+
+> **CRITICAL: Do NOT delegate Domain 9 checks to Explore subagents.** Run each check directly using Grep/Read tools.
+
+#### Automated Detection
+
+**Check 9a: Color palette violations**
+```bash
+# Step 1: Read the project's approved palette from CLAUDE.md or DESIGN_SYSTEM.md
+# Step 2: Find all color references in the view file
+grep -n "\.foregroundStyle(\.\|\.foregroundColor(\.\|\.background(\.\|\.tint(\.\|Color\." <view_file>.swift
+
+# Step 3: Compare against approved palette — flag any color not in the list
+# Common violations: .green (if forbidden), .yellow (if sf3aYellow required), custom hex colors
+```
+
+**Check 9b: Component usage — custom UI duplicating shared components**
+```bash
+# Step 1: Find the project's shared components
+grep -rn "struct.*: View" Sources/Views/Components/ --include="*.swift" | head -20
+
+# Step 2: For each shared component, check if the view uses it
+grep -n "SheetContainer\|SheetHeader\|ContentIllustratedHeader\|SemanticIconCircle\|CollapsibleSection" <view_file>.swift
+
+# Step 3: If the view has custom header/container code but doesn't use the shared component → flag
+# Look for custom VStack headers that could be SheetHeader:
+grep -n "VStack.*{" <view_file>.swift | head -5
+# Check if there's a custom title + icon + dismiss pattern that SheetContainer already provides
+```
+
+**Check 9c: Modifier usage — missing standard modifiers**
+```bash
+# Check for .stuffolioCard() / .stuffolioSection() usage
+grep -n "stuffolioCard\|stuffolioSection\|actionCard" <view_file>.swift
+
+# If the view has card-like UI without standard modifiers → flag
+grep -n "\.background.*RoundedRectangle\|\.clipShape.*RoundedRectangle\|cornerRadius" <view_file>.swift
+```
+
+**Check 9d: Sheet pattern compliance**
+```bash
+# If the view is presented as a sheet, check for SheetContainer + SheetHeader
+grep -n "SheetContainer\|SheetHeader\|CompactSheetHeader" <view_file>.swift
+
+# If neither found, check if it's a sheet (has .toolbar with cancellationAction or NavigationStack)
+grep -n "cancellationAction\|NavigationStack" <view_file>.swift
+# Sheet without SheetContainer → flag
+```
+
+**Check 9e: Icon sizing — @ScaledMetric**
+```bash
+# Find fixed icon sizes (should use @ScaledMetric)
+grep -n "\.frame(width:.*height:" <view_file>.swift | grep -i "image\|icon\|symbol"
+grep -n "@ScaledMetric" <view_file>.swift
+
+# Flag: icon frames without @ScaledMetric (won't scale with Dynamic Type)
+```
 
 #### Cross-View Consistency Additions (What's Missing?)
 
@@ -708,6 +897,8 @@ Output as a side-by-side comparison table.
 
 **Adaptive Color Profile:** On first run, this domain reads CLAUDE.md and design system files to learn the project's palette rules. Findings are saved to `.agents/ui-enhancer-radar/color-profile.md` so subsequent audits can compare views against established patterns.
 
+> **CRITICAL: Do NOT delegate Domain 11 checks to Explore subagents.** Run each check directly using Grep/Read tools against the target view file(s).
+
 #### 11a. Color Inventory Table
 
 **Build a table of every colored element in the view:**
@@ -721,7 +912,23 @@ Output as a side-by-side comparison table.
 
 **Categories:** Chrome (navigation, headers, borders), Content (user data, labels), Interactive (buttons, toggles, pickers), Status (badges, indicators), Decoration (icons, backgrounds, separators)
 
-**How to build:** Grep the SwiftUI file for `.foregroundStyle`, `.foregroundColor`, `.fill(`, `.background(`, `.tint(`, `Color(`, `.opacity(`, and `.shadow(`. Record each with its context.
+#### Automated Detection for Color Inventory
+
+```bash
+# Step 1: Extract all color references from the view file
+grep -n "\.foregroundStyle(\|\.foregroundColor(\|\.fill(\|\.background(\|\.tint(\|Color\.\|Color(\|\.opacity(\|\.shadow(" <view_file>.swift
+
+# Step 2: Extract specific named colors
+grep -on "\.\(blue\|red\|green\|yellow\|orange\|purple\|pink\|cyan\|teal\|indigo\|gray\|mint\|brown\|primary\|secondary\|tertiary\|white\|black\|clear\|accentColor\)" <view_file>.swift
+
+# Step 3: Extract custom color references
+grep -n "AccessibleColor\|sf3aYellow\|Color(red:\|Color(hex:\|Color(\"" <view_file>.swift
+
+# Step 4: Extract opacity modifiers
+grep -n "\.opacity(" <view_file>.swift
+```
+
+Build the inventory table from these results. Each grep match becomes a row.
 
 #### 11b. Color Distribution
 
@@ -742,6 +949,22 @@ Color Distribution:
 #### 11c. Monochromatic Detection (Form Flatness)
 
 **This is the most critical check for form/settings views.** When a view is visually flat — same background, same text color, same icon color everywhere — users cannot scan it effectively.
+
+#### Automated Detection for Monochromatic Risk
+
+```bash
+# Count distinct color families in the view file (excluding opacity variants)
+# Extract unique color names from all color references
+grep -oh "\.\(blue\|red\|yellow\|orange\|purple\|pink\|cyan\|teal\|indigo\|gray\|mint\|brown\|primary\|secondary\|tertiary\|accentColor\)" <view_file>.swift \
+  | sort -u | wc -l
+
+# Count how many elements use each color family
+grep -oh "\.\(blue\|red\|yellow\|orange\|purple\|pink\|cyan\|teal\|indigo\|gray\|mint\|brown\|primary\|secondary\|tertiary\)" <view_file>.swift \
+  | sort | uniq -c | sort -rn
+
+# Flag: if .secondary or .gray accounts for >50% of color references → monochromatic risk
+# Flag: if total distinct color families ≤ 2 → critical monochromatic
+```
 
 **Color Variance Score:** Count distinct color *families* (not counting opacity variants) visible in the view, excluding system chrome (status bar, nav bar).
 
@@ -816,6 +1039,23 @@ For each element, note whether color/opacity changes between modes:
 | Shadows invisible in dark mode | `Color.black.opacity(0.1)` disappears | Use adaptive opacity or colored shadows |
 | Tints that wash out | Light tints (5% opacity) invisible on dark backgrounds | Increase dark mode opacity (e.g., 3% light → 8% dark) |
 
+#### Automated Detection for Light/Dark Mode Delta
+
+```bash
+# Reuses Domain 7 checks — cross-reference here
+# Find hardcoded white/black
+grep -n "Color\.white\|Color\.black\|\.white)\|\.black)" <view_file>.swift | grep -v "//.*white\|//.*black"
+
+# Find hex colors without dark variant
+grep -n 'Color(hex:\|Color("#\|Color(red:' <view_file>.swift
+
+# Find shadows using black with low opacity
+grep -n "shadow.*\.black.*opacity.*0\.[0-1]" <view_file>.swift
+
+# Find low-opacity tints that may wash out in dark mode
+grep -n "\.opacity(0\.0[1-8])" <view_file>.swift
+```
+
 #### 11i. Contrast Pairs (WCAG AA)
 
 Check text-on-background combinations:
@@ -835,6 +1075,32 @@ Check text-on-background combinations:
 2. Read design system files for approved colors
 3. Flag any color not in the approved palette
 4. Flag any use of restricted colors
+
+#### Automated Detection for Design System Color Compliance
+
+```bash
+# Step 1: Find restricted colors (project-specific — read CLAUDE.md first)
+# Example: if green is forbidden:
+grep -n "\.green\|Color\.green\|foregroundStyle(\.green)\|foregroundColor(\.green)" <view_file>.swift
+
+# Example: if system .yellow should be sf3aYellow:
+grep -n "\.yellow\b" <view_file>.swift | grep -v "sf3aYellow\|AccessibleColor\|semantic.*warning"
+
+# Step 2: Find colors not in approved palette
+# Extract all color names, compare against approved list from CLAUDE.md
+grep -oh "\.\(blue\|red\|green\|yellow\|orange\|purple\|pink\|cyan\|teal\|indigo\|gray\|mint\|brown\)" <view_file>.swift \
+  | sort -u
+
+# Step 3: Find custom hex/RGB colors (may not be in palette)
+grep -n "Color(red:\|Color(hex:\|Color(\"" <view_file>.swift
+```
+
+**Safe patterns (do NOT flag):**
+```swift
+// ✅ Colors used in conditional semantic contexts (status indicators per CLAUDE.md)
+// ✅ .yellow used for semantic warning status (explicitly allowed per CLAUDE.md)
+// ✅ sf3aYellow / AccessibleColor.sf3aYellow (approved replacement)
+```
 
 ### Adaptive View Profile
 

@@ -6,6 +6,17 @@ Format: [skill-name vX.Y.Z] or [all skills] when changes apply to every skill.
 
 ---
 
+## 2026-03-30
+
+### [all skills] Dippy integration for paths with spaces
+
+Added:
+- **Environment pre-flight check** — Detects project paths with spaces and recommends [Dippy](https://github.com/ldayton/Dippy) if not installed. Non-blocking — audits continue either way.
+- **Bundled `.dippy` config** — Reference config tuned for audit workflows (auto-approve read-only commands, block destructive operations).
+- Addresses the Claude Code "Command contains backslash-escaped whitespace that could alter command parsing" warning that disrupts audit flow on paths with spaces.
+
+---
+
 ## 2026-03-27 — Current (uncommitted)
 
 ### [all skills] Version bump + new features

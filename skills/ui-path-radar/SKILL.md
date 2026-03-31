@@ -1,7 +1,7 @@
 ---
 name: ui-path-radar
 description: 'UI path tracer for SwiftUI/UIKit apps. 5-layer audit with 30 issue categories: discover entry points, trace flows, detect dead ends and broken promises, evaluate UX impact, verify data wiring. Supports targeted trace, diff against previous audits, and handoff to planning skills. Triggers: "trace UI paths", "find dead ends", "/ui-path-radar".'
-version: 3.7.0
+version: 4.0.0
 author: Terry Nyberg
 license: MIT
 allowed-tools: [Read, Grep, Glob, Bash, Edit, Write, AskUserQuestion]
@@ -72,6 +72,7 @@ UI Path Radar uses a 5-layer approach:
 | Keyboard Obscures Input | 🟡 HIGH | Text field covered by keyboard with no scroll adjustment (iOS) |
 | Permission Denied Dead End | 🟡 HIGH | Permission denied but no explanation or path to Settings |
 | Modal Stacking | 🟡 HIGH | Multiple sheets/alerts open on top of each other |
+| Navigation Container Mismatch | 🟡 HIGH | selectedSection value not a valid tag in current TabView/sidebar |
 | Two-Step Flow | 🟢 MEDIUM | Intermediate selection required |
 | Missing Feedback | 🟢 MEDIUM | No confirmation of success |
 | Gesture-Only Action | 🟢 MEDIUM | Feature only accessible via swipe/long-press |
@@ -82,6 +83,7 @@ UI Path Radar uses a 5-layer approach:
 | Invisible Selection | 🟢 MEDIUM | Item is selected/active but visual indicator missing or too subtle |
 | Inconsistent Pattern | ⚪ LOW | Same feature accessed differently |
 | Orphaned Code | ⚪ LOW | Feature exists but no entry point |
+| Double-Nested Navigation | ⚪ LOW | NavigationStack inside NavigationStack causing doubled nav bars |
 
 ## Design Principles
 
@@ -134,20 +136,19 @@ Ask the user:
 
 **Question 2: "How should results be delivered?"**
 - **Display only (Recommended)** — Show findings in the conversation. No file written.
-- **Report only** — Write findings to `.ui-path-radar/[DATE]-audit.md`.
-  Minimal conversation output.
+- **Report only** — Write findings to `.ui-path-radar/[DATE]-audit.md`. Minimal conversation output.
 - **Display and report** — Show findings in the conversation AND write to file.
 
 **Question 3: "What's your experience level with Swift/SwiftUI?"**
-- **Beginner** — New to Swift or SwiftUI. Explain findings in plain language with analogies. Define technical terms on first use (e.g., "a sheet — a screen that slides up from the bottom").
-- **Intermediate** — Comfortable with SwiftUI basics. Use standard terminology but explain non-obvious patterns (e.g., why an enum-based sheet router matters).
-- **Experienced (Recommended)** — Fluent with SwiftUI, navigation, state management. Concise findings, no definitions, focus on what's wrong and where.
-- **Senior/Expert** — Deep expertise. Terse output, file:line references only, skip explanations — just the findings table and code-level details.
+- **Beginner** — New to Swift or SwiftUI. Explain findings in plain language with analogies. Define technical terms on first use.
+- **Intermediate** — Comfortable with SwiftUI basics. Use standard terminology but explain non-obvious patterns.
+- **Experienced (Recommended)** — Fluent with SwiftUI, navigation, state management. Concise findings, no definitions.
+- **Senior/Expert** — Deep expertise. Terse output, file:line references only, skip explanations — just the findings table.
 
 **Question 4: "Will you be stepping away during the audit?"**
 - **I'll be here (Recommended)** — Normal mode. Permission prompts may appear for writes/edits.
-- **Hands-free (walk away safe)** — Restricts to read-only tools (Read, Grep, Glob) for Layers 1-4. No Bash, no Edit, no Write — nothing that would trigger a permission prompt. Layer 5 and fix mode are deferred until you return. Results are held in conversation output.
-- **Pre-approved** — You have already configured Claude Code permissions for this session (see Permission Setup below). Run at full speed without restriction.
+- **Hands-free (walk away safe)** — Read-only tools (Read, Grep, Glob) for Layers 1-4. No Bash, no Edit, no Write. Results held in conversation output.
+- **Pre-approved** — You have already configured Claude Code permissions. Run at full speed.
 
 ### Permission Modes
 
@@ -158,29 +159,20 @@ Ask the user:
 - If a fix breaks the build, restore the original code and document as "Documented."
 
 #### Hands-Free Mode
-**Guarantees no blocking prompts.** The skill will ONLY use these tools during Layers 1-4:
-- `Read` — read file contents
-- `Grep` — search file contents
-- `Glob` — find files by pattern
+**Guarantees no blocking prompts.** Only uses: `Read`, `Grep`, `Glob`.
+Does NOT use: `Bash`, `Edit`, `Write`, `AskUserQuestion`.
 
-It will NOT use:
-- `Bash` — no shell commands (grep via Grep tool instead)
-- `Edit` / `Write` — no file modifications
-- `AskUserQuestion` — no interactive prompts
-
-When the audit completes (or hits a layer that needs restricted tools), it prints:
+When complete:
 ```
-⏱ Hands-free audit complete through Step [N] of 5: [plain description of what was completed].
+Hands-free audit complete through Step [N] of 5: [plain description].
   Steps requiring your input: [list with plain descriptions]
   Reply to continue with supervised steps.
 ```
 
 #### Pre-Approved Mode
-Full speed, no restrictions. Assumes you've set up permissions. See below.
+Full speed, no restrictions. Assumes you've set up permissions.
 
 ### Permission Setup (for unattended runs)
-
-To avoid permission prompts during audits, pre-allow these read-only patterns in your Claude Code settings. These are **safe to auto-approve** — they cannot modify your codebase:
 
 ```
 # Already safe by default (no setup needed):
@@ -192,7 +184,7 @@ Bash(wc:*)
 Bash(stat:*)
 ```
 
-**Do NOT auto-approve** (keep these prompted — they modify state):
+**Do NOT auto-approve** (keep prompted — they modify state):
 ```
 Edit, Write — file modifications
 Bash(rm:*), Bash(git:*) — destructive operations
@@ -211,37 +203,35 @@ Never start auditing a new flow you can't finish.
 
 ### Experience-Level Adaptation
 
-Adjust ALL output (findings, explanations, progress updates, summaries) based on the user's experience level:
+Adjust ALL output based on the user's experience level:
 
 #### Beginner
-- **Finding descriptions**: Use plain language with real-world analogies. Example: "The 'View Warranty' button opens an empty screen — like clicking a door that leads to a blank wall."
-- **Technical terms**: Define on first use in parentheses. Example: "a sheet (a screen that slides up from the bottom)"
-- **Flags/categories**: Explain what each means and why it matters. Don't assume the user knows what "dead end" or "promise mismatch" means in a code context.
-- **File references**: Include but explain what the file does. Example: "DashboardView.swift (the main home screen) line 118"
-- **Recommendations**: Explain the "why" behind each suggestion. Don't just say "add navigation" — explain what the user would experience.
-- **Tables**: Use the compact 4-column format (# / Finding / Urgency / Fix Effort). Put full details in prose below each finding.
+- Use plain language with real-world analogies.
+- Define technical terms on first use in parentheses.
+- Explain flags/categories and why they matter.
+- Include file context: "DashboardView.swift (the main home screen) line 118"
+- Explain the "why" behind each suggestion.
+- Use compact 4-column table format.
 
 #### Intermediate
-- **Finding descriptions**: Use standard SwiftUI terminology (sheet, NavigationLink, @State) without defining them, but explain non-obvious patterns. Example: "The sheet routing enum has a `.warranty` case but no matching handler in `sheetContent(for:)` — so tapping 'View Warranty' opens nothing."
-- **File references**: Standard file:line format.
-- **Recommendations**: Explain the approach, not the basics. "Add a case to the switch in `sheetContent(for:)` that presents `WarrantyDetailView`."
-- **Tables**: Full 8-column format with brief finding descriptions.
+- Use standard SwiftUI terminology without defining basics.
+- Explain non-obvious patterns.
+- Standard file:line format.
+- Full 8-column format with brief finding descriptions.
 
 #### Experienced (default)
-- **Finding descriptions**: Concise. "Dead end: `.warranty` case unhandled in `DashboardView+SheetContent.swift:194`"
-- **No definitions or explanations** of standard patterns.
-- **Recommendations**: What to fix, where. No "why" unless the fix is non-obvious.
-- **Tables**: Full 8-column format, terse findings.
+- Concise findings. No definitions or explanations of standard patterns.
+- Recommendations: what to fix, where.
+- Full 8-column format, terse findings.
 
 #### Senior/Expert
-- **Finding descriptions**: Minimal. "Dead end: `.warranty` → unhandled @ DashboardView+SheetContent:194"
-- **No prose between tables**. Findings table IS the output.
-- **Recommendations**: File:line + one-line fix description only.
-- **Skip**: Progress explanations, design principle citations, category definitions. Just the data.
-- **Tables**: Full 8-column format, maximally compressed finding text.
+- Minimal findings text. No prose between tables.
+- File:line + one-line fix description only.
+- Skip: progress explanations, design principle citations, category definitions.
+- Full 8-column format, maximally compressed.
 
 #### Enforcement Rule
-At the **start of each layer**, silently check: "Am I writing at the selected experience level?" If the user selected Intermediate, findings must explain non-obvious patterns. If Senior/Expert, findings must be terse. Do NOT drift toward "Experienced" as a default. When in doubt, re-read the level descriptions above before writing findings.
+At the **start of each layer**, silently check: "Am I writing at the selected experience level?" Do NOT drift toward "Experienced" as a default.
 
 ---
 
@@ -259,9 +249,9 @@ On first invocation, ask the user two questions in a single `AskUserQuestion` ca
 
 **Question 2: "Would you like a brief explanation of what this skill does?"**
 - **No, let's go (Recommended)** — Skip explanation, proceed to audit.
-- **Yes, explain it** — Show a 3-5 sentence explanation adapted to the user's experience level (see below), then proceed.
+- **Yes, explain it** — Show a 3-5 sentence explanation adapted to the user's experience level, then proceed.
 
-**Experience-adapted explanations for UI Path Radar:**
+**Experience-adapted explanations:**
 
 - **Beginner**: "UI Path Radar checks every button, link, and menu item in your app to make sure they actually work. Think of it like walking through every door in a building to verify none are locked, lead nowhere, or open to the wrong room. It finds 'dead ends' (buttons that do nothing), 'broken promises' (a button says 'Export PDF' but opens the wrong screen), and missing features. It runs in 5 layers, each going deeper — from finding all the buttons, to tracing what happens when you tap them, to checking if the data behind them is real."
 
@@ -271,7 +261,7 @@ On first invocation, ask the user two questions in a single `AskUserQuestion` ca
 
 - **Senior/Expert**: "Entry point → flow trace → issue scan → UX eval → data wiring. Rating tables + fix plans."
 
-Store the experience level as `USER_EXPERIENCE` and apply to ALL output for the session (see Experience-Level Adaptation section).
+Store the experience level as `USER_EXPERIENCE` and apply to ALL output for the session.
 
 ---
 
@@ -287,18 +277,18 @@ When invoked, perform the audit:
 
 **Before starting, print:**
 ```
-⏱ Full Audit: 5 steps — estimated total: ~10-30 min depending on codebase size
+Full Audit: 5 steps — estimated total: ~10-30 min depending on codebase size
   Step 1: Find all entry points → Step 2: Trace how users navigate → Step 3: Detect issues → Step 4: Evaluate user impact → Step 5: Verify data wiring
 ```
 
 Run all 5 layers sequentially, outputting findings to `.ui-path-radar/` in the project root.
-**Between layers, print:** `⏱ ✓ Step [N] of 5 complete: [plain description of what was done] — starting Step [N+1]: [plain description of what's next]`
+**Between layers, print:** `✓ Step [N] of 5 complete: [plain description] — starting Step [N+1]: [plain description]`
 
 ### If "layer1" or "discovery": `enumerate-required`
 
 **Before starting**, count Swift files and print an estimate:
 ```
-⏱ Layer 1: Discovery — scanning [N] Swift files
+Layer 1: Discovery — scanning [N] Swift files
   Estimated time: ~[1-2 min for <200 files / 3-5 min for 500+ files]
   Progress will be shown after each tier completes.
 ```
@@ -311,7 +301,7 @@ Run all 5 layers sequentially, outputting findings to `.ui-path-radar/` in the p
 3. Scan for sheet routing enums: `grep -r "enum.*Sheet\|enum.*SheetType" Sources/`
 4. Scan for navigation state: `grep -r "selectedSection\|selectedTab\|activeSheet" Sources/`
 
-**After Tier 1, print:** `⏱ Layer 1: ✓ Tier 1 Structure (1/3) — found [N] tabs, [N] sidebar items, [N] sheet enums`
+**After Tier 1, print:** `Layer 1: ✓ Tier 1 Structure (1/3) — found [N] tabs, [N] sidebar items, [N] sheet enums`
 
 #### Tier 2: Entry Point Patterns
 Scan for these patterns across ALL source files:
@@ -325,6 +315,7 @@ Scan for these patterns across ALL source files:
 | Deep links | `onOpenURL`, `DeepLinkRouter`, URL scheme handlers | HIGH — external entry points |
 | Notification nav | `.onReceive(NotificationCenter`, `NotificationCenter.default` near navigation/sheet state | HIGH — invisible triggers |
 | Spotlight/Handoff | `onContinueUserActivity`, `CSSearchableItemActionType` | HIGH — system search entry |
+| MenuBarExtra / CommandGroup | `MenuBarExtra`, `CommandGroup`, `.commands {` | HIGH — macOS app menu commands |
 | File operations | `.fileImporter`, `.fileExporter`, `PhotosPicker` | MEDIUM — data entry paths |
 | Context menus | `.contextMenu {` | MEDIUM — long-press actions |
 | Swipe actions | `.swipeActions` | MEDIUM — list row shortcuts |
@@ -333,14 +324,16 @@ Scan for these patterns across ALL source files:
 | Promotion cards | `PromotionCard`, `CompactPromotionCard`, dismissable feature cards | MEDIUM — conditional entry |
 | Confirmation dialogs | `.confirmationDialog(`, `.alert(` | LOW — exit gates, not entry points |
 
-**After Tier 2, print:** `⏱ Layer 1: ✓ Tier 2 Patterns (2/3) — found [N] entry points across [N] patterns`
+**Zero-match handling:** When a scanned pattern returns 0 results, do NOT silently skip it. Report: `"<PatternName>: 0 matches — pattern not present in codebase"`. This prevents confusion where a category appears "clean" when it was never scanned.
+
+**After Tier 2, print:** `Layer 1: ✓ Tier 2 Patterns (2/3) — found [N] entry points across [N] patterns`
 
 #### Tier 3: Container View Enumeration
 For views that are **feature hubs** (tools, settings, reports, dashboards), don't just log the hub as one entry point — enumerate each actionable card/row inside it as a sub-entry-point. These hubs often contain 10-20+ features that the Tier 2 scan misses because they're wired through enum-based routing, not direct `.sheet()` modifiers.
 
 Also identify the **primary detail view** (the view users spend the most time in) and audit its sheet/action surface separately — it often has the largest entry point count.
 
-**After Tier 3, print:** `⏱ Layer 1: ✓ Tier 3 Containers (3/3) — enumerated [N] hub views, [N] sub-entry-points added`
+**After Tier 3, print:** `Layer 1: ✓ Tier 3 Containers (3/3) — enumerated [N] hub views, [N] sub-entry-points added`
 
 #### Catalog Rules
 
@@ -368,9 +361,11 @@ Also identify the **primary detail view** (the view users spend the most time in
 | `no_feedback` | Action completes without confirmation |
 | `orphaned` | View exists but has no entry point |
 | `platform_gap` | Works on one platform, broken on another |
-| `alias` | Entry point mirrors another entry point's destination (e.g., QuickFind item that opens the same sheet as a toolbar button). Group aliases separately — they confirm redundancy, not new paths |
-| `conditional` | Entry point disappears after user action. **Scan for:** `@AppStorage` keys containing `hasDismissed`, `hasUsed`, `hasScanned`, `hasSeen`; `if !settings.someFlag` guards around UI elements; `.onboardingComplete` checks. These are features visible only to new users or until a milestone is reached — they affect first-session discoverability. |
+| `alias` | Entry point mirrors another entry point's destination. Group aliases separately — they confirm redundancy, not new paths |
+| `conditional` | Entry point disappears after user action. **Scan for:** `@AppStorage` keys containing `hasDismissed`, `hasUsed`, `hasScanned`, `hasSeen`; `if !settings.someFlag` guards around UI elements; `.onboardingComplete` checks. |
 | `invisible` | Entry point triggered by notification, deep link, or Spotlight — not visible in the UI hierarchy |
+| `callback_wiring` | View takes an `onComplete`, `onItemSelected`, or similar closure — trace what the closure does |
+| `container_mismatch` | Navigation sets `selectedSection` to a value that may not be a valid tag in the current container |
 
 #### De-duplication Rules
 
@@ -409,30 +404,72 @@ After the tables, list:
 
 **Before starting, print:**
 ```
-⏱ Layer 2: Flow Tracing — [N] flagged entry points to trace
+Layer 2: Flow Tracing — [N] flagged entry points to trace
   Estimated time: ~[2-3 min for <5 flows / 5-8 min for 10+ flows]
 ```
 
 1. Read flagged entry points from Layer 1
-2. For each flagged entry point, trace the complete user journey. **After each flow, print:** `⏱ Layer 2: ✓ Flow [N]/[total] — "[flow name]"`
+2. For each flagged entry point, trace the complete user journey. **After each flow, print:** `Layer 2: ✓ Flow [N]/[total] — "[flow name]"`
 3. Document in `layer2-traces/flow-XXX.yaml`
 4. Identify gaps between expected and actual journeys
+
+**IMPORTANT — Trace into callbacks and closures:**
+When tracing a flow, do NOT stop at the view presentation. If a sheet presents a view that takes an `onComplete`, `onItemSelected`, or similar closure, trace what that closure does. An empty closure `{ }` or unimplemented handler is a dead end.
+
+**IMPORTANT — Verify navigation container constraints:**
+At each navigation step, if `selectedSection = .X` is set:
+1. Check whether `.X` is a valid tag in the current navigation container (TabView tags on iPhone, sidebar items on iPad/macOS)
+2. If it's not a valid tag, the assignment is a no-op — flag as dead end
+3. Different platforms may have different valid tags — check both
+
+**Check both pre-action AND post-action feedback:**
+- Pre-action: Is there a confirmation dialog before destructive operations?
+- Post-action: Is there a toast, haptic, or visual confirmation after non-destructive actions (save, duplicate, archive)?
+
+#### Flow Trace Template
+
+```yaml
+flow_trace:
+  id: "flow-001"
+  name: "Feature Name from Entry Point"
+  entry_point: "entry-point-id"
+
+  steps:
+    - step: 1
+      action: "User taps [button/card/menu item]"
+      file: "SourceFile.swift:78"
+      code: "selectedSection = .tools"
+      issues: []
+
+    - step: 2
+      action: "App navigates to [destination]"
+      file: "DestinationView.swift"
+      result: "[what user sees]"
+      issues:
+        - category: "incomplete_navigation"
+          detail: "User must scroll to find feature"
+
+  expected_journey:
+    - "[step 1]"
+    - "[step 2]"
+
+  actual_journey:
+    - "[step 1]"
+    - "[extra step]"
+    - "[step 2]"
+
+  gap_analysis:
+    type: "[issue category]"
+    extra_steps: 2
+    user_confusion_risk: "medium"
+```
 
 ### If "trace" with path argument (e.g., `trace "Dashboard → Add Item → Photo → Save"`):
 Targeted flow trace — trace a specific user journey described in natural language:
 1. Parse the path description into discrete steps (split on `→`, `->`, or `,`)
-2. For each step, identify the SwiftUI view, button, or action that triggers it:
-   - Search for view names, sheet triggers, navigation actions matching each step
-   - Use `grep -r` for button labels, sheet cases, navigation destinations
-3. Trace the complete code path step by step:
-   - File and line number for each transition
-   - State changes (sheet presentations, navigation, @State mutations)
-   - View transitions (what view appears at each step)
-4. At each step, check for issues:
-   - Is the expected next action visible without scrolling? (Buried Primary Action)
-   - Does the user have a forward path? (Dismiss Trap)
-   - Does the CTA match the destination scope? (Promise-Scope Mismatch)
-   - Is feedback shown on completion? (Missing Feedback)
+2. For each step, identify the SwiftUI view, button, or action that triggers it
+3. Trace the complete code path step by step (file, line, state changes, view transitions)
+4. At each step, check for issues (Buried Primary Action, Dismiss Trap, Promise-Scope Mismatch, Missing Feedback, Callback Wiring)
 5. Document the trace and any issues found
 6. Output: Issue Rating Table for any findings, plus the step-by-step trace
 
@@ -440,25 +477,612 @@ Targeted flow trace — trace a specific user journey described in natural langu
 
 **Before starting, print:**
 ```
-⏱ Layer 3: Issue Detection — scanning [N] entry points for issues
+Layer 3: Issue Detection — scanning [N] entry points for issues
   Estimated time: ~[2-4 min for <100 entries / 5-10 min for 200+]
 ```
+
+> **CRITICAL: Do NOT delegate Layer 3 checks to Explore subagents.** Run each check directly using Grep/Glob/Read tools against the full codebase. Subagent sampling causes false negatives — a previous audit checked 1 of 7 list views for gesture-only actions and concluded "all clear," missing 6 findings.
 
 **Step 0 — Cross-layer verification (MANDATORY):**
 Before scanning for new issues, re-verify ALL flagged findings from Layer 1 and Layer 2. For each:
 - Check whether the flag still holds when you look at extension files (`+Sections.swift`, `+Actions.swift`, etc.) and ViewModel bindings (`@Bindable`, `Binding<Bool>` parameters)
 - If a finding was based on "this @State var is never set to true" — also check if it's passed as a `$binding` to a ViewModel method or child view that sets `.wrappedValue = true`
 - **Retract** false positives explicitly: `~~#N — [original finding]~~ RETRACTED: [reason]`
-- Print: `⏱ Layer 3: ✓ Cross-layer verification — [N] confirmed, [N] retracted`
+- Print: `Layer 3: ✓ Cross-layer verification — [N] confirmed, [N] retracted`
 
-**Then proceed with new checks:**
+**Then proceed with automated checks 1-18 below.**
 
-1. Scan ALL entry points for common issues. **After each check, print:** `⏱ Layer 3: ✓ [check name] ([N]/[total]) — [N] findings so far`
-2. Check for orphaned sheet cases (enum vs handler mismatch)
-3. Check for orphaned views (defined but never instantiated)
-4. Check for orphaned @State vars — but verify against extension files AND ViewModel bindings before flagging (see Step 0 methodology)
-5. Categorize by severity
-6. Output to `layer3-results.yaml`
+After each check, print: `Layer 3: ✓ Check [N] [check name] ([N]/18) — [N] findings so far`
+
+---
+
+### Automated Check 1: Sheet Case Coverage
+
+**What it detects:** Enum cases defined in a sheet routing enum (e.g., `DashboardSheetType`) that have no corresponding handler in the `sheetContent(for:)` switch — the case exists but presenting it shows nothing or crashes.
+
+**How to detect:**
+```bash
+# Step 1: Find all sheet enum cases
+grep -n "case " <SheetEnumFile>.swift | grep -v "//"
+
+# Step 2: Find all handled cases in sheet content switch
+grep -n "case \." <SheetContentFile>.swift
+
+# Step 3: Compare — any cases in Step 1 without a handler in Step 2?
+```
+
+**Also check the reverse:** handlers that reference cases no longer in the enum (dead handlers).
+
+**Safe patterns (do NOT flag):**
+- Cases with a `default:` handler that provides meaningful content
+- Deprecated cases with explicit comments
+
+**Severity:** 🔴 CRITICAL (sheet opens blank or crashes)
+
+---
+
+### Automated Check 2: Orphaned Views
+
+**What it detects:** View structs defined (`struct XxxView: View`) but never instantiated anywhere outside of `#Preview` blocks.
+
+**How to detect:**
+```bash
+# Step 1: Find all View struct definitions
+grep -rn "struct.*: View" Sources/ --include="*.swift" | grep -v "Preview\|test\|Test"
+
+# Step 2: For each view name, search for instantiation
+# A view is "used" if its name appears as `ViewName(` somewhere outside its own file and outside #Preview
+grep -rn "ViewName(" Sources/ --include="*.swift" | grep -v "#Preview\|Preview {"
+```
+
+**Also check for orphaned modifiers:** Structs conforming to `ViewModifier` that are defined but `.modifier()` is never called with them, and no `.xxxModifier()` extension applies them.
+
+**Safe patterns (do NOT flag):**
+- Views used only in previews if explicitly marked as preview-only
+- Views instantiated dynamically via reflection or factory patterns
+- Views referenced in `@ViewBuilder` results
+
+**Severity:** ⚪ LOW (dead code, no user impact — but may indicate ~hundreds of lines of wasted code)
+
+---
+
+### Automated Check 3: Promise-Scope Mismatch
+
+**What it detects:** A specific-sounding CTA ("Track AppleCare+", "Set Warranty") that opens a generic/overly-broad destination. The user expects a focused action but gets a container with the action buried among unrelated content.
+
+**How to detect:**
+```bash
+# Step 1: Find sheet presentations that use generic wrappers
+grep -rn "EditItemSheetWrapper\|FullEditView\|SettingsView" Sources/ --include="*.swift" \
+  | grep -i "sheet\|present"
+
+# Step 2: Find onItemSelected callbacks — trace what they open
+grep -A5 "onItemSelected" Sources/ --include="*.swift" \
+  | grep "showing\|activeSheet\|EditItem"
+
+# Step 3: Cross-reference specific CTA labels vs destination scope
+grep -B5 "EditItemSheetWrapper" Sources/ --include="*.swift" \
+  | grep "Track\|Set\|Add\|Manage\|Configure"
+```
+
+**Programmatic detection logic:**
+1. Find CTA labels with specific verbs ("Track X", "Set Y", "Add Z", "Manage W")
+2. Trace to the destination view
+3. Count distinct sections/concerns in that destination
+4. If CTA specificity = 1 concern but destination has 3+ unrelated sections → flag
+
+**Safe patterns (do NOT flag):**
+- General CTAs ("Edit Product", "Settings") opening broad views — this is expected
+- CTAs that open a pre-scrolled or pre-filtered version of a broad view
+
+**Severity:** 🟡 HIGH (user confusion, broken trust in CTAs)
+
+---
+
+### Automated Check 4: Entry Point Coverage
+
+**What it detects:** Features that exist in the app but have no trigger/entry point — the user cannot reach them.
+
+**How to detect:**
+```bash
+# Step 1: Find all sheet/navigation triggers
+grep -r "activeSheet = \." Sources/
+grep -r "selectedSection = \." Sources/
+
+# Step 2: Compare against feature list (views, sheet enum cases)
+# Any features/views without triggers?
+```
+
+**Severity:** 🟡 HIGH if feature is user-facing, ⚪ LOW if internal/utility
+
+---
+
+### Automated Check 5: Buried Primary Action
+
+**What it detects:** Primary action button (Save, Continue, Done, Submit) placed inside a ScrollView after tall content, making it invisible without scrolling. Users see only "Cancel" and feel trapped.
+
+**How to detect:**
+```bash
+# Step 1: Find files with primary action buttons
+grep -rn "\.borderedProminent\|\.controlSize(.large)" Sources/ --include="*.swift" \
+  | cut -d: -f1 | sort -u > /tmp/primary_buttons.txt
+
+# Step 2: Find files with ScrollView
+grep -rn "ScrollView" Sources/ --include="*.swift" \
+  | cut -d: -f1 | sort -u > /tmp/scrollviews.txt
+
+# Step 3: Cross-reference — files with BOTH are candidates
+comm -12 /tmp/primary_buttons.txt /tmp/scrollviews.txt
+
+# Step 4: For each candidate, manually check:
+# - Is the button INSIDE the ScrollView? (not pinned outside)
+# - Is it the last child of a VStack inside ScrollView?
+# - Are there 4+ tall elements above it?
+# - Exclude: .toolbar buttons, buttons outside ScrollView, Form-based layouts
+```
+
+**Safe patterns (do NOT flag):**
+```swift
+// ✅ Button pinned OUTSIDE ScrollView
+VStack(spacing: 0) {
+    ScrollView { content }
+    Divider()
+    actionButtons.padding()  // pinned below scroll
+}
+
+// ✅ Button in .toolbar
+.toolbar {
+    ToolbarItem(placement: .confirmationAction) {
+        Button("Done") { ... }
+    }
+}
+
+// ✅ Standard Form sections
+Form {
+    Section { ... }
+    Section { Button("Save") { ... } }
+}
+
+// ✅ Bottom action bar outside ScrollView
+VStack(spacing: 0) {
+    ScrollView { photoGrid }
+    bottomActionBar
+}
+```
+
+**Severity:** 🟡 HIGH (user feels trapped, only sees Cancel)
+
+---
+
+### Automated Check 6: Dismiss Traps
+
+**What it detects:** A view where the only visible action is Cancel/Dismiss/back with no forward path shown.
+
+**How to detect:**
+```bash
+# Step 1: Find views with only cancellationAction in toolbar
+grep -rn "cancellationAction" Sources/ --include="*.swift" \
+  | cut -d: -f1 | sort -u > /tmp/cancel_views.txt
+
+# Step 2: Find views with confirmationAction or primaryAction
+grep -rn "confirmationAction\|primaryAction" Sources/ --include="*.swift" \
+  | cut -d: -f1 | sort -u > /tmp/forward_views.txt
+
+# Step 3: Files with cancel but no forward action in toolbar
+comm -23 /tmp/cancel_views.txt /tmp/forward_views.txt
+
+# Step 4: For each candidate, check if body has visible .borderedProminent button
+# Exclude: HelpView, WhatsNewSheet, info/about views (dismiss is expected)
+```
+
+**Safe patterns (do NOT flag):**
+```swift
+// ✅ Cancel + Done/Save in toolbar
+.toolbar {
+    ToolbarItem(placement: .cancellationAction) { Button("Cancel") { ... } }
+    ToolbarItem(placement: .confirmationAction) { Button("Done") { ... } }
+}
+
+// ✅ Cancel in toolbar + primary action in body (visible without scroll)
+
+// ✅ Read-only/info sheets (dismiss is the only expected action)
+```
+
+**Severity:** 🟡 HIGH (user feels stuck after completing a step)
+
+---
+
+### Automated Check 7: Gesture-Only Actions
+
+**What it detects:** Feature or action accessible only via gesture (swipe, long-press, context menu) with no visible button or menu alternative.
+
+**How to detect:**
+```bash
+# Step 1: Find swipeActions and contextMenu usage
+grep -rn "\.swipeActions\|\.contextMenu" Sources/ --include="*.swift"
+
+# Step 2: For each file with gesture actions, extract action labels
+grep -A10 "\.swipeActions\|\.contextMenu" Sources/ --include="*.swift" \
+  | grep 'Button("'
+
+# Step 3: Check if those same action labels appear as visible buttons
+# in the same view (outside gesture blocks)
+```
+
+**IMPORTANT — Check ALL list views, not just a sample.** A previous audit checked 1 of 7 list views and concluded "all clear," missing 6 findings.
+
+**Safe patterns (do NOT flag):**
+```swift
+// ✅ Swipe action + toolbar/menu equivalent
+.swipeActions { Button("Delete") { ... } }
+.toolbar {
+    ToolbarItem { Menu { Button("Delete") { ... } } }
+}
+
+// ✅ Standard list delete (.onDelete) — well-known iOS convention
+
+// ✅ Context menu duplicating a visible button (convenience)
+```
+
+**Severity:** 🟢 MEDIUM (feature undiscoverable for some users; 🟡 HIGH on macOS where swipe is rare)
+
+---
+
+### Automated Check 8: Loading State Traps
+
+**What it detects:** A view that shows a loading indicator with no way for the user to cancel, go back, or timeout.
+
+**How to detect:**
+```bash
+# Step 1: Find ProgressView paired with interactiveDismissDisabled
+grep -rn "interactiveDismissDisabled" Sources/ --include="*.swift"
+
+# Step 2: Find full-screen loading overlays
+grep -B5 -A5 "ProgressView" Sources/ --include="*.swift" \
+  | grep -l "ignoresSafeArea\|ZStack"
+
+# Step 3: For each, check if cancel button exists during loading state
+# Check if async operation has timeout/cancellation
+```
+
+**Safe patterns (do NOT flag):**
+```swift
+// ✅ Loading with cancel button
+// ✅ Loading with timeout
+// ✅ Inline progress indicator (doesn't block interaction)
+// ✅ Brief loading (< 2 sec typical) for local operations
+```
+
+**Severity:** 🟢 MEDIUM (user trapped if operation hangs)
+
+---
+
+### Automated Check 9: Context Dropping
+
+**What it detects:** Navigation path has item/context available at the source but drops it before reaching the destination. The right destination is opened but without the context the user expects.
+
+**How to detect:**
+```bash
+# Step 1: Find platform-split presentations
+grep -rn "#if os(iOS)" Sources/ --include="*.swift" \
+  | xargs -I{} grep -l "\.sheet\|\.fullScreenCover" {} 2>/dev/null
+
+# Step 2: Compare parameters in iOS sheet vs macOS notification
+grep -B2 -A15 "NotificationCenter.default.post" Sources/ --include="*.swift" \
+  | grep -E "userInfo|let context"
+
+# Step 3: Find NavigationContext structs and their properties
+grep -rn "NavigationContext\|NavigationInfo" Sources/ --include="*.swift"
+
+# Step 4: Compare context struct properties with destination view init params
+
+# Step 5: Find show* flags set from item-context closures where destination
+# uses parameterless init
+grep -B10 "show.*= true" Sources/ --include="*.swift" \
+  | grep -E "item\.|onItemSelected"
+```
+
+**Safe patterns (do NOT flag):**
+```swift
+// ✅ All destination parameters passed on all platforms
+// ✅ Parameterless init is intentional (fresh/empty state)
+// ✅ Context struct matches notification sender 1:1
+```
+
+**Severity:** 🟡 HIGH (user loses context; may cause data loss)
+
+---
+
+### Automated Check 10: Notification Navigation Fragility
+
+**What it detects:** Navigation between views using `NotificationCenter` with untyped `[String: Any]` dictionaries instead of typed function calls or bindings. Key typos, type mismatches, or omitted fields are silent at compile time.
+
+**How to detect:**
+```bash
+# Step 1: Find NotificationCenter posts with userInfo (navigation-related)
+grep -rn "NotificationCenter.default.post" Sources/ --include="*.swift" \
+  | grep -v "object: nil)" \
+  | grep -i "userInfo"
+
+# Step 2: Find the notification names used for navigation
+grep -rn "\.requestNavigate\|\.navigateTo\|\.showFeature\|\.openSection" Sources/ --include="*.swift"
+
+# Step 3: Find corresponding receivers
+grep -rn "\.onReceive\|publisher(for:" Sources/ --include="*.swift" \
+  | grep -i "navigate\|show\|open"
+
+# Step 4: For each sender/receiver pair, compare key counts and key names
+```
+
+**Safe patterns (do NOT flag):**
+```swift
+// ✅ Typed callback/closure
+// ✅ Environment-based navigation
+// ✅ Binding-based state change
+// ✅ Notification used for non-navigation purposes (sync events, refresh triggers)
+```
+
+**Severity:** 🟡 HIGH (silent bugs, no compiler safety)
+
+---
+
+### Automated Check 10b: Notification Type-Safety
+
+**What it detects:** Same userInfo key sent with one type (e.g., `PersistentIdentifier`) but cast to a different type on receive (e.g., `as? String`). Compiles silently, fails at runtime with silent nil.
+
+**How to detect:**
+```bash
+# Step 1: Extract all userInfo key-value pairs from senders
+grep -B2 -A20 "NotificationCenter.default.post" Sources/ --include="*.swift" -rn \
+  | grep -E '"[a-zA-Z]+":' > /tmp/sender_keys.txt
+
+# Step 2: Extract all userInfo key casts from receivers
+grep -B2 -A10 "userInfo\?" Sources/ --include="*.swift" -rn \
+  | grep -E '"[a-zA-Z]+".*as\?' > /tmp/receiver_casts.txt
+
+# Step 3: For each key in BOTH sender and receiver:
+# Compare the type being sent vs the type being cast
+# Mismatch example:
+#   Sender:   "itemID": item.persistentModelID    (PersistentIdentifier)
+#   Receiver: info["itemID"] as? String            (String)
+#   → CRITICAL: silent nil, navigation silently broken
+
+# Step 4: Flag mismatches:
+# - Sender PersistentIdentifier, receiver String (or vice versa)
+# - Sender uses `as Any` type erasure
+# - Orphaned keys sent but never read
+# - Missing keys expected by receiver but never sent
+```
+
+**Severity:** 🔴 CRITICAL (type mismatches cause silent navigation failures)
+
+---
+
+### Automated Check 11: Sheet Presentation Asymmetry
+
+**What it detects:** Same feature uses fundamentally different presentation mechanisms on different platforms — e.g., iOS uses `.sheet` with direct view init, macOS uses NotificationCenter → navigation. Both work, but different mechanisms drift apart.
+
+**How to detect:**
+```bash
+# Step 1: Find files with platform-conditional sheet presentations
+grep -rn "#if os(iOS)" Sources/ --include="*.swift" \
+  | cut -d: -f1 | sort -u > /tmp/platform_split.txt
+
+# Step 2: For each, check if iOS uses .sheet and macOS uses a different mechanism
+for f in $(cat /tmp/platform_split.txt); do
+  ios_sheet=$(grep -c "\.sheet\|\.fullScreenCover" "$f" 2>/dev/null || echo 0)
+  notification=$(grep -c "NotificationCenter.default.post" "$f" 2>/dev/null || echo 0)
+  if [ "$ios_sheet" -gt 0 ] && [ "$notification" -gt 0 ]; then
+    echo "ASYMMETRY: $f"
+  fi
+done
+
+# Step 3: For asymmetric files, count parameters in each path
+```
+
+**Safe patterns (do NOT flag):**
+```swift
+// ✅ Same mechanism, minor platform differences (styling, frame size)
+// ✅ Platform-specific STYLING, not mechanism
+```
+
+**Severity:** 🟡 HIGH (maintenance burden, drift risk, enables context dropping)
+
+---
+
+### Automated Check 12: Stale Navigation Context
+
+**What it detects:** A view stores navigation context in `@State` for later use, but the context is never cleared — can become stale if source item is deleted or user navigates away.
+
+**How to detect:**
+```bash
+# Step 1: Find @State properties with Context/Info types
+grep -rn "@State.*private.*var.*[Cc]ontext\|@State.*private.*var.*[Ii]nfo\|@State.*private.*var.*[Nn]avigation" \
+  Sources/ --include="*.swift"
+
+# Step 2: For each, check if it's ever set to nil
+# Extract variable name, search for "varName = nil"
+
+# Step 3: If no clearing mechanism exists → flag as stale context risk
+
+# Step 4: Check if context references PersistentIdentifier without validation
+```
+
+**Safe patterns (do NOT flag):**
+```swift
+// ✅ Context cleared after use (.onDisappear, .onChange)
+// ✅ Context is a computed property (always fresh)
+// ✅ Context validated before use (modelContext.model(for:) != nil check)
+```
+
+**Severity:** 🟢 MEDIUM (edge case but can cause crashes or stale data display)
+
+---
+
+### Automated Check 13: Simulated Delay
+
+**What it detects:** `Task.sleep` or `asyncAfter` followed by hardcoded data assignment — simulating a network fetch or AI computation with fake data.
+
+**How to detect:**
+```bash
+# Step 1: Find Task.sleep or asyncAfter in feature views (not tests/previews)
+grep -rn "Task\.sleep\|asyncAfter" Sources/ --include="*.swift" \
+  | grep -v "Test\|Preview\|#Preview" \
+  | grep -v "// animation\|// dismiss\|// sheet" > /tmp/delay_sites.txt
+
+# Step 2: For each delay site, check if the next 10 lines set a hardcoded value
+while IFS=: read -r file line _; do
+  sed -n "$((line+1)),$((line+10))p" "$file" \
+    | grep -q "= \[.*\]\|= .*(\|= \".*\"\|= true\|= false\|\.result =\|\.suggestion" \
+    && echo "SIMULATED: $file:$line"
+done < /tmp/delay_sites.txt
+
+# Step 3: Exclude legitimate uses:
+# - Task.sleep for animation timing (< 0.5s, near dismiss/animation code)
+# - asyncAfter for sheet presentation sequencing
+# - Delays before real async/API calls
+# Flag: delay + hardcoded data WITHOUT any network/API call between them
+```
+
+**Severity:** 🟢 MEDIUM to 🔴 CRITICAL (depends on whether users see fake data as real)
+
+---
+
+### Automated Check 14: Navigation Container Constraints
+
+**What it detects:** `selectedSection = .X` assignments where `.X` is not a valid tag in the current navigation container. On iPhone (TabView), only tab tags are valid. On iPad/macOS (sidebar), sidebar items are valid. Setting a non-existent tag is a silent no-op — the user taps and nothing happens.
+
+**How to detect:**
+```bash
+# Step 1: Find all selectedSection assignments
+grep -rn "selectedSection = \." Sources/ --include="*.swift"
+
+# Step 2: Find valid TabView tags (iPhone)
+grep -rn "\.tag(\." Sources/ --include="*.swift" | grep -i "tab"
+
+# Step 3: Find valid sidebar items
+grep -rn "\.tag(\." Sources/ --include="*.swift" | grep -i "sidebar\|NavigationSplitView"
+
+# Step 4: For each assignment in Step 1, check if the value is valid for both platforms
+# If assigned value is not a valid tag on either platform → flag
+```
+
+**Safe patterns (do NOT flag):**
+```swift
+// ✅ Assigned value matches a .tag() in both TabView and sidebar
+// ✅ Assignment is inside a platform check (#if os(iOS)) using platform-specific tags
+```
+
+**Severity:** 🟡 HIGH (user taps, nothing happens — silent dead end)
+
+---
+
+### Automated Check 15: Notification Lifecycle
+
+**What it detects:** Notification names that are posted but never received (dead posts), or declared but never posted or received (dead declarations). Also catches receivers without corresponding posters.
+
+**How to detect:**
+```bash
+# Step 1: Find all notification name declarations
+grep -rn "static let\|static var" Sources/ --include="*.swift" \
+  | grep "Notification.Name\|NSNotification.Name"
+
+# Step 2: For each notification name, count posts and receivers
+# Posts: grep for ".post(name: .notificationName"
+# Receivers: grep for ".onReceive" or "publisher(for: .notificationName"
+
+# Step 3: Flag:
+# - Declared + posted but never received → dead post
+# - Declared but never posted or received → dead declaration
+# - Received but never posted → will never fire
+```
+
+**Safe patterns (do NOT flag):**
+```swift
+// ✅ System notifications received but not posted (e.g., .willResignActive)
+// ✅ Notifications used in extension targets (may be posted/received in a different target)
+```
+
+**Severity:** ⚪ LOW for dead declarations, 🟢 MEDIUM for dead posts (code that runs but has no effect), 🟡 HIGH for receivers without posters (code waiting for something that never happens)
+
+---
+
+### Automated Check 16: Success Feedback
+
+**What it detects:** Non-destructive actions (save, duplicate, archive, bookmark, export) that complete without any user-visible confirmation — no toast, haptic, banner, or navigation change.
+
+**How to detect:**
+```bash
+# Step 1: Find action completion points
+grep -rn "modelContext\.save\|dismiss()\|\.delete\|duplicate\|archive\|export\|\.insert" \
+  Sources/ --include="*.swift"
+
+# Step 2: For each, check surrounding 10 lines for feedback:
+# - ToastManager, toast, showToast
+# - UINotificationFeedbackGenerator, haptic
+# - banner, alert, confirmationDialog
+# - Navigation change (dismiss + new sheet)
+
+# Step 3: Flag actions with no feedback within 10 lines of the completion point
+# Exclude: destructive actions (delete) — those should have pre-confirmation, not post-feedback
+```
+
+**Safe patterns (do NOT flag):**
+```swift
+// ✅ Toast shown after save
+// ✅ Haptic played on completion
+// ✅ View dismisses with completion callback that shows feedback
+// ✅ Destructive actions with pre-confirmation dialog (feedback is the confirmation)
+```
+
+**Severity:** 🟢 MEDIUM (user unsure if action succeeded)
+
+---
+
+### Automated Check 17: Empty State Coverage
+
+**What it detects:** List or collection views that show nothing when empty — no `ContentUnavailableView`, no placeholder text, no onboarding prompt. Users see a blank screen and think the app is broken.
+
+**How to detect:**
+```bash
+# Step 1: Find list/collection views
+grep -rn "List {\|ForEach\|LazyVGrid\|LazyHGrid\|LazyVStack" Sources/ --include="*.swift" \
+  | cut -d: -f1 | sort -u
+
+# Step 2: For each, check if there's an empty state handler:
+# - ContentUnavailableView
+# - .overlay { if items.isEmpty { ... } }
+# - if items.isEmpty { emptyView } else { List { ... } }
+
+# Step 3: Flag lists with no empty state handling
+# Exclude: lists that are always populated (e.g., settings sections, static menus)
+```
+
+**Severity:** 🟡 HIGH (users think app is broken when they first open it)
+
+---
+
+### Automated Check 18: Error Recovery
+
+**What it detects:** Error states displayed to the user with no retry button, no "Open Settings" link, or no other recovery path. The user sees an error and has no way forward.
+
+**How to detect:**
+```bash
+# Step 1: Find error display patterns
+grep -rn "\.alert\|errorMessage\|showError\|isError" Sources/ --include="*.swift"
+
+# Step 2: For each error display, check if there's a retry or recovery action:
+# - Button("Retry"), Button("Try Again")
+# - Link to Settings (openURL with app-settings:)
+# - Alternative action offered
+
+# Step 3: Flag errors with no recovery path
+# Exclude: fatal errors that genuinely can't be retried, informational alerts with "OK"
+```
+
+**Severity:** 🟡 HIGH (user stuck at error with no path forward)
+
+---
 
 ### Verification Template (MANDATORY for Layer 3)
 
@@ -476,11 +1100,13 @@ Rules:
 - Layer 3 cannot produce a grade while any flagged entry has `?` in Verified
 - Retracted findings stay in the table with strikethrough — they prove you checked, not just confirmed
 
+---
+
 ### If "layer4" or "evaluate": `enumerate-required`
 
 **Before starting, print:**
 ```
-⏱ Layer 4: Semantic Evaluation — [N] issues to evaluate
+Layer 4: Semantic Evaluation — [N] issues to evaluate
   Estimated time: ~[1-2 min for <10 issues / 3-5 min for 20+]
 ```
 
@@ -496,77 +1122,96 @@ Rules:
 2. For each finding, assign a **confidence level**:
    - `verified` — confirmed by grep, file read, or code trace. The issue definitely exists.
    - `probable` — code suggests the issue but not fully traced through all code paths.
-   - `needs-runtime` — static analysis can't determine; requires running the app to confirm (e.g., animation timing, race conditions).
+   - `needs-runtime` — static analysis can't determine; requires running the app to confirm.
 
 3. Map violations to design principles (#1-#8)
-4. **After each evaluation, print:** `⏱ Layer 4: ✓ Issue [N]/[total] — [confidence] — [D/E/F/R scores]`
+4. **After each evaluation, print:** `Layer 4: ✓ Issue [N]/[total] — [confidence] — [D/E/F/R scores]`
 5. Output to `layer4-semantic-evaluation.md`
 
 ### If "layer5" or "data-wiring" or "wiring": `enumerate-required`
 
 **Before starting, print:**
 ```
-⏱ Layer 5: Data Wiring — inventorying models and cross-referencing features
+Layer 5: Data Wiring — inventorying models and cross-referencing features
   Estimated time: ~[2-4 min for <20 features / 5-10 min for 40+]
 ```
 
-1. Inventory model properties and relationships (what data the app tracks). **Print:** `⏱ Layer 5: ✓ Model inventory (1/4) — [N] models, [N] properties`
-2. **Select features to cross-reference.** Don't try to check every feature — select the **top 5-8** using these criteria (in priority order):
-   - Features that **make decisions** based on model data (advisors, calculators, suggestion engines) — these are most likely to have unwired data
-   - Features with the **most model properties available** but unclear how many they actually use
-   - Features flagged in earlier layers (Layer 3 orphans, Layer 2 traced flows)
-   - The **primary detail view** (it reads the most model data)
+1. **Model inventory.** Catalog what data the app tracks:
+```bash
+# Find all @Model classes and their properties
+grep -rn "@Model" Sources/Models/ --include="*.swift" -l
 
-   For each selected feature, check what model data it actually reads vs what's available. **Print:** `⏱ Layer 5: ✓ Feature scan (2/4) — [N] features checked`
-3. Detect mock/hardcoded data patterns (asyncAfter delays, static arrays, placeholder strings). **Print:** `⏱ Layer 5: ✓ Mock data scan (3/4)`
-4. Cross-reference: model capabilities vs feature consumption
-5. Flag unwired integrations (e.g., data exists but decision engine ignores it)
-6. Check platform parity (extension files, #if os() blocks, dismiss buttons). **Print:** `⏱ Layer 5: ✓ Platform parity (4/4)`
-7. Output to `layer5-data-wiring.yaml`
+# Find relationships
+grep -rn "var.*:.*\[.*\]?" Sources/Models/ --include="*.swift" | grep -v "//"
 
-**Data wiring detection patterns:**
+# Find computed properties that aggregate data
+grep -rn "var.*:.*{" Sources/Models/ --include="*.swift" | grep -i "total\|average\|count\|cost\|price"
 ```
-# Fake fetch pattern — asyncAfter with hardcoded data
-asyncAfter(deadline:) { self.data = HardcodedResult(...) }
+**Print:** `Layer 5: ✓ Model inventory (1/4) — [N] models, [N] properties`
 
-# Static arrays pretending to be computed results
-let alternatives = [Alternative(name: "Product X", price: "$299")]
+2. **Select features to cross-reference.** Don't check every feature — select the **top 5-8** using these criteria:
+   - Features that **make decisions** based on model data (advisors, calculators, suggestion engines)
+   - Features with the **most model properties available** but unclear how many they use
+   - Features flagged in earlier layers
+   - The **primary detail view** (reads the most model data)
 
-# Decision logic ignoring available model data
-func computeDecision() {
-    // Uses 2 of 10+ available properties
-    if item.age > lifespan { return .replace }
-    return .keep
-}
+   For each, check what model data it reads vs what's available. **Print:** `Layer 5: ✓ Feature scan (2/4) — [N] features checked`
 
-# Manager/service exists but feature doesn't reference it
-// SomeManager exists — does the feature use it?
+3. **Mock data detection:**
+```bash
+# Fake fetch pattern
+grep -rn "asyncAfter" Sources/Features/ --include="*.swift" -A 10 | grep -B 5 "=.*[0-9]\|\".*\$"
+
+# Static arrays pretending to be fetched data
+grep -rn "let.*=.*\[" Sources/Features/ --include="*.swift" | grep -i "alternative\|suggestion\|recommendation"
+
+# Hardcoded scores/ratings in non-test code
+grep -rn "Score.*=.*[0-9]\|rating.*=.*[0-9]" Sources/Features/ --include="*.swift" | grep -v "test\|Test\|preview\|Preview"
+
+# Functions that simulate work
+grep -rn "func fetch\|func load\|func compute" Sources/Features/ --include="*.swift" -A 15 | grep "asyncAfter\|sleep\|\.random"
 ```
+**Print:** `Layer 5: ✓ Mock data scan (3/4)`
 
-**Cross-reference matrix:**
+4. **Cross-reference matrix:**
 
 | Feature | Data Available | Data Used | Data Ignored |
 |---------|---------------|-----------|--------------|
 | [name] | [model properties] | [what it reads] | [gap] |
 
+5. **Integration gap detection:**
+```bash
+# Find Manager/Service classes
+grep -rn "class.*Manager\|class.*Service" Sources/ --include="*.swift" | grep -v "test\|Test"
+
+# Check if feature views reference them
+```
+
+6. **Platform parity check:**
+```bash
+# Find iOS-only dismiss buttons
+grep -rn "#if os(iOS)" Sources/ --include="*.swift" -A 3 | grep -i "dismiss\|toolbar\|done"
+
+# Find extension files with platform-specific computed properties
+grep -rl "extension.*View" Sources/ --include="*.swift" | grep "+"
+```
+**Print:** `Layer 5: ✓ Platform parity (4/4)`
+
+7. Output to `layer5-data-wiring.yaml`
+
 ### If "diff":
 Compare current codebase against the previous audit to show what changed:
 1. Read existing `.ui-path-radar/layer3-results.yaml` and `.ui-path-radar/handoff.yaml`
-2. For each previously-reported issue, check if the referenced file + line still has the problem:
-   - Read the file at the reported line number
-   - Check if the problematic pattern still exists
-   - If fixed, mark as "RESOLVED"
-   - If file was modified but pattern persists, mark as "STILL OPEN"
-   - If file was deleted or moved, mark as "FILE CHANGED — verify manually"
-3. Run a quick scan for NEW issues not in the previous report (new files, new ScrollView+button combos, new sheets without handlers)
+2. For each previously-reported issue, check if the referenced file + line still has the problem
+3. Run a quick scan for NEW issues not in the previous report
 4. Output a diff summary:
-   ```
-   Audit Diff: <previous date> → <current date>
-   ✅ Resolved: <count> issues fixed since last audit
-   🔴 Still Open: <count> issues remain
-   🆕 New: <count> new issues detected
-   📁 Changed: <count> files modified since audit (may need re-verification)
-   ```
+```
+Audit Diff: <previous date> → <current date>
+✅ Resolved: <count> issues fixed since last audit
+🔴 Still Open: <count> issues remain
+🆕 New: <count> new issues detected
+📁 Changed: <count> files modified since audit (may need re-verification)
+```
 5. Show the full Issue Rating Table with a Status column prepended (✅/🔴/🆕)
 
 ### If "fix" or "fixes":
@@ -595,57 +1240,52 @@ Compare current codebase against the previous audit to show what changed:
 
 When completing a layer and moving to the next, print:
 ```
-⏱ ✓ Step [N] of 5 complete: [plain description] — [M] findings ([X] verified, [Y] probable, [Z] needs-runtime)
+✓ Step [N] of 5 complete: [plain description] — [M] findings ([X] verified, [Y] probable, [Z] needs-runtime)
   Retracted from prior steps: [count or "none"]
   Cumulative: [total] findings ([C] critical, [H] high, [M] medium, [L] low)
   Next: Step [N+1] — [plain description of what it does and why it matters given current findings].
   → "proceed" | "explain #[N]" | "stop here"
 ```
 
-This gives the user a checkpoint to explore risky findings, ask questions, or stop the audit before investing more time.
-
 ### Final Output (after all layers or after a single layer run)
 
 After completing the audit, provide these **6 items in order**:
 
 1. **One-line summary** — entry point count, issue count by severity (one sentence, not a section)
-2. **Issue Rating Table** — every finding in a single table (see below). Each finding MUST include a confidence tag (`verified` / `probable` / `needs-runtime`) in the Finding column.
-3. **Proactive risk callout** — Auto-identify the top 3 riskiest findings by scanning Risk:Fix, Risk:No Fix, and Blast Radius columns. Print:
+2. **Issue Rating Table** — every finding in a single table. Each finding MUST include a confidence tag (`verified` / `probable` / `needs-runtime`) in the Finding column.
+3. **Proactive risk callout** — Auto-identify the top 3 riskiest findings:
 ```
-⚠ Before proceeding, these findings have elevated risk profiles:
+Before proceeding, these findings have elevated risk profiles:
   #[N] — [short description] (Risk:Fix [indicator], Blast [count] files)
   #[N] — [short description] (Risk:No Fix [indicator], [consequence])
   → Say "explain #[N]" for a detailed risk breakdown before deciding.
 ```
-4. **Cross-skill handoff notes** (if applicable) — If any findings fall into another skill's domain, note them:
+4. **Cross-skill handoff notes** (if applicable):
 ```
-🔗 Related areas to check next:
+Related areas to check next:
   #[N] → Check whether saved data survives editing round-trips (data safety audit)
   #[N] → Check visual layout and spacing for this screen (visual quality audit)
 ```
-5. **Limitations disclaimer** — What this audit can't see:
+5. **Limitations disclaimer:**
 ```
-📋 Limitations: Static analysis only. Not checked: animation smoothness,
+Limitations: Static analysis only. Not checked: animation smoothness,
    real-device timing, race conditions under memory pressure, subjective
    UX feel, accessibility with VoiceOver. Consider runtime testing for
    findings marked "needs-runtime."
 ```
-6. **One-line next step** — suggest next action ("proceed to fixes", "check data safety for affected workflows", etc.)
+6. **One-line next step** — suggest next action
 
-No other sections. Items 3-5 may be omitted if not applicable (no risky findings, no handoffs, experienced/senior user who doesn't need the disclaimer).
+Items 3-5 may be omitted if not applicable.
 
 ### Issue Rating Table
 
-**Hard formatting rule — Table, not list:** ALL findings MUST be in a single markdown table. Each finding is ONE ROW. Ratings are COLUMNS read left-to-right. Never expand findings into individual sections, vertical blocks, or bullet-pointed ratings. Do NOT create separate headed sections for categories of findings. ALL categories go in the same table. The Finding column carries the context.
-
-All findings MUST be presented in this format, sorted by Urgency then ROI:
+**Hard formatting rule — Table, not list:** ALL findings MUST be in a single markdown table. Each finding is ONE ROW. Never expand into individual sections or bullet-pointed ratings. ALL categories go in the same table.
 
 **Full table (160+ cols):**
 ```markdown
 | # | Finding | Confidence | Urgency | Risk: Fix | Risk: No Fix | ROI | Blast Radius | Fix Effort |
 |---|---------|------------|---------|-----------|-------------|-----|-------------|------------|
 | 1 | Dead end: ".warranty" unhandled | verified | 🔴 Critical | ⚪ Low | 🔴 Critical | 🟠 Excellent | 🟢 2 files | Trivial |
-| 2 | AI dismiss→sleep(0.3)→present | probable | 🟢 Medium | 🟢 Medium | 🟢 Medium | 🟢 Good | 🟢 2 files | Small |
 ```
 
 **Compact table (under 160 cols):**
@@ -653,7 +1293,6 @@ All findings MUST be presented in this format, sorted by Urgency then ROI:
 | # | Finding | Conf. | Urgency | Fix Effort |
 |---|---------|-------|---------|------------|
 | 1 | Dead end: ".warranty" unhandled | verified | 🔴 Critical | Trivial |
-| 2 | AI dismiss→sleep→present fragile | probable | 🟢 Medium | Small |
 ```
 
 ### Indicator Scale
@@ -670,7 +1309,7 @@ All findings MUST be presented in this format, sorted by Urgency then ROI:
 - **Risk: Fix:** Risk of the fix introducing regressions
 - **Risk: No Fix:** User-facing consequence of leaving the issue
 - **ROI:** 🟠 Excellent · 🟢 Good · 🟡 Marginal · 🔴 Poor
-- **Blast Radius:** Number of files the fix touches (e.g., `🟢 3 files`, `⚪ 1 file`). Do not use `<br>` tags. Count by grepping for callers/references before rating.
+- **Blast Radius:** Number of files the fix touches. Do not use `<br>` tags. Count by grepping for callers/references before rating.
 - **Fix Effort:** Trivial / Small / Medium / Large
 
 ---
@@ -683,20 +1322,18 @@ After presenting findings, apply fixes in **waves**. After each wave (including 
 
 | Wave | Section | Est. Time | Description |
 |------|---------|-----------|-------------|
-| 1 | Safe fixes + tests | ~10-15 min | Isolated, low blast radius. Auto-apply. Write tests for each fix. |
-| 2 | Cross-cutting fixes + tests | ~15-25 min | Touch shared code. Present for review first. Write tests. |
+| 1 | Safe fixes + tests | ~10-15 min | Isolated, low blast radius. Auto-apply. Write tests. |
+| 2 | Cross-cutting fixes + tests | ~15-25 min | Touch shared code. Present for review. Write tests. |
 | 3 | Design decisions | ~5-15 min | Multiple options. Requires user input per item. |
 | 4 | Build + Test + Commit | ~5 min | Build both platforms, run tests, stage, commit. |
 
-**Every fix must have a test.** Do not move to the next wave until tests for the current wave's fixes are written and compiling. The test verifies the fix works; without it, the fix is unverified code.
+**Every fix must have a test.** Do not move to the next wave until tests for the current wave's fixes are written and compiling.
 
 Skip empty waves.
 
 ### Progress Banner (MANDATORY after every wave)
 
-**CRITICAL — BLOCKING requirement.** After EVERY wave and EVERY commit, your NEXT output MUST be the progress banner followed by the next-wave `AskUserQuestion`. Do not output anything else first. Do not wait for user input. Do not leave a blank prompt.
-
-After completing each wave, **always** print:
+**CRITICAL — BLOCKING requirement.** After EVERY wave and EVERY commit, your NEXT output MUST be the progress banner followed by the next-wave `AskUserQuestion`.
 
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -714,22 +1351,85 @@ Then immediately ask: "Ready for Wave [N+1]?" with options:
 
 ---
 
+## Regression Canaries
+
+After fixing a workflow issue, generate a "canary" — a specific check that detects if the issue recurs. Canaries are stored in `.ui-path-radar/canaries.yaml` and can be run as a quick regression check before release.
+
+### Canary Format
+
+```yaml
+canaries:
+  - id: "canary-001"
+    issue_ref: "issue-017"
+    description: "NavigationContext must include existingItemID"
+    check_type: "grep_match"
+    file: "Sources/Views/Navigation/AppNavigationView.swift"
+    pattern: "existingItemID.*PersistentIdentifier"
+    expect: "match"  # fail if pattern NOT found
+    added: "2026-03-08"
+
+  - id: "canary-002"
+    issue_ref: "issue-013"
+    description: "Continue button must appear before tall content in flow"
+    check_type: "line_order"
+    file: "Sources/Features/ItemManagement/Views/UnifiedPhotoFlow.swift"
+    first_pattern: "Continue with AI Analysis"
+    second_pattern: "sourcePickerContent"
+    expect: "first_before_second"
+    added: "2026-03-08"
+```
+
+### Canary Check Types
+
+| Type | Description | Pass condition |
+|------|-------------|----------------|
+| `grep_match` | Pattern must exist in file | Pattern found |
+| `grep_absent` | Pattern must NOT exist in file | Pattern not found |
+| `line_order` | Two patterns must appear in specific order | First before second |
+| `param_count` | Count params in a function/dict | Count matches expected |
+| `platform_parity` | Same pattern must exist in both iOS and macOS blocks | Found in both |
+
+### Running Canaries
+
+```bash
+for canary in $(yq '.canaries[].id' .ui-path-radar/canaries.yaml); do
+  file=$(yq ".canaries[] | select(.id == \"$canary\") | .file" .ui-path-radar/canaries.yaml)
+  pattern=$(yq ".canaries[] | select(.id == \"$canary\") | .pattern" .ui-path-radar/canaries.yaml)
+  expect=$(yq ".canaries[] | select(.id == \"$canary\") | .expect" .ui-path-radar/canaries.yaml)
+
+  if [ "$expect" = "match" ]; then
+    grep -q "$pattern" "$file" && echo "✅ $canary" || echo "❌ $canary REGRESSION"
+  elif [ "$expect" = "absent" ]; then
+    grep -q "$pattern" "$file" && echo "❌ $canary REGRESSION" || echo "✅ $canary"
+  fi
+done
+```
+
+### When to Generate Canaries
+
+After each fix in fix mode, generate a canary:
+1. After fixing Context Dropping → canary verifying the field exists in both paths
+2. After fixing Buried Primary Action → canary verifying button order
+3. After fixing Platform Parity Gap → canary verifying pattern on both platforms
+4. After fixing Dismiss Trap → canary verifying forward action exists
+
+Canaries are **additive** — they accumulate over time as a regression safety net.
+
+---
+
 ## Handoff Brief Generation
 
-After completing all layers (full audit) or `fix` mode, generate `.ui-path-radar/handoff.yaml` for consumption by planning skills.
+After completing all layers (full audit) or `fix` mode, generate `.ui-path-radar/handoff.yaml`.
 
 ### When to Generate
-
 - After a full 5-layer audit completes
-- After `fix` mode completes (refreshes the brief with current state)
-- NOT after individual layer runs (layer1, layer2, etc.)
+- After `fix` mode completes (refreshes with current state)
+- NOT after individual layer runs
 
 ### Format
 
 ```yaml
 # Handoff Brief — generated by ui-path-radar
-# Consumed by planning skills
-
 project: <project name from directory>
 audit_date: <ISO 8601 date>
 source_files_scanned: <count>
@@ -743,12 +1443,11 @@ summary:
 
 file_timestamps:
   <file path>: "<ISO 8601 mod date>"
-  # one entry per unique file referenced in issues[]
 
 issues:
   - id: <sequential number>
     finding: "<description>"
-    category: <dead_end|wrong_destination|mock_data|incomplete_navigation|missing_activation|unwired_data|platform_gap|promise_scope_mismatch|buried_primary_action|dismiss_trap|two_step_flow|missing_feedback|gesture_only_action|loading_state_trap|context_dropping|notification_nav_fragility|sheet_presentation_asymmetry|stale_navigation_context|inconsistent_pattern|orphaned_code>
+    category: <dead_end|wrong_destination|mock_data|incomplete_navigation|missing_activation|unwired_data|platform_gap|promise_scope_mismatch|buried_primary_action|dismiss_trap|two_step_flow|missing_feedback|gesture_only_action|loading_state_trap|context_dropping|notification_nav_fragility|sheet_presentation_asymmetry|stale_navigation_context|navigation_container_mismatch|empty_state_missing|error_recovery_missing|inconsistent_pattern|orphaned_code|double_nested_navigation>
     urgency: <critical|high|medium|low>
     risk_fix: <critical|high|medium|low>
     risk_no_fix: <critical|high|medium|low>
@@ -758,30 +1457,24 @@ issues:
     files:
       - <file path>
     suggested_fix: "<what to do, not how>"
-    group_hint: "<optional grouping suggestion, e.g. 'missing_confirmations'>"
+    group_hint: "<optional grouping suggestion>"
 ```
 
 ### File Timestamps
 
-For each unique file path referenced across all issues, record its modification date at audit time. This enables planning skills to detect staleness — if a file changed after the audit, affected issues may need re-verification.
-
 ```bash
-# Get file mod date (macOS)
 stat -f "%Sm" -t "%Y-%m-%dT%H:%M:%SZ" "<file path>"
 ```
 
 ### Group Hints
 
-Optional field suggesting how planning skills might batch issues:
-- Issues with the same `group_hint` are candidates for a single task
-- The planning skill is free to ignore hints and group differently
-- Common hints: `missing_confirmations`, `missing_feedback`, `orphaned_features`, `dead_code`, `platform_parity`
+Common hints: `missing_confirmations`, `missing_feedback`, `orphaned_features`, `dead_code`, `platform_parity`, `dead_notifications`, `navigation_container`
 
 ---
 
 ## Cross-Skill Handoff
 
-UI Path Radar complements **data-model-radar** (model layer), **roundtrip-radar** (data safety), **ui-enhancer-radar** (visual quality), and **capstone-radar** (ship readiness). Findings from one skill inform the others.
+UI Path Radar complements **data-model-radar** (model layer), **roundtrip-radar** (data safety), **ui-enhancer-radar** (visual quality), and **capstone-radar** (ship readiness).
 
 ### On Completion — Write Handoff
 
@@ -792,55 +1485,30 @@ source: ui-path-radar
 date: <ISO 8601>
 project: <project name>
 
-# File timestamps — enables staleness detection by consuming skills
 file_timestamps:
   <file path>: "<ISO 8601 mod date>"
-  # one entry per unique file referenced in issues
 
 for_roundtrip_radar:
-  # Dead ends and broken promises suggest data flow issues
   suspects:
     - workflow: "<affected workflow>"
       finding: "<what was found>"
       file: "<file:line>"
       question: "<specific question for roundtrip-radar to verify>"
-      group_hint: "<optional, e.g. 'dead_ends', 'broken_promises'>"
+      group_hint: "<optional>"
 
 for_ui_enhancer_radar:
-  # Dead buttons and orphaned views should be removed or fixed before visual audit
   suspects:
     - view: "<view file>"
       finding: "<what was found>"
       action: "remove or wire up before visual audit"
-      group_hint: "<optional batching suggestion>"
+      group_hint: "<optional>"
 
 for_capstone_radar:
-  # Critical/high findings that affect ship readiness
   blockers:
     - finding: "<description>"
       urgency: "<CRITICAL|HIGH>"
-      group_hint: "<optional batching suggestion>"
+      group_hint: "<optional>"
 ```
-
-### File Timestamps
-
-For each unique file path referenced across all issues, record its modification date:
-
-```bash
-stat -f "%Sm" -t "%Y-%m-%dT%H:%M:%SZ" "<file path>"
-```
-
-Enables consuming skills to detect **staleness** — if a file changed after the audit, affected issues may need re-verification.
-
-### Group Hints
-
-Optional field for batching related issues. Common hints:
-- `dead_ends` — entry points leading nowhere
-- `broken_promises` — CTAs that don't honor their label
-- `orphaned_code` — features with no entry point
-- `platform_parity` — features broken on one platform
-
-**Automatic:** This file is always written so other audit skills can pick up where this one left off. No user action needed.
 
 ### On Startup — Read Handoffs (MANDATORY)
 
@@ -853,19 +1521,23 @@ Read .agents/ui-audit/ui-enhancer-radar-handoff.yaml (if exists)
 Read .agents/ui-audit/capstone-radar-handoff.yaml (if exists)
 ```
 
-**Parse `for_ui_path_radar` sections.** Each companion can direct findings to this skill. Look for:
-- `for_ui_path_radar.suspects[]` — views or navigation paths another skill flagged as broken
-- `for_ui_path_radar.priority_areas[]` — areas another skill wants traced first
+Parse `for_ui_path_radar` sections. Incorporate as **priority targets** — verify each independently.
 
-If found, incorporate as **priority targets** in the appropriate audit layer. These are not pre-confirmed findings — verify each one independently.
+If not found, proceed normally.
 
-**What each companion provides:**
-- data-model-radar — dead model fields that may indicate orphaned UI
-- roundtrip-radar — data safety issues that may have UI implications
-- ui-enhancer-radar — visual issues that may indicate structural navigation problems
-- capstone-radar — priority navigation areas from ship readiness grading
+---
 
-If not found, proceed normally — the other skills may not be installed or haven't been run yet.
+## Cautionary Note
+
+**This skill is a tool, not an oracle.**
+
+It systematically scans using pattern matching and heuristics. It surfaces real issues you'd miss manually — but it has inherent limitations:
+
+**Good at:** Structural inconsistencies, patterns that compile but fail silently, cross-platform parity, repeatable checklists.
+
+**Can miss:** Business logic correctness, UX nuance, false positives (intentionally retained code), novel bug patterns.
+
+**Use responsibly:** Treat findings as leads to investigate, not verdicts. Verify critical findings manually. Don't assume clean = zero issues — it means zero *known-pattern* issues.
 
 ---
 

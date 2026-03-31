@@ -157,6 +157,43 @@ The skills were originally published as separate repos. Those repos now redirect
 - [Claude Code](https://claude.com/claude-code) CLI
 - A Swift/SwiftUI project (iOS, macOS, iPadOS, tvOS, or visionOS)
 
+## Optional: Dippy (recommended for paths with spaces)
+
+If your project lives on a path with spaces (e.g., `/Volumes/My Drive/Projects/...`), Claude Code triggers a security warning — "Command contains backslash-escaped whitespace that could alter command parsing" — on routine commands like `grep`, `git log`, and `ls`. Each warning requires manual permission approval, which interrupts audit flow repeatedly.
+
+There is no Claude Code setting to suppress this warning. It's a hardcoded security check.
+
+[Dippy](https://github.com/ldayton/Dippy) solves this by acting as a PreToolUse hook that auto-approves safe, read-only commands while blocking destructive operations (force push, `rm -rf`, `git reset --hard`). It uses a custom bash parser with 14,000+ tests to understand what each command actually does — it's not a blanket auto-approve.
+
+```bash
+brew tap ldayton/dippy
+brew install dippy
+```
+
+Then add the hook to `~/.claude/settings.json`:
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [{ "type": "command", "command": "dippy" }]
+      }
+    ]
+  }
+}
+```
+
+Radar Suite includes Dippy integration at two levels:
+
+- **Pre-flight check** — At audit startup, if your project path contains spaces and Dippy isn't installed, the skill prints a one-line recommendation. Non-blocking — the audit continues either way.
+- **Bundled `.dippy` config** — A reference config tuned for audit workflows is included in this repo. Copy it to your project root to customize which commands are auto-approved during audits.
+
+If your project path has no spaces, none of this applies and you won't see any Dippy-related messages.
+
+Dippy is [MIT licensed](https://github.com/ldayton/Dippy/blob/main/LICENSE).
+
 ## License
 
 MIT — see [LICENSE](LICENSE)

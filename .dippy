@@ -1,0 +1,32 @@
+# Radar Suite — Dippy config for audit workflows
+# Copy to your project root to auto-approve safe audit commands.
+# Install: brew tap ldayton/dippy && brew install dippy
+# Docs: https://github.com/ldayton/Dippy
+
+# Read-only inspection (what audits run)
+allow grep *
+allow git log *
+allow git diff *
+allow git blame *
+allow git status
+allow git show *
+allow find *
+allow ls *
+allow cat *
+allow head *
+allow tail *
+allow wc *
+allow which *
+allow command -v *
+
+# Xcode inspection (read-only)
+allow xcodebuild -showBuildSettings *
+allow xcodebuild -list *
+allow xcrun *
+
+# Block destructive operations
+deny rm -rf * "Use targeted rm for specific files instead of rm -rf"
+deny git push --force * "Use --force-with-lease for safer force pushing"
+deny git push -f * "Use --force-with-lease for safer force pushing"
+deny git reset --hard * "Use git stash or git reset --soft to preserve changes"
+deny git clean -f * "Use git clean -n (dry run) first"
