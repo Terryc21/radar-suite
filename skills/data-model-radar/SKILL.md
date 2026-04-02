@@ -21,12 +21,13 @@ metadata:
 
 | Command | Description |
 |---------|-------------|
-| `/data-model-radar` | Full 7-domain audit of all models |
+| `/data-model-radar` | Full 8-domain audit of all models |
 | `/data-model-radar [ModelName]` | Audit a single model in depth |
 | `/data-model-radar serialization` | Domain 2 only — backup/export coverage |
 | `/data-model-radar relationships` | Domain 3 only — cascade rules, orphan risk |
 | `/data-model-radar migration` | Domain 6 only — schema version safety |
 | `/data-model-radar dead-fields` | Domain 5 only — unused model fields |
+| `/data-model-radar time-bombs` | Domain 8 only — deferred operations on aged data |
 | `/data-model-radar status` | Show audit progress |
 
 ## Overview
@@ -65,7 +66,7 @@ On first invocation, ask the user two questions in a single `AskUserQuestion` ca
 
 - **Intermediate**: "Data Model Radar audits your @Model classes for field completeness (missing enums, semantic holes), serialization coverage (backup/export round-trip gaps), relationship integrity (cascade rules, orphan risk), nil-vs-zero ambiguity, dead fields (defined but never read), migration safety (schema versions), and cross-model consistency. It finds model-layer bugs that would otherwise surface as workflow bugs across multiple features."
 
-- **Experienced**: "7-domain audit of @Model layer: field completeness, serialization coverage, relationship integrity, semantic clarity, usage mapping, migration safety, cross-model consistency. Outputs issue rating tables with fix plans. Findings feed roundtrip-radar as suspects."
+- **Experienced**: "8-domain audit of @Model layer: field completeness, serialization coverage, relationship integrity, semantic clarity, usage mapping, migration safety, cross-model consistency, time bomb detection. Outputs issue rating tables with fix plans. Findings feed roundtrip-radar as suspects."
 
 - **Senior/Expert**: "Model audit: fields → serialization → relationships → semantics → usage → migration → consistency. Rating tables + fix plans."
 
@@ -190,7 +191,7 @@ Recommend which models to audit first (highest risk, most relationships).
 
 ## Step 1: Per-Model Audit
 
-Audit one model at a time across all 7 domains.
+Audit one model at a time across all 8 domains.
 
 ### Before Starting (First Model Only)
 
@@ -342,6 +343,55 @@ Flag: 0 read hits in Sources/ (excluding the model file itself and Tests/) = dea
 - **Timestamp conventions:** `timestamp`, `createdAt`, `date` — same concept, different names across models?
 - **Naming patterns:** `priceInCents` vs `deductibleInCents` vs `fairMarketValue` (not in cents?) — consistent currency representation?
 - **Shared protocol conformances:** Do models that should be `Sendable` all conform? Do models with `cloudSyncID` all use it the same way?
+
+### Domain 8: Time Bomb Audit `enumerate-required`
+
+**What it is:** Code that behaves correctly at release but crashes or corrupts data after a time threshold -- days, weeks, or months later. These bugs are invisible in testing because the trigger is **data age + state**, not code paths. They cause 1-star reviews from users who trusted the app long enough for the timer to fire.
+
+**Origin:** This domain was added after a production-class crash in Stuffolio where `SafeDeletionManager` archived items for 30 days, then cascade-deleted them -- triggering a SwiftData `_FullFutureBackingData` fatal error on unresolved iCloud `.externalStorage` faults. The bug was undetectable during development because no test data was 30 days old.
+
+**What to check:**
+
+1. **Deferred deletion with cascade relationships (CRITICAL)**
+   - Grep: `byAdding.*day.*value.*-` + `delete\|remove\|purge\|cleanup` in the same file
+   - Pattern: "Archive now, delete later" with a day threshold
+   - Risk: Cascade delete rules on relationships with `.externalStorage` or iCloud-synced data. The parent deletes fine, but child objects may have unresolved faults after days/weeks of being idle
+   - Check: For every cascade delete that fires on aged data, verify the child objects can be materialized without network access
+
+2. **Cache expiry with model relationships**
+   - Grep: `cacheExpiry\|expiresAt\|isExpired\|ttl\|maxAge` (excluding warranty/coverage context)
+   - Pattern: Cache entries with SwiftData relationships that are purged after N days
+   - Risk: Same fault-resolution crash if cached objects reference `.externalStorage` data
+   - Check: Does the cache purge use batch delete (SQL-level, safe) or object-level delete (materializes faults, unsafe)?
+
+3. **Trial/subscription expiry paths**
+   - Grep: `daysRemaining\|trialEnd\|subscriptionExpir\|canUse`
+   - Pattern: Features gated behind a time-limited trial
+   - Risk: UI assumes feature is available, crashes when trial state changes mid-session. Or: paywall appears but the "subscribe" button doesn't work because StoreKit wasn't initialized (feature was always available before)
+   - Check: Set device date forward 30/60/90 days. Does the trial-expired UI render? Do all buttons work?
+
+4. **Background task accumulation**
+   - Grep: `BGTaskScheduler\|scheduleCleanup\|scheduleOnLaunch\|performAfter`
+   - Pattern: Background tasks that process accumulated items (thumbnail regeneration, sync reconciliation)
+   - Risk: After weeks of inactivity, the task runs on hundreds of items at once, exceeding memory/time limits or hitting faults on stale data
+   - Check: What's the upper bound on items processed? Is there a batch limit? Does it handle partial failure?
+
+5. **Date-threshold state transitions**
+   - Grep: `byAdding.*day\|byAdding.*month` combined with state changes (`.lifecyclePhase`, `.status`, boolean flags)
+   - Pattern: Objects that change state based on date arithmetic (e.g., warranty expiring, loan overdue)
+   - Risk: The state transition code assumes objects are fully loaded. After months, relationships may have been pruned by CloudKit, fields may be nil from a migration gap, or the item may have been deleted on another device
+   - Check: For every date-triggered state change, verify it handles nil/missing data gracefully
+
+**Method:**
+1. Run all five grep patterns above
+2. For each hit, trace the execution path to identify what data is accessed
+3. Ask: "If this code runs for the first time 90 days after the data was created, with iCloud data not fully synced, what breaks?"
+4. Classify: **safe** (uses batch operations or handles faults), **risky** (materializes aged objects without guards), or **bomb** (will crash on aged data with cascade/external storage)
+
+**Evidence required for passing grade:**
+- List every deferred operation found
+- For each, document: trigger condition, data accessed, and whether it materializes faulted objects
+- Any deferred operation that cascade-deletes objects with `.externalStorage` without batch delete = automatic CRITICAL finding
 
 ---
 
