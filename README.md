@@ -3,7 +3,7 @@
 ![GitHub stars](https://img.shields.io/github/stars/Terryc21/radar-suite?style=flat)
 ![GitHub forks](https://img.shields.io/github/forks/Terryc21/radar-suite?style=flat)
 
-**6 audit skills for Claude Code that find bugs in your Swift/SwiftUI app before your users do.**
+**7 audit skills for Claude Code that find bugs in your Swift/SwiftUI app before your users do.**
 
 One install gives you a complete audit pipeline — from data model integrity to visual quality to release readiness.
 
@@ -28,7 +28,7 @@ One install gives you a complete audit pipeline — from data model integrity to
 
 ## What's New in v2.2
 
-- **Domain 8: Time Bomb Audit** (data-model-radar) — Detects deferred operations that crash on aged data. Covers cascade deletes on unresolved iCloud faults, cache expiry with model relationships, trial/subscription expiry paths, background task accumulation, and date-threshold state transitions. These bugs are invisible in testing because the trigger is data age, not code paths.
+- **time-bomb-radar** (new standalone skill) — Finds deferred operations that crash on aged data. Covers cascade deletes on unresolved iCloud faults, cache expiry with model relationships, trial/subscription expiry paths, background task accumulation, and date-threshold state transitions. These bugs are invisible in testing because the trigger is data age, not code paths. Framework-agnostic patterns with Swift-specific fix examples.
 
 ## How is Radar Suite different from other code auditing skills?
 
@@ -45,8 +45,9 @@ Most auditors are the building code. Radar Suite is the home inspector.
 | Skill | What It Checks |
 |-------|---------------|
 | **radar-suite** | Unified entry point — routes to any skill or runs full audit sequence |
-| **data-model-radar** | Your data definitions — are fields backed up correctly? Does CSV export lose data? Are database relationships safe? Will deferred operations crash on aged data? |
-| **ui-path-radar** | Navigation flows — can users reach every feature? Are there dead ends or broken links? |
+| **data-model-radar** | Your data definitions -- are fields backed up correctly? Does CSV export lose data? Are database relationships safe? |
+| **time-bomb-radar** | Deferred operations -- will your app crash 30 days after release when archived data gets permanently deleted? |
+| **ui-path-radar** | Navigation flows -- can users reach every feature? Are there dead ends or broken links? |
 | **roundtrip-radar** | Data round-trips — does data survive backup→restore, export→import, create→edit→save? |
 | **ui-enhancer-radar** | Visual quality — requires you to view each screen before changes, walks through recommendations collaboratively, then finds similar patterns across views |
 | **capstone-radar** | Overall grade (A-F) and release recommendation — aggregates findings from all other skills |
@@ -59,7 +60,7 @@ cd radar-suite
 ./install.sh
 ```
 
-That's it. All 5 skills are now available in Claude Code.
+That's it. All 7 skills are now available in Claude Code.
 
 ## Updates
 
@@ -81,7 +82,7 @@ Each skill has a `VERSION` file and a `version:` field in its SKILL.md frontmatt
 **Easiest:** Use the unified entry point:
 
 ```
-/radar-suite full    # Runs all 5 skills in optimal order
+/radar-suite full    # Runs all 7 skills in optimal order
 /radar-suite         # Interactive menu to choose skill or full audit
 /radar-suite resume  # Continue from last checkpoint
 ```
@@ -91,15 +92,17 @@ Each skill has a `VERSION` file and a `version:` field in its SKILL.md frontmatt
 ```
 1. /data-model-radar      Checks data definitions (the foundation)
         ↓ findings flow to...
-2. /roundtrip-radar        Verifies data survives complete cycles
+2. /time-bomb-radar        Checks deferred operations on aged data
         ↓ findings flow to...
-3. /ui-path-radar          Traces navigation and user flows
+3. /roundtrip-radar        Verifies data survives complete cycles
         ↓ findings flow to...
-4. /ui-enhancer-radar      Reviews visual quality of each screen
+4. /ui-path-radar          Traces navigation and user flows
         ↓ findings flow to...
-5. /capstone-radar         Gives overall grade + ship/no-ship decision
+5. /ui-enhancer-radar      Reviews visual quality of each screen
+        ↓ findings flow to...
+6. /capstone-radar         Gives overall grade + ship/no-ship decision
         ↓ deferred findings flow to...
-6. Post-capstone fixes     Fix deferred backlog from all skills
+7. Post-capstone fixes     Fix deferred backlog from all skills
 ```
 
 You can also run any skill individually — they work standalone. The findings handoff just makes them smarter when run together.

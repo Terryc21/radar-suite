@@ -176,6 +176,7 @@ Read handoff files from all 4 companion skills:
 
 ```
 Read .agents/ui-audit/data-model-radar-handoff.yaml (if exists)
+Read .radar-suite/time-bomb-radar-handoff.yaml (if exists)
 Read .agents/ui-audit/ui-path-radar-handoff.yaml (if exists)
 Read .agents/ui-audit/roundtrip-radar-handoff.yaml (if exists)
 Read .agents/ui-audit/ui-enhancer-radar-handoff.yaml (if exists)

@@ -19,13 +19,14 @@ inherits: radar-suite-core.md
 | `/radar-suite full` | Run all 5 skills in sequence |
 | `/radar-suite status` | Show audit progress across all skills |
 | `/radar-suite resume` | Resume from last checkpoint |
-| `/radar-suite [skill]` | Run specific skill (data-model, roundtrip, ui-path, ui-enhancer, capstone) |
+| `/radar-suite [skill]` | Run specific skill (data-model, time-bomb, roundtrip, ui-path, ui-enhancer, capstone) |
 
 ## Available Skills
 
 | Skill | Purpose | Est. Time |
 |-------|---------|-----------|
 | **data-model-radar** | Audit @Model layer for completeness, serialization, relationships | ~30-60 min |
+| **time-bomb-radar** | Find deferred operations that crash on aged data | ~15-25 min |
 | **roundtrip-radar** | Trace user workflows end-to-end for data safety | ~20-40 min |
 | **ui-path-radar** | Find dead ends, broken promises, navigation issues | ~15-30 min |
 | **ui-enhancer-radar** | Visual UI audit with design intent interview | ~20-45 min |
@@ -40,14 +41,15 @@ On invocation without arguments, present:
 ```
 Radar Suite — What would you like to audit?
 
-1. **Full audit** — Run all 5 skills in recommended order (~2-3 hours)
+1. **Full audit** — Run all 6 skills in recommended order (~2.5-4 hours)
 2. **Data models** — Check @Model layer for gaps and inconsistencies
-3. **User workflows** — Trace data through complete user journeys
-4. **Navigation paths** — Find dead ends and broken navigation
-5. **UI polish** — Visual audit of specific views
-6. **Release readiness** — Aggregate grades and ship/no-ship decision
-7. **Resume** — Continue from last checkpoint
-8. **Status** — Show current audit progress
+3. **Time bombs** — Find deferred operations that crash on aged data
+4. **User workflows** — Trace data through complete user journeys
+5. **Navigation paths** — Find dead ends and broken navigation
+6. **UI polish** — Visual audit of specific views
+7. **Release readiness** — Aggregate grades and ship/no-ship decision
+8. **Resume** — Continue from last checkpoint
+9. **Status** — Show current audit progress
 ```
 
 ---
@@ -101,12 +103,13 @@ Save the user's choice in `.radar-suite/session-prefs.yaml` as `fix_timing: reco
 
 When running full audit, execute skills in this order:
 
-1. **data-model-radar** — Foundation layer, feeds findings to others
-2. **roundtrip-radar** — Uses data-model findings to focus on high-risk workflows
-3. **ui-path-radar** — Navigation audit, independent of data layer
-4. **ui-enhancer-radar** — Visual audit, runs on specific views
-5. **capstone-radar** — Aggregates all findings, produces final grade
-6. **Post-capstone fix session** — Fix deferred findings from all skills (see Fix Timing above)
+1. **data-model-radar** — Foundation layer, feeds model/relationship info to others
+2. **time-bomb-radar** — Uses data-model findings to check deferred operations on aged data
+3. **roundtrip-radar** — Uses data-model + time-bomb findings to focus on high-risk workflows
+4. **ui-path-radar** — Navigation audit, independent of data layer
+5. **ui-enhancer-radar** — Visual audit, runs on specific views
+6. **capstone-radar** — Aggregates all findings, produces final grade
+7. **Post-capstone fix session** — Fix deferred findings from all skills (see Fix Timing above)
 
 **Between skills:** Write handoff YAML, show progress, present fixes per fix timing preference, ask to continue or pause.
 

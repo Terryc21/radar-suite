@@ -657,6 +657,7 @@ Before Step 0 (or Step 1 if skipping discovery), read ALL companion handoff YAML
 
 ```
 Read .agents/ui-audit/data-model-radar-handoff.yaml (if exists)
+Read .radar-suite/time-bomb-radar-handoff.yaml (if exists)
 Read .agents/ui-audit/ui-path-radar-handoff.yaml (if exists)
 Read .agents/ui-audit/ui-enhancer-radar-handoff.yaml (if exists)
 Read .agents/ui-audit/capstone-radar-handoff.yaml (if exists)
