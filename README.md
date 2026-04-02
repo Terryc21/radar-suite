@@ -26,6 +26,10 @@ One install gives you a complete audit pipeline — from data model integrity to
 - **Fix-Forward Bias** — Skills now recommend fixing over deferring by default. "Defer" is only recommended for Large effort items requiring architectural discussion. Prevents the pattern where following recommendations creates a growing backlog that never gets resolved.
 - **Test Hygiene** — Pattern sweep now includes stale test detection. After fixing code, the skill scans corresponding test files for assertions on changed values, tests for removed behavior, and tests that enforce old defaults. Stale tests are updated or removed alongside the fix.
 
+## What's New in v2.2
+
+- **Domain 8: Time Bomb Audit** (data-model-radar) — Detects deferred operations that crash on aged data. Covers cascade deletes on unresolved iCloud faults, cache expiry with model relationships, trial/subscription expiry paths, background task accumulation, and date-threshold state transitions. These bugs are invisible in testing because the trigger is data age, not code paths.
+
 ## How is Radar Suite different from other code auditing skills?
 
 Most code auditing skills are pattern matchers. They look at code in isolation — this file, this function, this line — and compare it against known-good patterns. *"You used `@StateObject` where `@State` works." "This `try?` swallows an error."* They're fast, precise, and context-free. They don't need to know what your app does.
@@ -41,7 +45,7 @@ Most auditors are the building code. Radar Suite is the home inspector.
 | Skill | What It Checks |
 |-------|---------------|
 | **radar-suite** | Unified entry point — routes to any skill or runs full audit sequence |
-| **data-model-radar** | Your data definitions — are fields backed up correctly? Does CSV export lose data? Are database relationships safe? |
+| **data-model-radar** | Your data definitions — are fields backed up correctly? Does CSV export lose data? Are database relationships safe? Will deferred operations crash on aged data? |
 | **ui-path-radar** | Navigation flows — can users reach every feature? Are there dead ends or broken links? |
 | **roundtrip-radar** | Data round-trips — does data survive backup→restore, export→import, create→edit→save? |
 | **ui-enhancer-radar** | Visual quality — requires you to view each screen before changes, walks through recommendations collaboratively, then finds similar patterns across views |
@@ -102,7 +106,7 @@ You can also run any skill individually — they work standalone. The findings h
 
 ## What Each Skill Finds (Examples)
 
-**data-model-radar** found that InsuranceProfile and DonationRecord weren't included in backups — meaning users would lose their insurance settings and tax records on restore.
+**data-model-radar** found that InsuranceProfile and DonationRecord weren't included in backups — meaning users would lose their insurance settings and tax records on restore. Its time bomb audit found a deferred deletion that would crash the app 30 days after archiving items — invisible during development because no test data was old enough to trigger it.
 
 **ui-path-radar** found 3 dead-end screens where users could navigate in but had no way to navigate out.
 
