@@ -7,28 +7,15 @@
 
 One install gives you a complete audit pipeline — from data model integrity to visual quality to release readiness.
 
-## What's New in v2.0
+## Recent Changes
 
-**Major architecture overhaul** focused on UX and token efficiency:
+| Version | Highlight |
+|---------|-----------|
+| **v2.2** | **time-bomb-radar** -- new skill that finds deferred operations crashing on aged data (6 patterns) |
+| **v2.1** | Fix-forward bias (recommend fixing over deferring) + stale test detection |
+| **v2.0** | Unified entry point, checkpoint/resume, batch mode, session persistence |
 
-- **Unified entry point** — `/radar-suite` routes to any skill or runs the full audit sequence
-- **Session persistence** — Preferences carry across skills and sessions (no re-answering setup questions)
-- **Checkpoint & resume** — Audits auto-save progress; resume after interruption or context exhaustion
-- **Batch mode** — Approve fixes in waves instead of one-by-one
-- **Fix timing control** — Choose when fixes happen: after each skill, recommended-only per skill, or all after capstone
-- **Post-capstone fix session** — Deferred findings are never dropped; presented as a backlog after the final grade
-- **Accepted risks** — Mark findings as "accept risk" to suppress in future audits
-- **Shared core** — ~530 lines of duplication removed; consistent behavior across all skills
-- **Streamlined setup** — One 4-question prompt instead of multiple scattered questions
-
-## What's New in v2.1
-
-- **Fix-Forward Bias** — Skills now recommend fixing over deferring by default. "Defer" is only recommended for Large effort items requiring architectural discussion. Prevents the pattern where following recommendations creates a growing backlog that never gets resolved.
-- **Test Hygiene** — Pattern sweep now includes stale test detection. After fixing code, the skill scans corresponding test files for assertions on changed values, tests for removed behavior, and tests that enforce old defaults. Stale tests are updated or removed alongside the fix.
-
-## What's New in v2.2
-
-- **time-bomb-radar** (new standalone skill) — Finds deferred operations that crash on aged data. Covers cascade deletes on unresolved iCloud faults, cache expiry with model relationships, trial/subscription expiry paths, background task accumulation, and date-threshold state transitions. These bugs are invisible in testing because the trigger is data age, not code paths. Framework-agnostic patterns with Swift-specific fix examples.
+Full details in [CHANGELOG.md](CHANGELOG.md).
 
 ## How is Radar Suite different from other code auditing skills?
 
@@ -46,7 +33,7 @@ Most auditors are the building code. Radar Suite is the home inspector.
 |-------|---------------|
 | **radar-suite** | Unified entry point — routes to any skill or runs full audit sequence |
 | **data-model-radar** | Your data definitions -- are fields backed up correctly? Does CSV export lose data? Are database relationships safe? |
-| **time-bomb-radar** | Deferred operations -- will your app crash 30 days after release when archived data gets permanently deleted? |
+| **time-bomb-radar** | Deferred operations -- will your app crash 30 days after release? Cascade deletes, cache expiry, trial paths, background tasks, date transitions, scheduled side effects |
 | **ui-path-radar** | Navigation flows -- can users reach every feature? Are there dead ends or broken links? |
 | **roundtrip-radar** | Data round-trips — does data survive backup→restore, export→import, create→edit→save? |
 | **ui-enhancer-radar** | Visual quality — requires you to view each screen before changes, walks through recommendations collaboratively, then finds similar patterns across views |

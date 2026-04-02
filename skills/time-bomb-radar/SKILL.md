@@ -1,7 +1,7 @@
 ---
 name: time-bomb-radar
-description: 'Finds deferred operations that crash on aged data -- code that passes every test but breaks weeks or months after release. Covers cascade deletes, cache expiry, trial paths, background accumulation, and date-threshold transitions. Triggers: "time bomb", "time-bomb", "/time-bomb-radar", "aged data", "deferred deletion".'
-version: 1.0.0
+description: 'Finds deferred operations that crash on aged data -- code that passes every test but breaks weeks or months after release. Covers cascade deletes, cache expiry, trial paths, background accumulation, date-threshold transitions, and scheduled side effects. Triggers: "time bomb", "time-bomb", "/time-bomb-radar", "aged data", "deferred deletion".'
+version: 1.1.0
 author: Terry Nyberg
 license: MIT
 allowed-tools: [Read, Grep, Glob, Bash, AskUserQuestion]
@@ -23,12 +23,13 @@ Time bombs are deferred operations that pass every test, every code review, ever
 
 | Command | What it does |
 |---------|-------------|
-| `/time-bomb-radar` | Full audit across all 5 patterns |
+| `/time-bomb-radar` | Full audit across all 6 patterns |
 | `/time-bomb-radar deferred-deletes` | Pattern 1 only -- cascade deletes on aged data |
 | `/time-bomb-radar cache-expiry` | Pattern 2 only -- cache purge with model relationships |
 | `/time-bomb-radar trial-expiry` | Pattern 3 only -- subscription/trial expiry paths |
 | `/time-bomb-radar background-tasks` | Pattern 4 only -- accumulated background work |
 | `/time-bomb-radar date-transitions` | Pattern 5 only -- date-threshold state changes |
+| `/time-bomb-radar scheduled-side-effects` | Pattern 6 only -- notifications/reminders scheduled from aged data |
 
 ## Key concepts
 
@@ -85,7 +86,7 @@ To catch a time bomb manually, you'd need to: create data, archive it, set your 
 Present to the user based on experience level:
 
 - **New to this skill**: "I'll search your codebase for operations that fire after a time delay -- deletions, cache purges, trial expirations, background tasks, and date-based state changes. For each one, I'll check whether it can crash on data that's been sitting idle for weeks or months with incomplete cloud sync. The question I ask for every hit: if this runs 90 days after the data was created, with bad network, what breaks?"
-- **Experienced**: "Time bomb audit across 5 patterns: deferred cascade deletes, cache expiry with model relationships, trial/subscription expiry paths, background task accumulation, and date-threshold state transitions. Outputs rated findings with grep evidence."
+- **Experienced**: "Time bomb audit across 6 patterns: deferred cascade deletes, cache expiry with model relationships, trial/subscription expiry paths, background task accumulation, date-threshold state transitions, and scheduled side effects from aged data. Outputs rated findings with grep evidence."
 
 ## Step 0: Codebase scan
 
@@ -164,10 +165,15 @@ Grep pattern="Date\.now.*-|subtract.*days|moment.*subtract" glob="**/*.{ts,js}" 
 
 ### What to verify for each hit
 
-1. Does the deletion trigger a cascade rule? (`.cascade` in SwiftData/Core Data, `on_delete=CASCADE` in Django, `dependent: :destroy` in Rails)
-2. Do the cascade targets store large binary data externally? (`.externalStorage` in SwiftData, `Allows External Storage` in Core Data, file references in other ORMs)
-3. Do the cascade targets sync with a cloud service?
-4. Is the deletion done via batch/SQL-level delete or object-level delete?
+**Enumerate-then-verify:** Don't stop at "does it have cascade targets with external storage?" Enumerate ALL cascade children, then check each one. The bug hides in the gap between what was handled and what exists.
+
+1. **Enumerate:** List every cascade relationship from the parent model. Include grandchildren (e.g., Parent -> Child -> Grandchild where both relationships are cascade).
+2. **Check external storage:** For each child/grandchild, check if it has `.externalStorage` (SwiftData), `Allows External Storage` (Core Data), or file references (other ORMs).
+3. **Check coverage:** For each child/grandchild, check if it's covered by a batch delete in the deletion code. The finding is in the gap between what exists in the model and what's covered by batch deletes.
+4. **Check sync:** Do the cascade targets sync with a cloud service?
+5. **Check delete method:** Is the deletion done via batch/SQL-level delete or object-level delete?
+
+**Common miss:** Existing code already handles the obvious case (e.g., photos) with comments explaining why. A human reading that assumes "they handled it." The skill must verify completeness -- enumerate all children, not just confirm the documented ones.
 
 ### Classification
 
@@ -237,6 +243,8 @@ Grep pattern="redis.*expire|memcache.*expir|cache\.delete" glob="**/*.{py,rb,ts,
 2. Does it have relationships to other models?
 3. How is the purge done -- batch delete or object-level loop?
 4. Does the cache store binary data externally?
+
+**Check ALL delete paths, not just expiry:** Once you find a cache model with `.externalStorage`, check every method that deletes instances of that model -- not just the TTL-triggered purge. User-triggered operations like "Clear Cache" and "Clear Cache for Item" have the same `.externalStorage` crash risk. The trigger is different (user action vs timer) but the fault resolution crash is identical.
 
 ### Classification
 
@@ -328,6 +336,7 @@ Grep pattern="WorkManager|JobScheduler|AlarmManager" glob="**/*.{kt,java}" outpu
 3. **Timeout handling:** Background tasks have limited execution time on mobile. Server jobs have timeouts. What happens if the task is killed mid-batch?
 4. **Stale data:** After weeks idle, do the items being processed still have valid relationships? Could related objects have been deleted on another device or by another process?
 5. **Partial failure:** If item 23 of 100 fails, does it skip and continue, or abort the whole batch?
+6. **External storage reads:** Does the task access `.externalStorage` properties (or equivalent) on the objects it processes? Reading `.externalStorage` triggers the same fault resolution as deleting -- if the data hasn't synced from iCloud, accessing it in a filter, map, or property check is a `fatalError`. Use predicates to filter at the SQL level instead of fetching objects and checking properties in Swift/Python/Ruby.
 
 ### Classification
 
@@ -405,6 +414,76 @@ if expiration < Date() { ... }
 
 ---
 
+## Pattern 6: Scheduled side effects from aged data
+
+**The general problem:** Code that schedules future side effects (push notifications, calendar events, reminders, emails, webhook triggers) based on date fields in the data model. The scheduling happens when the object is created or updated, but the side effect fires later -- sometimes much later. If the date field is nil from a sync gap, the scheduling produces a wrong or missing result. If the related object has been deleted by the time the side effect fires, the handler crashes or shows garbage.
+
+This is distinct from Pattern 5 (date-threshold state transitions) because the failure mode is different. Pattern 5 produces wrong computed state. Pattern 6 produces wrong or missing real-world actions -- a notification that never fires, a reminder for the wrong date, or a crash in the notification handler when it tries to look up the source object.
+
+**Severity:** Usually Risky (silent failure) rather than BOMB (crash). But notification handlers that force-unwrap the source object are BOMB.
+
+### How to find them (Swift)
+
+```
+Grep pattern="UNUserNotificationCenter|UNMutableNotificationContent|UNCalendarNotificationTrigger|UNTimeIntervalNotificationTrigger" glob="**/*.swift" output_mode="files_with_matches"
+Grep pattern="EKEvent|EKReminder|EventKit" glob="**/*.swift" output_mode="files_with_matches"
+```
+
+For each hit, check what data feeds the scheduling:
+```
+Grep pattern="byAdding.*day|byAdding.*month|expirationDate|dueDate|returnDate" path="[file from above]" output_mode="content"
+```
+
+### How to find them (other frameworks)
+
+```
+# Python/Django
+Grep pattern="send_mail|celery.*eta|schedule.*send|django_q" glob="**/*.py" output_mode="content"
+
+# Ruby/Rails
+Grep pattern="deliver_later|perform_later|notify|ActionMailer" glob="**/*.rb" output_mode="content"
+
+# Node/TypeScript
+Grep pattern="setTimeout|agenda\.schedule|bull\.add|cron\.schedule" glob="**/*.{ts,js}" output_mode="content"
+```
+
+### What to verify for each hit
+
+1. **Nil date fields:** If the date used to schedule the side effect is nil (from a sync gap, migration, or incomplete data), does the code skip gracefully or schedule for epoch/now/crash?
+2. **Deleted source object:** When the notification/reminder fires, can the handler still find the object it references? If the object was deleted (or archived) between scheduling and firing, what happens?
+3. **Stale data:** If the date field was updated after the side effect was scheduled, is the old scheduled event cancelled and a new one created? Or does the stale event still fire?
+4. **Timezone:** If the user changes timezones between scheduling and firing, does the side effect fire at the right local time?
+
+### Classification
+
+| Behavior | Rating |
+|---|---|
+| Nil-safe scheduling with guard-let, cancels stale events on update | Safe |
+| Schedules from optional date without nil check | Risky (wrong time or missed event) |
+| Handler force-unwraps source object on fire | BOMB (crash when object deleted) |
+| No cancellation of stale events when source data changes | Risky (duplicate/wrong notifications) |
+
+### Swift-specific fix
+
+```swift
+// Before (unsafe -- if expirationDate is nil, crashes or schedules for epoch)
+let trigger = UNCalendarNotificationTrigger(
+    dateMatching: Calendar.current.dateComponents([.year, .month, .day], from: item.expirationDate!),
+    repeats: false
+)
+
+// After (safe)
+guard let expirationDate = item.expirationDate else { return }
+let reminderDate = Calendar.current.date(byAdding: .day, value: -daysBefore, to: expirationDate)
+guard let reminderDate else { return }
+let trigger = UNCalendarNotificationTrigger(
+    dateMatching: Calendar.current.dateComponents([.year, .month, .day], from: reminderDate),
+    repeats: false
+)
+```
+
+---
+
 ## Findings format
 
 For every hit, produce a rated finding:
@@ -433,13 +512,26 @@ A rating without evidence is a guess, not an audit.
 
 ---
 
+## Post-fix verification
+
+After fixing any BOMB or Risky finding, re-verify before closing it:
+
+1. **Re-enumerate:** For Pattern 1 fixes, re-list all cascade children and confirm every one is covered. A partial fix (e.g., adding DocumentAttachment but missing other children) is still a bug.
+2. **Check sibling methods:** For Pattern 2 fixes, confirm all delete methods on the same model were converted, not just the one that was flagged. If `pruneExpired()` was fixed but `clearAll()` still uses object-level delete, the model is still vulnerable.
+3. **Build:** Verify the project compiles on all target platforms.
+4. **Update handoff:** Mark the finding as `status: fixed` in the handoff YAML with evidence of what was changed.
+
+A fix that covers 9 of 10 cascade children is not a fix. Enumerate again after every change.
+
+---
+
 ## Progress banner
 
 After completing each pattern scan, print:
 
 ```
 ---------------------------------------------
-TIME BOMB RADAR: Pattern [N]/5 complete
+TIME BOMB RADAR: Pattern [N]/6 complete
   Scanned: [pattern name]
   Hits: [count]
   Bombs: [count] | Risky: [count] | Safe: [count]
@@ -461,7 +553,7 @@ version: 1.0.0
 date: <ISO 8601>
 project: <project name>
 build: <build number>
-patterns_audited: [1, 2, 3, 4, 5]
+patterns_audited: [1, 2, 3, 4, 5, 6]
 
 for_roundtrip_radar:
   suspects:
@@ -479,7 +571,7 @@ for_capstone_radar:
 
 findings:
   - id: <unique hash>
-    pattern: <1-5>
+    pattern: <1-6>
     description: "<plain language>"
     file: "<path>"
     line: <number>
@@ -492,7 +584,22 @@ findings:
 
 ## On Startup -- Read Handoffs
 
-Check for prior skill findings that inform this audit:
+Check for prior findings that inform this audit:
+
+### Own prior handoff (regression check)
+
+```
+Read .radar-suite/time-bomb-radar-handoff.yaml (if exists)
+```
+
+If a prior handoff exists, this is a re-run. For each previously-fixed finding:
+- Verify the fix is still in place (read the file, confirm batch delete or predicate is present)
+- If the fix has been reverted or modified, re-rate and re-report
+- Report regression findings separately from new findings
+
+This prevents the skill from rediscovering everything from scratch on every run while also catching regressions.
+
+### Data model radar handoff
 
 ```
 Read .radar-suite/data-model-radar-handoff.yaml (if exists)
