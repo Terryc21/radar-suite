@@ -6,6 +6,20 @@ Format: [skill-name vX.Y.Z] or [all skills] when changes apply to every skill.
 
 ---
 
+## 2026-04-03
+
+### [roundtrip-radar 1.5.0 → 1.6.0] Bridge Parity Detection
+
+Added:
+- **Bridge Parity Detection** (check #10, `enumerate-required`) -- when multiple functions consume the same model type, compare which fields each reads. Flag asymmetries where one consumer reads strictly fewer fields than others. Uses relative comparison (no need to know the "correct" set -- the outlier is the finding).
+- **Field-access matrix** -- structured method for recording which fields each consumer reads, making the comparison systematic.
+- **Cross-cutting accumulator integration** -- after finding a bridge parity issue, the model type is added to the accumulator so subsequent workflows auto-check new consumers.
+- **Handoff YAML** -- added `bridge_parity` group hint for cross-skill handoffs.
+
+Origin: Stuffolio bug where `ScoutSession` had 3 consumers building notes text. Two included all 6 narrative fields; one included only 3. No type error, no crash -- users silently lost Historical Context, Collector Notes, and Research Tips on one code path. Single-path tracing cannot catch this; only cross-consumer comparison reveals the asymmetry.
+
+---
+
 ## 2026-03-30
 
 ### [all skills] Dippy integration for paths with spaces

@@ -1,7 +1,7 @@
 ---
 name: roundtrip-radar
 description: 'Per-journey code audit tracing data through complete user flows for bugs, data safety, performance, and round-trip completeness. Discovers workflows, audits each end-to-end, rolls up cross-cutting issues, and supports natural-language flow tracing. Triggers: "roundtrip audit", "trace user journey", "/roundtrip-radar".'
-version: 1.5.0
+version: 1.6.0
 author: Terry Nyberg
 license: MIT
 inherits: radar-suite-core.md
@@ -344,6 +344,7 @@ Example:
 7. **Interruption paths** `enumerate-required` — dismiss mid-operation, app backgrounding, rotation, cancel
 8. **Collection narrowing** `enumerate-required` — collections silently reduced to single elements at handoff points (see detection guide below)
 9. **Tests** `enumerate-required` — update broken tests, add tests for P0-P1 fixes where logic is testable
+10. **Bridge parity** `enumerate-required` — multiple consumers of the same model type must read the same fields (see detection guide below)
 
 ### Verification Template (MANDATORY per workflow)
 
@@ -395,6 +396,59 @@ Rules:
 4. In the Verification Template, add a "Cardinality" note to the Receipt column when collections are involved
 
 **Origin:** Found in Stuffolio Apr 2026 -- user selected 4 photos for AI analysis, but `AIAnalysisTask` only accepted first image, and Stuff Scout sheet passed `productImages?.first` to a view that had a multi-image init. Flow worked, types were correct, results were degraded.
+
+### Bridge Parity Detection Guide
+
+**What it is:** Multiple functions consume the same model type but read different subsets of its fields -- one was updated when new fields were added, the others were not. The outdated consumer silently drops data.
+
+**Why it matters:** This bug class is invisible to single-path tracing. Each consumer works correctly in isolation -- types match, no crashes, no errors. The bug only appears when you compare consumers against each other and notice one reads fewer fields. It survives code review because reviewers follow one path at a time.
+
+**Detection method -- relative comparison, not absolute counting:**
+
+1. **Enumerate all consumers** of a given model type. A "consumer" is any function that reads fields from the type to build output (notes, prefill data, export, display). Search for:
+   - Functions with parameters of the type (`func build(_ session: ScoutSession)`)
+   - Functions that access properties of the type (`session.aboutItem`, `session.historicalContext`)
+   - Bridge structs with `init(from:)` or conversion methods (`toItem()`, `toPrefillData()`)
+
+2. **For each consumer, record which fields it reads.** Build a field-access matrix:
+
+   ```
+   | Field            | ConsumerA | ConsumerB | ConsumerC |
+   |------------------|-----------|-----------|-----------|
+   | era              | ✓         | ✓         | ✓         |
+   | aboutItem        | ✓         | ✓         | ✓         |
+   | historicalContext | ✓         |           | ✓         |
+   | collectorNotes   | ✓         |           | ✓         |
+   | researchTips     | ✓         |           | ✓         |
+   ```
+
+3. **Flag asymmetries.** If N consumers exist and one reads strictly fewer fields than the others, it is the outlier. The comparison is relative -- you do not need to know the "correct" field count. The mismatch itself is the finding.
+
+**Ranking the finding:**
+
+| Signal | Confidence |
+|--------|------------|
+| One consumer reads < 50% of fields that others read | Almost certain bug -- flag immediately |
+| One consumer misses 1-2 fields that all others include | Probable bug -- verify with git blame (was the field added after this consumer was written?) |
+| Consumers read different but overlapping sets (no strict subset) | Possible intentional -- different consumers may legitimately need different fields (e.g., summary view vs. detail export). Check if the omitted fields are relevant to the consumer's purpose. |
+
+**Distinguish intentional from accidental:**
+
+- **Accidental (flag it):** Two consumers serve the same purpose (e.g., both build "notes" text from scout data) but one includes 3 more sections. The simpler one was written first and never updated.
+- **Accidental (flag it):** A consumer was copied from another and trimmed, but the trimming removed fields that matter for its context.
+- **Intentional (skip it):** A summary consumer intentionally shows only key fields (e.g., a list row shows title + era but not full historical context). The consumer's purpose justifies the subset.
+- **Intentional (skip it):** A consumer explicitly documents why fields are excluded (comment or design doc).
+
+**How to check during a workflow audit:**
+
+1. When you encounter a bridge or conversion function, search for OTHER functions that consume the same source type
+2. Build the field-access matrix for all consumers found
+3. If an asymmetry exists, add a "Bridge Parity" note to the Verification Template Receipt column
+4. In the Issue Rating table, tag bridge parity findings as `verified` (you read the code of all consumers) with blast radius = number of consumers that need updating
+
+**Cross-cutting accumulator integration:** After finding a bridge parity issue, add the model type to the cross-cutting pattern accumulator. In subsequent workflows, automatically check any new consumer of that type against the established field matrix.
+
+**Origin:** Found in Stuffolio Apr 2026 -- `ScoutSession` had 3 consumers building notes. `ScoutMergeView` and `StuffScoutBridge` included all 6 narrative fields. `ExistingItemScoutFlow.buildNotesFromScout()` included only 3. The outlier was written before the other fields were added and never updated. No type error, no crash, no test failure -- users simply lost Historical Context, Collector Notes, and Research Tips when saving via that code path.
 
 ### Issue Rating Criteria
 
@@ -669,6 +723,11 @@ cross_cutting_patterns:
   #   workflows_affected: ["Add Item (Photo)", "Stuff Scout"]
   #   status: "fixed"
   #   group_hint: "collection_narrowing"
+  # Example: bridge parity pattern
+  # - pattern: "ScoutSession consumed by 3 functions, 1 reads 3/6 fields"
+  #   workflows_affected: ["Stuff Scout", "Add Item (Photo)"]
+  #   status: "fixed"
+  #   group_hint: "bridge_parity"
 ```
 
 ### File Timestamps
@@ -687,7 +746,7 @@ This enables consuming skills to detect **staleness** — if a file changed afte
 Optional field suggesting how consuming skills might batch related issues:
 - Issues with the same `group_hint` are candidates for a single fix task
 - Consuming skills are free to ignore hints and group differently
-- Common hints: `data_loss`, `silent_failure`, `round_trip_gap`, `error_handling`, `concurrency`, `collection_narrowing`
+- Common hints: `data_loss`, `silent_failure`, `round_trip_gap`, `error_handling`, `concurrency`, `collection_narrowing`, `bridge_parity`
 
 **Automatic:** This file is always written so other audit skills can pick up where this one left off. No user action needed.
 

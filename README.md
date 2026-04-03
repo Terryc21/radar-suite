@@ -11,6 +11,7 @@ One install gives you a complete audit pipeline — from data model integrity to
 
 | Version | Highlight |
 |---------|-----------|
+| **v2.4** | **roundtrip-radar v1.6.0** -- new "bridge parity" check compares multiple consumers of the same model type and flags when one reads fewer fields than the others |
 | **v2.3** | **roundtrip-radar v1.5.0** -- new "collection narrowing" check finds arrays silently reduced to single elements at handoff points |
 | **v2.2** | **time-bomb-radar** -- new skill that finds deferred operations crashing on aged data (6 patterns) |
 | **v2.1** | Fix-forward bias (recommend fixing over deferring) + stale test detection |
@@ -36,7 +37,7 @@ Most auditors are the building code. Radar Suite is the home inspector.
 | **data-model-radar** | Your data definitions -- are fields backed up correctly? Does CSV export lose data? Are database relationships safe? |
 | **time-bomb-radar** | Deferred operations -- will your app crash 30 days after release? Cascade deletes, cache expiry, trial paths, background tasks, date transitions, scheduled side effects |
 | **ui-path-radar** | Navigation flows -- can users reach every feature? Are there dead ends or broken links? |
-| **roundtrip-radar** | Data round-trips — does data survive backup→restore, export→import, create→edit→save? Detects collection narrowing where arrays silently lose elements at handoff points. |
+| **roundtrip-radar** | Data round-trips — does data survive backup→restore, export→import, create→edit→save? Detects collection narrowing (arrays silently lose elements) and bridge parity gaps (multiple consumers of the same model read different field subsets). |
 | **ui-enhancer-radar** | Visual quality — requires you to view each screen before changes, walks through recommendations collaboratively, then finds similar patterns across views |
 | **capstone-radar** | Overall grade (A-F) and release recommendation — aggregates findings from all other skills |
 
@@ -101,7 +102,7 @@ You can also run any skill individually — they work standalone. The findings h
 
 **ui-path-radar** found 3 dead-end screens where users could navigate in but had no way to navigate out.
 
-**roundtrip-radar** found that CSV export included Room and UPC columns, but CSV import silently dropped them — data loss on round-trip. Its collection narrowing check found that selecting 4 photos for AI analysis only passed the first photo through — the flow worked, types were correct, but 75% of input data was silently discarded at each handoff point.
+**roundtrip-radar** found that CSV export included Room and UPC columns, but CSV import silently dropped them — data loss on round-trip. Its collection narrowing check found that selecting 4 photos for AI analysis only passed the first photo through — the flow worked, types were correct, but 75% of input data was silently discarded at each handoff point. Its bridge parity check found 3 functions that built notes from the same scout data model — two included all 6 narrative sections, one included only 3. No type error, no crash — users silently lost research data on one code path.
 
 **ui-enhancer-radar** found spacing inconsistencies, missing empty states, and color contrast issues that would cause App Store accessibility rejection.
 
