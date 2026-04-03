@@ -1,7 +1,7 @@
 ---
 name: roundtrip-radar
 description: 'Per-journey code audit tracing data through complete user flows for bugs, data safety, performance, and round-trip completeness. Discovers workflows, audits each end-to-end, rolls up cross-cutting issues, and supports natural-language flow tracing. Triggers: "roundtrip audit", "trace user journey", "/roundtrip-radar".'
-version: 1.4.0
+version: 1.5.0
 author: Terry Nyberg
 license: MIT
 inherits: radar-suite-core.md
@@ -53,6 +53,7 @@ problems, and data round-trip completeness. It operates in three steps:
    - Data transformations (what model fields are read/written)
 4. **Check for issues at each step:**
    - Is data preserved between steps? (Round-trip completeness)
+   - Are collections preserved or silently narrowed? (Collection narrowing)
    - Are there error paths that lose context? (Error handling)
    - Is the user's intent preserved? (Data safety)
    - Are there race conditions? (Concurrency)
@@ -341,7 +342,8 @@ Example:
 5. **Contract mismatches** `grep-sufficient` — constants vs hardcoded strings, keys defined in one file but consumed in another
 6. **Round-trip completeness** `enumerate-required` — does data survive a full create → export → import/restore cycle?
 7. **Interruption paths** `enumerate-required` — dismiss mid-operation, app backgrounding, rotation, cancel
-8. **Tests** `enumerate-required` — update broken tests, add tests for P0-P1 fixes where logic is testable
+8. **Collection narrowing** `enumerate-required` — collections silently reduced to single elements at handoff points (see detection guide below)
+9. **Tests** `enumerate-required` — update broken tests, add tests for P0-P1 fixes where logic is testable
 
 ### Verification Template (MANDATORY per workflow)
 
@@ -360,6 +362,39 @@ Rules:
 - Every step in the workflow must have a File Read entry
 - Steps without a file read cannot produce findings tagged "verified"
 - The table IS the audit — the findings are just a summary of what the table reveals
+
+### Collection Narrowing Detection Guide
+
+**What it is:** A `[T]` (array) enters a handoff point but only a `T` (single element) exits -- silently discarding the rest. The flow works, types are correct, and the user gets a result -- but with degraded quality because most of the input data was dropped.
+
+**Why it matters:** This bug class is invisible to type checking, navigation audits, and UX flow audits. The flow completes successfully with no errors. Only the *quantity* of data is wrong, which degrades results without any signal to the user.
+
+**Detection patterns:**
+
+| Pattern | Code Signature | Likely Bug? |
+|---------|---------------|-------------|
+| Array-to-first | `array.first` or `array[0]` passed where `[T]` is accepted | Yes -- receiver can handle the full array |
+| Init narrowing | `init(item: T)` called by a site holding `[T]` when `init(items: [T])` exists | Yes -- wrong init chosen |
+| Wrapper narrowing | Class/struct stores `T` but is created from `[T]` context | Yes -- wrapper designed for single item, not updated for multi |
+| Loop-break narrowing | `for item in items { ...; break }` or `if let first = items.first` without processing rest | Maybe -- check if intentional (preview thumbnail) |
+
+**Distinguish intentional from accidental:**
+
+- **Accidental (flag it):** The *receiving* function/init accepts `[T]` but the caller passes `.first`. The API was designed for multiple items.
+- **Accidental (flag it):** A wrapper class stores single `T` but is created in a context where `[T]` is available and the downstream service accepts `[T]`.
+- **Intentional (skip it):** The receiver only accepts `T` and there's no `[T]` alternative. Example: displaying a single thumbnail preview from an array.
+- **Intentional (skip it):** The narrowing is guarded by UI that shows the user only one item is being used (e.g., "Using first photo as cover image").
+
+**How to check during a workflow audit:**
+
+1. At each handoff point in the Verification Template, note the **cardinality** of data passed:
+   - `[4 images]` → `[4 images]` = ok
+   - `[4 images]` → `[1 image]` = flag as collection narrowing
+2. When a function receives an array, trace what it passes downstream -- does the full array reach the endpoint?
+3. When an init accepts single `T`, check if a multi-item init exists on the same type
+4. In the Verification Template, add a "Cardinality" note to the Receipt column when collections are involved
+
+**Origin:** Found in Stuffolio Apr 2026 -- user selected 4 photos for AI analysis, but `AIAnalysisTask` only accepted first image, and Stuff Scout sheet passed `productImages?.first` to a view that had a multi-image init. Flow worked, types were correct, results were degraded.
 
 ### Issue Rating Criteria
 
@@ -629,6 +664,11 @@ cross_cutting_patterns:
     workflows_affected: ["Backup", "Edit Item", "CSV Import"]
     status: "fixed" | "deferred"
     group_hint: "<optional, e.g. 'price_parsing', 'id_handling'>"
+  # Example: collection narrowing pattern
+  # - pattern: "array.first passed to multi-item API"
+  #   workflows_affected: ["Add Item (Photo)", "Stuff Scout"]
+  #   status: "fixed"
+  #   group_hint: "collection_narrowing"
 ```
 
 ### File Timestamps
@@ -647,7 +687,7 @@ This enables consuming skills to detect **staleness** — if a file changed afte
 Optional field suggesting how consuming skills might batch related issues:
 - Issues with the same `group_hint` are candidates for a single fix task
 - Consuming skills are free to ignore hints and group differently
-- Common hints: `data_loss`, `silent_failure`, `round_trip_gap`, `error_handling`, `concurrency`
+- Common hints: `data_loss`, `silent_failure`, `round_trip_gap`, `error_handling`, `concurrency`, `collection_narrowing`
 
 **Automatic:** This file is always written so other audit skills can pick up where this one left off. No user action needed.
 
