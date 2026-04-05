@@ -5,6 +5,8 @@
 
 **7 audit skills for Claude Code that find bugs in your Swift/SwiftUI app before your users do.**
 
+Built for [Stuffolio](https://stuffolio.app), an iOS/macOS inventory management app.
+
 One install gives you a complete audit pipeline — from data model integrity to visual quality to release readiness.
 
 ## Recent Changes
@@ -144,9 +146,15 @@ Every skill follows three scanning principles to minimize false negatives:
 
 AI audit tools can sound confident while being shallow. The radar skills include structural constraints that make deep work easier than shortcuts, and make shallow work visible when it happens. See [FIDELITY.md](FIDELITY.md) for the full philosophy and roadmap.
 
+## See Also
+
+- [Stuffolio](https://stuffolio.app) -- the iOS/macOS app these skills were built for
+- [Workflow Audit](https://github.com/Terryc21/workflow-audit) -- 5-layer SwiftUI user flow audit
+- [code-smarter](https://github.com/Terryc21/code-smarter) -- Prompt rewriting + personalized coding tutorials from your codebase
+
 ## Previous Individual Repos
 
-The skills were originally published as separate repos. Those repos now redirect here — this monorepo is the single source of truth. The skills are deeply interdependent (cross-skill handoffs, shared DEFERRED.md, unified grading) and are designed to be installed together.
+The skills were originally published as separate repos. Those repos now redirect here -- this monorepo is the single source of truth. The skills are deeply interdependent (cross-skill handoffs, shared DEFERRED.md, unified grading) and are designed to be installed together.
 
 ## Requirements
 
