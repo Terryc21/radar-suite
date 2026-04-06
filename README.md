@@ -1,5 +1,7 @@
 # Radar Suite
 
+![Visitors](https://komarev.com/ghpvc/?username=Terryc21&repo=radar-suite&label=visitors&color=blue) ![GitHub stars](https://img.shields.io/github/stars/Terryc21/radar-suite?style=flat) ![GitHub forks](https://img.shields.io/github/forks/Terryc21/radar-suite?style=flat)
+
 ![GitHub stars](https://img.shields.io/github/stars/Terryc21/radar-suite?style=flat)
 ![GitHub forks](https://img.shields.io/github/forks/Terryc21/radar-suite?style=flat)
 
