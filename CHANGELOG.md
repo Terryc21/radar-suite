@@ -6,6 +6,53 @@ Format: [skill-name vX.Y.Z] or [all skills] when changes apply to every skill.
 
 ---
 
+## 2026-04-07
+
+### [all skills v3.0.0] Unified Finding Ledger & Impact-Based Organization
+
+This is a major release that adds cross-skill finding management to every radar skill.
+
+**Phase 1: Unified Finding Ledger**
+- New `.radar-suite/ledger.yaml` -- single file where every skill writes findings with RS-NNN IDs
+- Session tracking, monotonic IDs, impact categories, file content hashes
+- All 6 skills (5 audit + capstone) now write to and read from the ledger
+- Existing per-skill handoff YAMLs preserved for backward compatibility
+- New command: `/radar-suite ledger` with filters (--open, --deferred, --impact, --skill, --severity)
+
+**Phase 2: Impact-Based Organization & Deferred Management**
+- Capstone report now organizes findings by impact category (crash > data-loss > ux-broken > ux-degraded > polish > hygiene) instead of by skill
+- Legacy by-skill view available via `/capstone-radar report --by-skill`
+- Fix batching options: by crash risk, blast radius, user journey, or skill
+- Stale-deferred check on every `/radar-suite` invocation -- overdue findings surfaced with snooze/dismiss options
+- New command: `/radar-suite deferred` generates DEFERRED.md from ledger
+
+**Phase 3: Cross-Skill Deduplication & Contradiction Detection**
+- Findings about the same file+region are merged or linked across skills
+- `also_flagged_by[]` tracks which skills found the same issue
+- `related_to[]` links different findings in the same file
+- Capstone detects grade-vs-findings contradictions (e.g., A- grade with 3 HIGH findings)
+- Severity disagreements between skills flagged for reconciliation
+
+**Phase 4: Finding Relationships**
+- Root-cause/symptom/duplicate/supersedes relationship types
+- Auto-inference rules: data-model gap + roundtrip loss = root cause + symptom
+- Fix cascade: fixing root cause auto-marks symptoms for re-check
+- New command: `/radar-suite link RS-NNN --root-cause-of RS-NNN [RS-NNN...]`
+
+**Phase 5: Regression Detection & Fix Verification**
+- File content hashes (SHA-256 first 6 chars) stored at discovery and fix time
+- All skills check fixed findings on startup -- flag files that changed since fix
+- Verification patterns stored with each fix for automated re-checking
+- New command: `/radar-suite verify` (all fixed findings, single finding, or --changed only)
+
+**Phase 6: Confidence Decay & Partial Re-Audit**
+- Accepted findings resurface after 180 days (configurable decay period)
+- Decay check runs on every `/radar-suite` invocation alongside stale-deferred check
+- New command: `/radar-suite audit --changed` scopes audit to modified files only (15-30 min vs 2.5-4 hrs)
+- Partial audit auto-selects relevant skills based on changed file types
+
+---
+
 ## 2026-04-03
 
 ### [roundtrip-radar 1.5.0 → 1.6.0] Bridge Parity Detection

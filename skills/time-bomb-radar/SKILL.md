@@ -582,9 +582,34 @@ findings:
     evidence: "<what was checked>"
 ```
 
-## On Startup -- Read Handoffs
+### Write to Unified Ledger (MANDATORY)
+
+After writing the handoff YAML, also write findings to `.radar-suite/ledger.yaml` following the Ledger Write Rules in `radar-suite-core.md`:
+
+1. Read existing ledger (or initialize if missing)
+2. Record this session (timestamp, skill name, build)
+3. For each finding: check for duplicates, assign RS-NNN ID if new, set `impact_category`, compute `file_hash`
+4. Write updated ledger
+
+**Impact category mapping for time-bomb-radar findings:**
+- BOMB rating → `crash`
+- Risky rating with data implications → `data-loss`
+- Risky rating with UX implications → `ux-degraded`
+- Safe ratings → do not write to ledger (informational only)
+
+## On Startup -- Read Ledger & Handoffs
 
 Check for prior findings that inform this audit:
+
+### Unified Ledger
+
+```
+Read .radar-suite/ledger.yaml (if exists) — check for existing findings to avoid duplicates
+```
+
+If the ledger contains time-bomb findings, note their RS-NNN IDs. When you find the same issue, update the existing finding instead of creating a new one.
+
+**Regression check:** For any `fixed` findings in the ledger whose `file_hash` no longer matches the current file, flag for re-verification per the Regression Detection protocol in `radar-suite-core.md`.
 
 ### Own prior handoff (regression check)
 

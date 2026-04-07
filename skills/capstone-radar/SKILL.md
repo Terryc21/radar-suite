@@ -172,15 +172,18 @@ If previous reports exist, parse ALL `GRADES_YAML` HTML comment blocks for veloc
 
 ## Step 3: Companion Handoff Consumption
 
-Read handoff files from all 4 companion skills:
+Read the unified ledger and handoff files from all 5 companion skills:
 
 ```
+Read .radar-suite/ledger.yaml (if exists) — unified cross-skill finding store
 Read .agents/ui-audit/data-model-radar-handoff.yaml (if exists)
 Read .radar-suite/time-bomb-radar-handoff.yaml (if exists)
 Read .agents/ui-audit/ui-path-radar-handoff.yaml (if exists)
 Read .agents/ui-audit/roundtrip-radar-handoff.yaml (if exists)
 Read .agents/ui-audit/ui-enhancer-radar-handoff.yaml (if exists)
 ```
+
+**Ledger integration:** When the ledger exists, use it as the primary source of cross-skill findings. Handoff YAMLs provide per-skill detail (serialization coverage, cross-cutting patterns) that the ledger doesn't store. Capstone should reference findings by RS-NNN ID when available.
 
 For each handoff found:
 1. Parse `for_capstone_radar.blockers[]` — extract `finding` and `urgency` (CRITICAL or HIGH)
@@ -608,7 +611,64 @@ cross_domain_risk: 80
 11. **Regressions** — new issues traced to commits
 12. **Test coverage gaps** — untested source files, especially those appearing in findings
 13. **Top 10 prioritized issues** — composite: `(Urgency x 3) + (Risk x 2) + (ROI x 2) + (1/LOE)`
-14. **Next steps** — which companion radars to run for unaudited domains
+14. **Impact-organized findings** — all findings grouped by impact category (see below)
+15. **Next steps** — which companion radars to run for unaudited domains
+
+### Impact-Based Finding Organization (v3.0)
+
+When the unified ledger (`.radar-suite/ledger.yaml`) exists, section 14 presents ALL findings organized by impact category instead of by skill:
+
+```
+## Crash Risk ([N] findings)
+RS-002 [CRITICAL] Cascade delete on archived items (time-bomb-radar)
+RS-014 [HIGH] Force unwrap on nil photo data (roundtrip-radar)
+
+## Data Loss ([N] findings)
+RS-001 [HIGH] CSV export drops Room and UPC (roundtrip-radar)
+RS-007 [HIGH] InsuranceProfile not in backup (data-model-radar)
+RS-011 [MEDIUM] DonationRecord FMV not persisted (data-model-radar)
+
+## UX Broken ([N] findings)
+RS-009 [HIGH] Settings > Export has no back button (ui-path-radar)
+
+## UX Degraded ([N] findings)
+...
+
+## Polish ([N] findings)
+...
+
+## Hygiene ([N] findings)
+...
+```
+
+User can request the legacy by-skill view: `/capstone-radar report --by-skill`
+
+### Relationship-Aware Reporting (v3.0)
+
+When the ledger contains finding relationships, the impact-organized report groups related findings:
+
+```
+## Crash Risk (2 findings)
+RS-002 [CRITICAL] Cascade delete on archived items (time-bomb-radar)
+  └─ symptom: RS-014 [HIGH] Force unwrap on nil photo data (roundtrip-radar)
+     Fix RS-002 first — RS-014 may resolve automatically.
+```
+
+**Root cause findings** are always listed first in their impact group. Symptoms are indented beneath their root cause with a note that fixing the root cause may resolve them.
+
+**Auto-inference:** On capstone startup, scan ledger for relationship patterns per the Finding Relationships protocol in `radar-suite-core.md`. Create links automatically and present for user confirmation.
+
+### Fix Batching Options (v3.0)
+
+After the impact-organized findings, offer fix organization:
+
+```
+How would you like to organize fixes?
+1. **By crash risk (Recommended)** — highest severity first across all skills
+2. **By blast radius** — smallest changes first for quick wins
+3. **By user journey** — group findings affecting the same workflow
+4. **By skill** — fix all data-model issues, then time-bomb, etc. (legacy)
+```
 
 ### Test Coverage Gap Analysis
 
@@ -725,6 +785,21 @@ Optional field for batching related issues. Common hints:
 - `build_health` — scheme issues, dependency problems
 
 **Automatic:** This file is always written so other audit skills can pick up where this one left off. No user action needed.
+
+### Write to Unified Ledger (MANDATORY)
+
+After writing the handoff YAML, also write findings to `.radar-suite/ledger.yaml` following the Ledger Write Rules in `radar-suite-core.md`:
+
+1. Read existing ledger (or initialize if missing)
+2. Record this session (timestamp, skill name, build)
+3. For each finding: check for duplicates, assign RS-NNN ID if new, set `impact_category`, compute `file_hash`
+4. Write updated ledger
+
+**Capstone-specific ledger behavior:**
+- Capstone primarily aggregates findings from companion skills -- most findings should already be in the ledger
+- New findings discovered during capstone's own analysis (e.g., cross-domain contradictions) get new RS-NNN IDs
+- Capstone updates `impact_category` if its cross-skill view reveals a more accurate classification
+- Capstone does NOT overwrite companion skill findings -- it only adds or updates
 
 ### Follow-up Options
 

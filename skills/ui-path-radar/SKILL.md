@@ -1510,16 +1510,38 @@ for_capstone_radar:
       group_hint: "<optional>"
 ```
 
-### On Startup — Read Handoffs (MANDATORY)
+### Write to Unified Ledger (MANDATORY)
 
-Before starting the audit, read ALL companion handoff YAMLs that exist:
+After writing the handoff YAML, also write findings to `.radar-suite/ledger.yaml` following the Ledger Write Rules in `radar-suite-core.md`:
+
+1. Read existing ledger (or initialize if missing)
+2. Record this session (timestamp, skill name, build)
+3. For each finding: check for duplicates, assign RS-NNN ID if new, set `impact_category`, compute `file_hash`
+4. Write updated ledger
+
+**Impact category mapping for ui-path-radar findings:**
+- Dead-end screen (no way forward or back) → `ux-broken`
+- Broken navigation (button does nothing, link goes nowhere) → `ux-broken`
+- Missing empty state or loading state → `ux-degraded`
+- Buried CTA or hard-to-find feature → `ux-degraded`
+- Accessibility dead end → `ux-broken`
+- Visual-only issues → `polish`
+
+### On Startup — Read Ledger & Handoffs (MANDATORY)
+
+Before starting the audit, read the unified ledger and ALL companion handoff YAMLs:
 
 ```
+Read .radar-suite/ledger.yaml (if exists) — check for existing findings to avoid duplicates
 Read .agents/ui-audit/data-model-radar-handoff.yaml (if exists)
 Read .agents/ui-audit/roundtrip-radar-handoff.yaml (if exists)
 Read .agents/ui-audit/ui-enhancer-radar-handoff.yaml (if exists)
 Read .agents/ui-audit/capstone-radar-handoff.yaml (if exists)
 ```
+
+**Ledger check:** If the ledger contains findings for views you're about to audit, note their RS-NNN IDs. When you find the same issue, update the existing finding instead of creating a new one.
+
+**Regression check:** For any `fixed` findings in the ledger whose `file_hash` no longer matches the current file, flag for re-verification per the Regression Detection protocol in `radar-suite-core.md`.
 
 Parse `for_ui_path_radar` sections. Incorporate as **priority targets** — verify each independently.
 

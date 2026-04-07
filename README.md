@@ -15,6 +15,7 @@ One install gives you a complete audit pipeline — from data model integrity to
 
 | Version | Highlight |
 |---------|-----------|
+| **v3.0** | **Unified Finding Ledger** -- cross-skill finding management with RS-NNN IDs, impact-based organization, deduplication, regression detection, fix verification, and partial re-audit |
 | **v2.4** | **roundtrip-radar v1.6.0** -- new "bridge parity" check compares multiple consumers of the same model type and flags when one reads fewer fields than the others |
 | **v2.3** | **roundtrip-radar v1.5.0** -- new "collection narrowing" check finds arrays silently reduced to single elements at handoff points |
 | **v2.2** | **time-bomb-radar** -- new skill that finds deferred operations crashing on aged data (6 patterns) |
@@ -75,9 +76,12 @@ Each skill has a `VERSION` file and a `version:` field in its SKILL.md frontmatt
 **Easiest:** Use the unified entry point:
 
 ```
-/radar-suite full    # Runs all 7 skills in optimal order
-/radar-suite         # Interactive menu to choose skill or full audit
-/radar-suite resume  # Continue from last checkpoint
+/radar-suite full            # Runs all 7 skills in optimal order
+/radar-suite                 # Interactive menu to choose skill or full audit
+/radar-suite resume          # Continue from last checkpoint
+/radar-suite audit --changed # Quick re-audit of files changed since last session
+/radar-suite ledger          # View all findings across skills
+/radar-suite verify          # Re-verify all fixed findings
 ```
 
 **Manual order:** Each skill writes findings that the next one can read:
@@ -98,7 +102,20 @@ Each skill has a `VERSION` file and a `version:` field in its SKILL.md frontmatt
 7. Post-capstone fixes     Fix deferred backlog from all skills
 ```
 
-You can also run any skill individually — they work standalone. The findings handoff just makes them smarter when run together.
+You can also run any skill individually -- they work standalone. The findings handoff just makes them smarter when run together.
+
+## Finding Management (v3.0)
+
+Every finding gets a unique RS-NNN ID and lives in a unified ledger (`.radar-suite/ledger.yaml`). This enables:
+
+- **Cross-skill visibility** -- see all findings from all skills in one place, organized by impact (crash, data loss, UX broken, etc.)
+- **Deduplication** -- when two skills find the same issue from different angles, the ledger merges them instead of creating duplicates
+- **Regression detection** -- file hashes track whether fixed files have changed; `/radar-suite verify` confirms fixes still hold
+- **Finding relationships** -- link root causes to symptoms; fixing a root cause auto-flags symptoms for re-check
+- **Confidence decay** -- accepted findings resurface after 180 days so you re-evaluate with fresh context
+- **Partial re-audit** -- `/radar-suite audit --changed` scopes to modified files only (15-30 min vs 2.5-4 hours)
+
+The per-skill handoff YAMLs are still written for backward compatibility. The ledger is the cross-skill view that ties everything together.
 
 ## What Each Skill Finds (Examples)
 
