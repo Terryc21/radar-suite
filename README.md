@@ -150,9 +150,8 @@ AI audit tools can sound confident while being shallow. The radar skills include
 
 ## See Also
 
-- [Stuffolio](https://stuffolio.app) -- the iOS/macOS app these skills were built for
-- [Workflow Audit](https://github.com/Terryc21/workflow-audit) -- 5-layer SwiftUI user flow audit
-- [code-smarter](https://github.com/Terryc21/code-smarter) -- Prompt rewriting + personalized coding tutorials from your codebase
+- [Workflow Audit](https://github.com/Terryc21/workflow-audit) -- 5-layer behavioral audit of SwiftUI user journeys
+- [code-smarter](https://github.com/Terryc21/code-smarter) -- Prompt rewriting and personalized coding tutorials from your own codebase
 
 ## Previous Individual Repos
 
