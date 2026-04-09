@@ -6,6 +6,75 @@ Format: [skill-name vX.Y.Z] or [all skills] when changes apply to every skill.
 
 ---
 
+## 2026-04-09
+
+### [all skills] 5 Infrastructure Improvements
+
+**1. False Positive Suppression (`known-intentional.yaml`)**
+- New file: `.radar-suite/known-intentional.yaml` for suppressing findings that are intentionally correct
+- Distinct from accepted risks ("not a bug" vs "known bug I accept")
+- Match on file glob + pattern regex; skip silently during audit
+- Commands: `--show-suppressed`, `--accept-intentional`
+- Orphaned entry detection added to `/radar-suite verify`
+
+**2. Dependency Graph for `--sort implement`**
+- New finding fields: `depends_on`, `enables` (optional, best-effort)
+- Capstone-radar Step 6.5: builds DAG from all findings, topological sort for `--sort implement`
+- 3 auto-inference rules for cross-skill dependencies
+- Cycle detection with fallback to urgency sort
+
+**3. Pattern Fingerprints for Reintroduction Detection**
+- New finding fields: `pattern_fingerprint`, `grep_pattern`, `exclusion_pattern`
+- On audit startup, checks ledger for fixed patterns and greps codebase for reintroductions
+- Reintroduced patterns reported at 🟡 HIGH urgency by default
+- 5 built-in pattern categories always checked: `try?_swallow`, `force_unwrap_production`, `todo_in_production`, `shared_mutable_static`, `missing_file_protection`
+
+**4. Companion Handoff Staleness Decay (capstone-radar only)**
+- Formula: `staleness_score = (days * 0.3) + (commits * 0.1)`
+- 4 tiers: Fresh (0-2), Aging (2-5), Stale (5-10), Expired (10+)
+- Stale companions downgraded by one letter; Expired companions ignored
+- Spot-check protocol for Aging/Stale findings
+- New flag: `--trust-all` to override staleness
+
+**5. Experience-Level Enforcement**
+- New "Experience-Level Output Rules" table in core: 8 output dimensions x 4 levels
+- Beginner: auto-enables `--explain`, defaults to `--sort impact`
+- Senior/Expert: defaults to `--sort effort`, one-line progress banners
+- All companion skills updated with auto-apply logic
+- Workflow-audit now has Session Setup with experience-level question (previously missing)
+
+---
+
+### [all skills] User Impact Explanations, Sort Modes, Source Column
+
+**`--explain` / `--no-explain` (all skills)**
+- New toggle: appends a 3-line explanation after each finding in the Issue Rating Table
+- Format: What's wrong (one sentence), Fix (one sentence), User experience before/after (one sentence)
+- Code-only findings use "Developer experience" instead of "User experience"
+- Default: off. Can be enabled at setup (capstone-radar Question 3) or toggled mid-session
+- Defined in `radar-suite-core.md` "User Impact Explanations" section
+
+**`--sort` modes (all skills)**
+- `--sort urgency` (default) -- most broken first (Urgency ↓, ROI ↓)
+- `--sort effort` -- easiest safe wins first (Fix Effort ↑, Risk:Fix ↑)
+- `--sort impact` -- most user-visible first (Risk:No Fix ↓, Urgency ↓)
+- `--sort implement` -- dependency-aware ordering for sprint planning
+- Can be changed mid-session without re-running the audit
+- Defined in `radar-suite-core.md` and `workflow-audit/skills/shared/rating-system.md`
+
+**Source column (capstone-radar only)**
+- 9-column table with new Source column (position 3, after Finding)
+- Values: `capstone`, `data-model`, `ui-path`, `roundtrip`, `ui-enhancer`, `time-bomb`
+- Eliminates need for separate tables per companion skill
+- Impact-based organization now uses single table with category separator rows
+- Other skills remain 8-column (Source would always be themselves)
+
+**Progress banner updates (all skills)**
+- Banner now includes sort mode hint and `--explain` hint
+- Hints auto-suppress once the user has used them in the session
+
+---
+
 ## 2026-04-07
 
 ### [all skills v3.0.0] Unified Finding Ledger & Impact-Based Organization

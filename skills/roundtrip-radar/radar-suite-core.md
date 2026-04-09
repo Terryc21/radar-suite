@@ -31,6 +31,37 @@ Store as: `USER_EXPERIENCE`, `TABLE_FORMAT`, `FIX_MODE`. Apply to ALL output for
 
 **Batch mode behavior:** When enabled, group findings by `group_hint` and present one approval prompt per group instead of per-finding. User can still override individual items by typing "except [N]".
 
+### Experience-Level Output Rules
+
+After storing `USER_EXPERIENCE`, apply these rules to ALL output for the session:
+
+| Output Element | Beginner | Intermediate | Experienced | Senior/Expert |
+|---|---|---|---|---|
+| Skill intro | Full paragraph with analogy | 2-3 sentences | One line | Skip entirely |
+| `--explain` | Auto-enabled | Off (suggest in banner) | Off | Off |
+| Progress banner | Full with hint lines | Full with hint lines | Compact (no hint lines) | One-line status only |
+| Finding text | Plain language + "why it matters" | Standard terminology | file:line + description | file:line only |
+| Sort default | `--sort impact` | `--sort urgency` | `--sort urgency` | `--sort effort` |
+| Design citations | Always cite principle | On non-obvious findings only | Never | Never |
+| AskUserQuestion | Always include "Explain more" | Include "Explain more" | Standard options | Minimal options |
+| Post-fix summary | Full before/after comparison | Brief summary | Skip | Skip |
+
+**Auto-applied on setup:**
+- If `USER_EXPERIENCE` = Beginner: set `EXPLAIN_FINDINGS = true` automatically
+- If `USER_EXPERIENCE` = Senior/Expert: set default sort to `effort` (they know what matters, they want to knock things out fast)
+- If `USER_EXPERIENCE` = Beginner: set default sort to `impact` (most user-visible first helps them understand what matters)
+
+**Progress banner adaptation:**
+- Beginner/Intermediate: Full 6-line banner with `--explain` and `--sort` hint lines
+- Experienced: 4-line banner (drop hint lines)
+- Senior/Expert: Single line: `[SKILL] Phase [N] — [N] findings, [N] fixed, [N] remaining`
+
+**Finding text adaptation:**
+- Beginner: "The backup file doesn't include the Room field, so restoring a backup loses where items are stored"
+- Intermediate: "Room field missing from backup serialization"
+- Experienced: `BackupManager.swift:142` — Room not serialized in backup
+- Senior/Expert: `BackupManager.swift:142` — Room missing
+
 ---
 
 ## Environment Pre-flight (runs silently during setup)
@@ -153,6 +184,58 @@ Suppressed: 3 previously accepted risks (type "show accepted" to review)
 - `show accepted` — list all accepted risks
 - `clear accepted [id]` — remove specific acceptance
 - `clear all accepted` — reset all acceptances
+
+---
+
+## Known-Intentional Suppression
+
+Distinct from accepted risks. Accepted risks are "this IS a bug, but I accept it." Known-intentional entries are "this is NOT a bug -- the auditor flagged a pattern that is intentionally correct here."
+
+### Schema
+
+File: `.radar-suite/known-intentional.yaml`
+
+```yaml
+entries:
+  - id: KI-001
+    file: Sources/Features/ClaimPrepKit/ClaimPrepExporter.swift  # glob pattern OK
+    pattern: "NSFileCoordinator"  # regex matched against finding description or code
+    reason: "Writes to temp directory, not iCloud container. File coordination unnecessary."
+    added_by: human  # or skill-name if auto-suggested
+    added_date: 2026-04-08
+    skill: roundtrip-radar  # which skill flagged the false positive
+    review_after: null  # optional YYYY-MM-DD for time-limited suppressions
+```
+
+### Matching Rules
+
+1. **File match:** Entry `file` is matched as a glob against the finding's `file` field. Exact path or `**/FileName.swift` both work.
+2. **Pattern match:** Entry `pattern` is matched as a regex against the finding's `description` field AND the code evidence in the work receipt. Match on either = suppressed.
+3. **Both must match.** A file-only or pattern-only match is not sufficient.
+
+### Behavior
+
+1. **On audit startup:** Read `.radar-suite/known-intentional.yaml` (if exists). Store as `KNOWN_INTENTIONAL`.
+2. **Before presenting each finding:** Check against `KNOWN_INTENTIONAL`. If file + pattern match:
+   - Skip the finding silently (do not present to user)
+   - Increment `intentional_suppressed` counter
+3. **Expired entries:** If `review_after` is set and today > `review_after`, the entry is ignored (finding is presented normally) with note: "Previously suppressed -- review_after date passed."
+4. **Handoff:** Include `intentional_suppressed: N` in handoff YAML metadata so capstone knows findings were filtered.
+5. **Report footer:**
+   ```
+   Suppressed: N known-intentional entries (--show-suppressed to review)
+   ```
+
+### Commands
+
+- `--show-suppressed` — List all findings that were suppressed by known-intentional entries this session
+- `--accept-intentional` — When viewing a specific finding, mark it as known-intentional (prompts for reason, writes entry to YAML)
+- Orphaned entry detection is handled by `/radar-suite verify` (see radar-suite router skill)
+
+### Interaction with Regression Detection
+
+- Suppression is pattern-based, not hash-based. If a suppressed file changes, the suppression still applies as long as the pattern matches.
+- If the file is deleted, the entry becomes orphaned. `/radar-suite verify` flags orphaned entries for cleanup.
 
 ---
 
@@ -362,8 +445,12 @@ After 50 tool calls:
   ✓ [completed items]
   → [current/next item]
   [N] findings | [N] fixed | [N] remaining
+  Sort: [current] · --sort effort|impact|implement
+  --explain to add user impact explanations
 ═══════════════════════════════════════════════
 ```
+
+The last two lines are hints. Omit the `--explain` hint line if `EXPLAIN_FINDINGS` is already true. Omit the sort hint if the user has already changed sort mode this session (they know it exists).
 
 Always follow with `AskUserQuestion`. Never leave blank prompt.
 
@@ -388,6 +475,53 @@ Always follow with `AskUserQuestion`. Never leave blank prompt.
 - 🟡 HIGH — user-visible or stability risk; fix before release
 - 🟢 MEDIUM — real issue; acceptable to schedule
 - ⚪ LOW — nice-to-have; minimal impact
+
+**Default sort:** Urgency descending, then ROI descending.
+
+**Sort modes** (toggle mid-session with `--sort <mode>`):
+- `--sort urgency` (default) — most broken first
+- `--sort effort` — easiest safe wins first (Fix Effort ↑, Risk:Fix ↑)
+- `--sort impact` — most user-visible first (Risk:No Fix ↓, Urgency ↓)
+- `--sort implement` — dependency-aware ordering for sprint planning
+
+Sort can be changed without re-running the audit. Note the available modes in the end-of-audit suggestion.
+
+### Implementation Sort Algorithm (`--sort implement`)
+
+When `--sort implement` is active, findings are ordered by dependency topology rather than urgency alone:
+
+1. **Build dependency graph:** Scan all findings for `depends_on` and `enables` fields. Each creates a directed edge in a DAG.
+2. **Topological sort:** Order findings so that dependencies come before dependents. Within a topological level, break ties by urgency (descending).
+3. **Cycle detection:** If the graph has cycles, warn the user ("Cycle detected: RS-014 → RS-016 → RS-014 — falling back to urgency sort for these items") and fall back to urgency sort for the cycle members only. Non-cycle findings remain topologically sorted.
+4. **Output:** Print dependency chains alongside findings:
+   ```
+   Fix RS-014 first (enables RS-015, RS-016)
+   ```
+
+**Within individual skills:** Populate `depends_on`/`enables` for findings where the relationship is obvious:
+- "Add Codable conformance" enables "Serialize to JSON backup"
+- "Add VersionedSchema" enables "Create migration plan"
+- Structural changes (model, protocol) enable behavioral changes (UI, export)
+
+**Cross-skill dependencies** are inferred by capstone-radar using auto-inference rules (see capstone-radar Step 6.5).
+
+### User Impact Explanations
+
+When `EXPLAIN_FINDINGS` is true (toggled via `--explain` / `--no-explain`), append a numbered explanation for each finding after the Issue Rating Table. Each explanation has exactly 3 lines:
+
+```markdown
+### #1 -- [Finding title from table]
+**What's wrong:** [One sentence describing the bug or gap.]
+**Fix:** [One sentence describing the concrete change.]
+**User experience:** [One sentence: what the user sees before, and what changes after.]
+```
+
+Rules:
+- One sentence per line -- not two, not a paragraph.
+- "User experience" means the person using the app, not the developer.
+- For code-only findings (⚪ LOW), use "Developer experience" instead.
+- Order matches the table. Place after the table, before the next-step suggestion.
+- Default is off. The table is the primary output; explanations are supplementary.
 
 ---
 
@@ -427,6 +561,11 @@ findings:
     file_last_modified: [ISO-8601]
     group_hint: [category for batch operations]
     related_findings: [list of IDs this finding connects to]
+    depends_on: []  # IDs that must be fixed before this one (optional, best-effort)
+    enables: []     # IDs that this fix unblocks (optional, best-effort)
+    pattern_fingerprint: [normalized anti-pattern name, e.g. "try?_swallow"]
+    grep_pattern: [regex to detect this pattern in code]
+    exclusion_pattern: [regex — if present near grep_pattern, not a violation]
     fix_applied: [description of fix if status=fixed]
     test_added: [test file path if applicable]
 
@@ -435,6 +574,7 @@ context_exhaustion_after: [N or null]
 tool_calls: [count]
 duration_minutes: [number]
 accepted_risks_suppressed: [count]
+intentional_suppressed: [count]  # known-intentional entries that filtered findings
 ```
 
 **Cross-skill handoff rules:**
@@ -445,12 +585,58 @@ accepted_risks_suppressed: [count]
 
 ---
 
+## Pattern Reintroduction Detection
+
+A fixed bug can reappear in a *different* file. Regression detection (file hash changes) catches re-breaks in the same file. Pattern fingerprints catch the same anti-pattern introduced elsewhere.
+
+### How It Works
+
+1. **On fix:** When a finding is marked `status: fixed` in the ledger, store its `pattern_fingerprint` and `grep_pattern` alongside the fix record.
+2. **On audit startup:** Read the ledger for all `status: fixed` findings that have a `pattern_fingerprint`. For each:
+   - Run `grep_pattern` against the entire codebase (excluding test files, build artifacts)
+   - For each match, check if `exclusion_pattern` appears within 5 lines of context
+   - If `grep_pattern` matches AND `exclusion_pattern` is absent → **reintroduced pattern**
+3. **Reporting:** Reintroduced patterns are reported as new findings with:
+   - Default urgency: 🟡 HIGH (a fixed bug coming back is worse than a new bug)
+   - Description prefix: "Reintroduced pattern:"
+   - Reference to the original fixed finding ID
+4. **Deduplication:** If the match is in the same file as the original finding and the file hash matches the fix hash, skip it (this is a regression, not a reintroduction -- handled by regression detection).
+
+### Built-In Pattern Categories
+
+All skills check these 5 patterns on startup, regardless of whether they were previously found:
+
+| Fingerprint | Grep Pattern | Exclusion Pattern | What It Catches |
+|---|---|---|---|
+| `try?_swallow` | `try\?` | `do \{.*\} catch` within 5 lines | Silent error swallowing |
+| `force_unwrap_production` | `[^/]!\\.` or `as!` | File path contains `Tests/` or `Preview` | Force unwraps outside tests |
+| `todo_in_production` | `// TODO\|// FIXME\|// HACK\|// XXX` | none | Unresolved markers |
+| `shared_mutable_static` | `static var ` | `let \|nonisolated\|Mutex\|Lock\|actor ` in same type | Unprotected shared mutable state |
+| `missing_file_protection` | `\.write\(to:` | `\.completeFileProtection\|\.protectedUntilFirstUserAuthentication` within 10 lines | File writes without protection |
+
+**Rules:**
+- Built-in patterns are checked in addition to project-specific fingerprints from the ledger
+- They use the same reporting format as reintroduced patterns
+- They do NOT require a previous finding to exist -- they are always-on baseline checks
+- If a built-in pattern match is in `known-intentional.yaml`, it is suppressed normally
+
+### Populating Fingerprints
+
+When creating a finding, assign a `pattern_fingerprint` if the anti-pattern is generalizable:
+- Use a short, descriptive name (e.g., `try?_context_save_no_catch`, `missing_backup_field`)
+- Populate `grep_pattern` with a regex that would find this pattern in any file
+- Populate `exclusion_pattern` with a regex for the correct version of the pattern (what makes it NOT a violation)
+- If the finding is too specific to generalize (e.g., a one-off logic error), leave fingerprint fields empty
+
+---
+
 ## Completion Prompt Pattern
 
 ```
 I found [X] issues:
 - [N] critical (brief description)
 - [N] high / [N] medium / [N] low
+[If intentional_suppressed > 0:] (N known-intentional entries suppressed — --show-suppressed to review)
 
 You can:
 1. **Fix critical issues now** (~[time]) — [description]

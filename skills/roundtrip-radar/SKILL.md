@@ -26,6 +26,8 @@ problems, and data round-trip completeness. It operates in three steps:
 | `/roundtrip-radar rollup` | Run Step 2 — cross-cutting analysis |
 | `/roundtrip-radar trace "A → B → C"` | Trace a specific user flow path (see below) |
 | `/roundtrip-radar diff` | Compare findings against previous audit |
+| `--show-suppressed` | Show findings suppressed by known-intentional entries |
+| `--accept-intentional` | Mark current finding as known-intentional (not a bug) |
 
 ---
 
@@ -109,6 +111,10 @@ On first invocation, ask the user two questions in a single `AskUserQuestion` ca
 
 Store the experience level as `USER_EXPERIENCE` and apply to ALL output for the session.
 
+**User impact explanations:** Can be toggled at any time with `--explain` / `--no-explain`. When enabled, each finding gets a 3-line companion explanation (what's wrong, fix, user experience before/after). See the shared rating system doc for format and rules. Store as `EXPLAIN_FINDINGS` (default: false).
+
+**Experience-level auto-apply:** If `USER_EXPERIENCE` = Beginner, auto-set `EXPLAIN_FINDINGS = true` and default sort to `impact`. If Senior/Expert, default sort to `effort`. Apply all output rules from Experience-Level Output Rules table in `radar-suite-core.md`.
+
 **Subsequent workflows:** Do NOT re-ask the full setup questions. Instead, show a one-line reminder before each workflow:
 ```
 Using: [Beginner] mode, [Auto-fix small issues], [Display only]. Type "adjust" to change, or press Enter to continue.
@@ -119,7 +125,13 @@ If the user types "adjust", re-ask only the question(s) they want to change. Use
 
 ## Shared Patterns
 
-See `radar-suite-core.md` for: Table Format, Plain Language Communication, Work Receipts, Contradiction Detection, Finding Classification, Audit Methodology, Context Exhaustion, Progress Banner, Issue Rating Tables, Handoff YAML schema.
+See `radar-suite-core.md` for: Table Format, Plain Language Communication, Work Receipts, Contradiction Detection, Finding Classification, Audit Methodology, Context Exhaustion, Progress Banner, Issue Rating Tables, Handoff YAML schema, Known-Intentional Suppression, Pattern Reintroduction Detection, Experience-Level Output Rules, Implementation Sort Algorithm.
+
+## Pre-Scan Startup (MANDATORY — before any workflow scan)
+
+1. **Known-intentional check:** Read `.radar-suite/known-intentional.yaml` (if exists). Store as `KNOWN_INTENTIONAL`. Before presenting any finding during the audit, check it against these entries. If file + pattern match, skip silently and increment `intentional_suppressed` counter.
+
+2. **Pattern reintroduction check:** Read `.radar-suite/ledger.yaml` for `status: fixed` findings with `pattern_fingerprint` and `grep_pattern`. For each, grep the codebase. If the pattern appears in a new file without the `exclusion_pattern`, report as "Reintroduced pattern" at 🟡 HIGH urgency.
 
 ---
 
@@ -469,6 +481,13 @@ For every finding, use this table format sorted by Urgency (descending), then RO
 | Blast Radius | Number of files the fix touches (e.g., `🟢 3 files`, `⚪ 1 file`). Do not use `<br>` tags. Count by grepping for callers/references before rating. |
 | Fix Effort | Trivial / Small / Medium / Large |
 | Status | Fixed / Documented / Deferred (reason) |
+
+#### Finding Dependencies and Fingerprints
+
+When creating findings, populate these optional fields where relationships are obvious:
+
+- **`depends_on`/`enables`:** Workflow findings often chain -- a data loss at step 2 enables a corrupt display at step 5. If one fix must come before another, populate with finding IDs.
+- **`pattern_fingerprint`/`grep_pattern`/`exclusion_pattern`:** Assign fingerprints for generalizable anti-patterns (e.g., `silent_data_narrowing`, `missing_error_recovery`, `unguarded_concurrent_write`).
 
 #### Indicator Scale
 

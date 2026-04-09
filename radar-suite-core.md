@@ -31,6 +31,37 @@ Store as: `USER_EXPERIENCE`, `TABLE_FORMAT`, `FIX_MODE`. Apply to ALL output for
 
 **Batch mode behavior:** When enabled, group findings by `group_hint` and present one approval prompt per group instead of per-finding. User can still override individual items by typing "except [N]".
 
+### Experience-Level Output Rules
+
+After storing `USER_EXPERIENCE`, apply these rules to ALL output for the session:
+
+| Output Element | Beginner | Intermediate | Experienced | Senior/Expert |
+|---|---|---|---|---|
+| Skill intro | Full paragraph with analogy | 2-3 sentences | One line | Skip entirely |
+| `--explain` | Auto-enabled | Off (suggest in banner) | Off | Off |
+| Progress banner | Full with hint lines | Full with hint lines | Compact (no hint lines) | One-line status only |
+| Finding text | Plain language + "why it matters" | Standard terminology | file:line + description | file:line only |
+| Sort default | `--sort impact` | `--sort urgency` | `--sort urgency` | `--sort effort` |
+| Design citations | Always cite principle | On non-obvious findings only | Never | Never |
+| AskUserQuestion | Always include "Explain more" | Include "Explain more" | Standard options | Minimal options |
+| Post-fix summary | Full before/after comparison | Brief summary | Skip | Skip |
+
+**Auto-applied on setup:**
+- If `USER_EXPERIENCE` = Beginner: set `EXPLAIN_FINDINGS = true` automatically
+- If `USER_EXPERIENCE` = Senior/Expert: set default sort to `effort` (they know what matters, they want to knock things out fast)
+- If `USER_EXPERIENCE` = Beginner: set default sort to `impact` (most user-visible first helps them understand what matters)
+
+**Progress banner adaptation:**
+- Beginner/Intermediate: Full 6-line banner with `--explain` and `--sort` hint lines
+- Experienced: 4-line banner (drop hint lines)
+- Senior/Expert: Single line: `[SKILL] Phase [N] — [N] findings, [N] fixed, [N] remaining`
+
+**Finding text adaptation:**
+- Beginner: "The backup file doesn't include the Room field, so restoring a backup loses where items are stored"
+- Intermediate: "Room field missing from backup serialization"
+- Experienced: `BackupManager.swift:142` — Room not serialized in backup
+- Senior/Expert: `BackupManager.swift:142` — Room missing
+
 ---
 
 ## Environment Pre-flight (runs silently during setup)
@@ -153,6 +184,58 @@ Suppressed: 3 previously accepted risks (type "show accepted" to review)
 - `show accepted` — list all accepted risks
 - `clear accepted [id]` — remove specific acceptance
 - `clear all accepted` — reset all acceptances
+
+---
+
+## Known-Intentional Suppression
+
+Distinct from accepted risks. Accepted risks are "this IS a bug, but I accept it." Known-intentional entries are "this is NOT a bug -- the auditor flagged a pattern that is intentionally correct here."
+
+### Schema
+
+File: `.radar-suite/known-intentional.yaml`
+
+```yaml
+entries:
+  - id: KI-001
+    file: Sources/Features/ClaimPrepKit/ClaimPrepExporter.swift  # glob pattern OK
+    pattern: "NSFileCoordinator"  # regex matched against finding description or code
+    reason: "Writes to temp directory, not iCloud container. File coordination unnecessary."
+    added_by: human  # or skill-name if auto-suggested
+    added_date: 2026-04-08
+    skill: roundtrip-radar  # which skill flagged the false positive
+    review_after: null  # optional YYYY-MM-DD for time-limited suppressions
+```
+
+### Matching Rules
+
+1. **File match:** Entry `file` is matched as a glob against the finding's `file` field. Exact path or `**/FileName.swift` both work.
+2. **Pattern match:** Entry `pattern` is matched as a regex against the finding's `description` field AND the code evidence in the work receipt. Match on either = suppressed.
+3. **Both must match.** A file-only or pattern-only match is not sufficient.
+
+### Behavior
+
+1. **On audit startup:** Read `.radar-suite/known-intentional.yaml` (if exists). Store as `KNOWN_INTENTIONAL`.
+2. **Before presenting each finding:** Check against `KNOWN_INTENTIONAL`. If file + pattern match:
+   - Skip the finding silently (do not present to user)
+   - Increment `intentional_suppressed` counter
+3. **Expired entries:** If `review_after` is set and today > `review_after`, the entry is ignored (finding is presented normally) with note: "Previously suppressed -- review_after date passed."
+4. **Handoff:** Include `intentional_suppressed: N` in handoff YAML metadata so capstone knows findings were filtered.
+5. **Report footer:**
+   ```
+   Suppressed: N known-intentional entries (--show-suppressed to review)
+   ```
+
+### Commands
+
+- `--show-suppressed` — List all findings that were suppressed by known-intentional entries this session
+- `--accept-intentional` — When viewing a specific finding, mark it as known-intentional (prompts for reason, writes entry to YAML)
+- Orphaned entry detection is handled by `/radar-suite verify` (see radar-suite router skill)
+
+### Interaction with Regression Detection
+
+- Suppression is pattern-based, not hash-based. If a suppressed file changes, the suppression still applies as long as the pattern matches.
+- If the file is deleted, the entry becomes orphaned. `/radar-suite verify` flags orphaned entries for cleanup.
 
 ---
 
@@ -362,8 +445,12 @@ After 50 tool calls:
   ✓ [completed items]
   → [current/next item]
   [N] findings | [N] fixed | [N] remaining
+  Sort: [current] · --sort effort|impact|implement
+  --explain to add user impact explanations
 ═══════════════════════════════════════════════
 ```
+
+The last two lines are hints. Omit the `--explain` hint line if `EXPLAIN_FINDINGS` is already true. Omit the sort hint if the user has already changed sort mode this session (they know it exists).
 
 Always follow with `AskUserQuestion`. Never leave blank prompt.
 
@@ -388,6 +475,53 @@ Always follow with `AskUserQuestion`. Never leave blank prompt.
 - 🟡 HIGH — user-visible or stability risk; fix before release
 - 🟢 MEDIUM — real issue; acceptable to schedule
 - ⚪ LOW — nice-to-have; minimal impact
+
+**Default sort:** Urgency descending, then ROI descending.
+
+**Sort modes** (toggle mid-session with `--sort <mode>`):
+- `--sort urgency` (default) — most broken first
+- `--sort effort` — easiest safe wins first (Fix Effort ↑, Risk:Fix ↑)
+- `--sort impact` — most user-visible first (Risk:No Fix ↓, Urgency ↓)
+- `--sort implement` — dependency-aware ordering for sprint planning
+
+Sort can be changed without re-running the audit. Note the available modes in the end-of-audit suggestion.
+
+### Implementation Sort Algorithm (`--sort implement`)
+
+When `--sort implement` is active, findings are ordered by dependency topology rather than urgency alone:
+
+1. **Build dependency graph:** Scan all findings for `depends_on` and `enables` fields. Each creates a directed edge in a DAG.
+2. **Topological sort:** Order findings so that dependencies come before dependents. Within a topological level, break ties by urgency (descending).
+3. **Cycle detection:** If the graph has cycles, warn the user ("Cycle detected: RS-014 → RS-016 → RS-014 — falling back to urgency sort for these items") and fall back to urgency sort for the cycle members only. Non-cycle findings remain topologically sorted.
+4. **Output:** Print dependency chains alongside findings:
+   ```
+   Fix RS-014 first (enables RS-015, RS-016)
+   ```
+
+**Within individual skills:** Populate `depends_on`/`enables` for findings where the relationship is obvious:
+- "Add Codable conformance" enables "Serialize to JSON backup"
+- "Add VersionedSchema" enables "Create migration plan"
+- Structural changes (model, protocol) enable behavioral changes (UI, export)
+
+**Cross-skill dependencies** are inferred by capstone-radar using auto-inference rules (see capstone-radar Step 6.5).
+
+### User Impact Explanations
+
+When `EXPLAIN_FINDINGS` is true (toggled via `--explain` / `--no-explain`), append a numbered explanation for each finding after the Issue Rating Table. Each explanation has exactly 3 lines:
+
+```markdown
+### #1 -- [Finding title from table]
+**What's wrong:** [One sentence describing the bug or gap.]
+**Fix:** [One sentence describing the concrete change.]
+**User experience:** [One sentence: what the user sees before, and what changes after.]
+```
+
+Rules:
+- One sentence per line -- not two, not a paragraph.
+- "User experience" means the person using the app, not the developer.
+- For code-only findings (⚪ LOW), use "Developer experience" instead.
+- Order matches the table. Place after the table, before the next-step suggestion.
+- Default is off. The table is the primary output; explanations are supplementary.
 
 ---
 
@@ -427,6 +561,11 @@ findings:
     file_last_modified: [ISO-8601]
     group_hint: [category for batch operations]
     related_findings: [list of IDs this finding connects to]
+    depends_on: []  # IDs that must be fixed before this one (optional, best-effort)
+    enables: []     # IDs that this fix unblocks (optional, best-effort)
+    pattern_fingerprint: [normalized anti-pattern name, e.g. "try?_swallow"]
+    grep_pattern: [regex to detect this pattern in code]
+    exclusion_pattern: [regex — if present near grep_pattern, not a violation]
     fix_applied: [description of fix if status=fixed]
     test_added: [test file path if applicable]
 
@@ -435,6 +574,7 @@ context_exhaustion_after: [N or null]
 tool_calls: [count]
 duration_minutes: [number]
 accepted_risks_suppressed: [count]
+intentional_suppressed: [count]  # known-intentional entries that filtered findings
 ```
 
 **Cross-skill handoff rules:**
@@ -445,395 +585,48 @@ accepted_risks_suppressed: [count]
 
 ---
 
-## Unified Finding Ledger Protocol (v3.0)
+## Pattern Reintroduction Detection
 
-All radar-suite skills write findings to a shared ledger at `.radar-suite/ledger.yaml`. The ledger provides cross-skill visibility, deduplication, and finding lifecycle management. Individual handoff YAMLs are still written for backward compatibility.
-
-### Ledger Schema
-
-```yaml
-# .radar-suite/ledger.yaml
-version: 1
-next_id: 1
-
-sessions:
-  - id: "<ISO-8601 timestamp>"
-    skills_run: [data-model-radar, time-bomb-radar]
-    build: "1.0 (30)"
-
-findings:
-  - id: RS-001
-    status: open              # open | fixed | deferred | accepted
-    impact_category: data-loss # crash | data-loss | ux-broken | ux-degraded | polish | hygiene
-    source_skill: roundtrip-radar
-    summary: "CSV export drops Room and UPC columns on import"
-    file: "Sources/Managers/CSVManager.swift"
-    line: 142
-    confidence: verified       # verified | probable | possible
-    severity: HIGH             # CRITICAL | HIGH | MEDIUM | LOW
-    discovered: "<ISO-8601>"
-    file_hash: "a3f2c1"       # first 6 chars of SHA-256 of file content at discovery
-    evidence: "grep confirmed importCSV reads 25 fields, exportCSV writes 27"
-    group_hint: "csv_roundtrip"
-    also_flagged_by: []        # other skills that found the same issue
-    related_to: []             # RS-NNN IDs of findings about the same file/region
-    relationships: []          # root_cause, symptom_of, duplicate_of, supersedes (Phase 4)
-    history:
-      - date: "<ISO-8601>"
-        action: discovered
-        by: roundtrip-radar
-```
-
-### Impact Categories
-
-| Category | Description | Example |
-|----------|-------------|---------|
-| `crash` | Will crash or force-close | Cascade delete on aged data, force unwrap |
-| `data-loss` | Silent data loss or corruption | Export drops fields, backup misses model |
-| `ux-broken` | Feature doesn't work | Dead-end screen, button does nothing |
-| `ux-degraded` | Feature works but poorly | Buried CTA, missing empty state |
-| `polish` | Visual/consistency issues | Spacing, color contrast, dark mode |
-| `hygiene` | Code quality, no user impact | Dead fields, naming inconsistency |
-
-### Deferred Finding Schema
-
-When a finding is deferred, add a `deferred` block:
-
-```yaml
-  - id: RS-002
-    status: deferred
-    # ... standard fields ...
-    deferred:
-      reason: "Needs SwiftData migration strategy"
-      release_gate: pre-release  # pre-release | post-release | next-major
-      review_by: "2026-05-08"
-      deferred_on: "2026-04-08"
-```
-
-### Fixed Finding Schema
-
-When a finding is fixed, add a `fixed` block:
-
-```yaml
-  - id: RS-001
-    status: fixed
-    # ... standard fields ...
-    fixed:
-      commit: "a3f2c1d"
-      fixed_on: "2026-04-10"
-      file_hash_at_fix: "c5d4e3"
-      verification_pattern: "grep 'importCSV.*Room' Sources/Managers/CSVManager.swift"
-```
-
-### Accepted Finding Schema
-
-When a finding is accepted (risk acknowledged), add an `accepted` block:
-
-```yaml
-  - id: RS-019
-    status: accepted
-    # ... standard fields ...
-    accepted:
-      reason: "Room field intentionally excluded from CSV"
-      accepted_on: "2026-04-08"
-      decay_after_days: 180
-      last_reviewed: "2026-04-08"
-```
-
-### Ledger Write Rules (MANDATORY for all audit skills)
-
-Every audit skill MUST follow this protocol:
-
-1. **Read ledger at startup.** If `.radar-suite/ledger.yaml` exists, load it. If not, initialize with `version: 1`, `next_id: 1`, empty `sessions` and `findings`.
-
-2. **Record the session.** Append a session entry with the current timestamp, skill name, and build number.
-
-3. **Check for duplicates before creating findings.** For each new finding, check the ledger for existing findings where:
-   - Same `file` AND overlapping line range (within 10 lines)
-   - OR same `file` AND same `group_hint`
-   If a match is found with status `open` or `deferred`, do NOT create a duplicate. Instead, add the current skill to the existing finding's `also_flagged_by[]` and append a history entry.
-
-4. **Assign RS-NNN IDs.** For genuinely new findings, assign the next available ID from `next_id` and increment the counter. IDs are monotonic and never reused.
-
-5. **Assign impact_category.** Classify each finding using the impact categories table above. When in doubt, use the more severe category.
-
-6. **Compute file_hash.** For each finding's file, compute SHA-256 and store the first 6 characters:
-   ```bash
-   shasum -a 256 "<file path>" | cut -c1-6
-   ```
-
-7. **Write history entries.** Every status change (discovered, fixed, deferred, accepted, reopened) gets a timestamped history entry with the acting skill or "user".
-
-8. **Write the ledger.** Save `.radar-suite/ledger.yaml` after completing the audit.
-
-9. **Continue writing handoff YAML.** The existing per-skill handoff YAML is still written for backward compatibility. The ledger is the cross-skill view; handoffs remain per-skill detail.
-
-### Ledger Startup Check
-
-On any `/radar-suite` invocation, the ledger is loaded and checked. Individual audit skills read the ledger to:
-- Avoid re-reporting known findings
-- Check if previously-fixed findings need re-verification (file hash changed)
-- Incorporate existing finding context into their audit
-
----
-
-## Cross-Skill Deduplication (v3.0)
-
-When a skill is about to create a finding, it MUST check the ledger for duplicates. The dedup check in Ledger Write Rule #3 covers the basic case. This section covers advanced scenarios.
-
-### Same Issue, Different Angle
-
-When two skills find the same root issue from different perspectives (e.g., data-model-radar flags a missing backup field, roundtrip-radar finds the same field lost on round-trip):
-
-1. Do NOT create a duplicate finding
-2. Add the current skill to the existing finding's `also_flagged_by[]`
-3. Append a history entry: `action: also_flagged, by: [skill], note: "[perspective]"`
-4. If the new skill's evidence is stronger (e.g., verified vs probable), upgrade the finding's `confidence`
-
-### Different Issue, Same File
-
-When two skills find different issues in the same file (e.g., data-model-radar flags a dead field, ui-path-radar flags a broken button in the same view):
-
-1. Create a new finding with its own RS-NNN ID
-2. Add `related_to: [RS-NNN]` linking to the existing finding in the same file
-3. The existing finding also gets the new ID added to its `related_to[]`
-
-### Match Criteria
-
-Two findings are considered the "same issue" when ANY of these are true:
-- Same `file` AND line numbers within 10 lines of each other
-- Same `file` AND same `group_hint`
-- Same `summary` text (fuzzy -- same semantic meaning, not exact string match)
-
-When in doubt, create a new finding and link via `related_to`. False negatives (two entries for the same issue) are less harmful than false positives (merging distinct issues).
-
----
-
-## Cross-Skill Contradiction Detection (v3.0 -- capstone-radar)
-
-After collecting all findings and companion grades, capstone-radar runs these mechanical checks:
-
-### Grade-vs-Findings Contradictions
-
-| Condition | Action |
-|-----------|--------|
-| Companion gives A- or higher but ledger has 3+ HIGH findings in that domain | Flag: "[skill] graded A- but [N] HIGH findings exist in ledger. Re-evaluate grade." |
-| Companion gives C or lower but all findings in that domain are fixed | Flag: "Grade may be stale. All [N] findings resolved since last audit." |
-| Two skills disagree on severity for related findings | Flag: "RS-NNN rated HIGH by [skill1], MEDIUM by [skill2]. Reconcile." |
-
-### Resolution
-
-For each contradiction:
-1. Present both sides with evidence
-2. Ask the user to resolve: accept higher grade, accept lower grade, or re-audit the domain
-3. Record the resolution in the ledger as a history entry
-
-Contradictions are informational -- they don't automatically change grades. But unresolved contradictions prevent a SHIP recommendation.
-
----
-
-## Regression Detection & Fix Verification (v3.0)
-
-### File Hash Protocol
-
-Each finding stores `file_hash` -- the first 6 characters of SHA-256 of the file content at discovery or fix time. This enables regression detection.
-
-**Computing the hash:**
-```bash
-shasum -a 256 "<file path>" | cut -c1-6
-```
-
-**When to update:**
-- On discovery: store as `file_hash`
-- On fix: store as `fixed.file_hash_at_fix`
-
-### Regression Check (on audit startup)
-
-Every audit skill checks fixed findings at startup:
-
-1. Read the ledger and filter findings with status `fixed`
-2. For each fixed finding, compute current file hash
-3. If the current hash differs from `fixed.file_hash_at_fix`: the file has changed since the fix was applied
-
-```
-⚠️ 2 fixed findings may need re-verification (files changed since fix):
-  RS-001 [fixed] CSVManager.swift — changed 3 days ago
-  RS-014 [fixed] PhotoManager.swift — changed today
-
-Re-verify now? [Yes / Skip / Mark as needs-review]
-```
-
-**On "Yes":** Re-run the original detection pattern (from `fixed.verification_pattern`). If the pattern still matches, reopen the finding (status back to `open`, append history). If the pattern no longer matches, confirm as still fixed (update `file_hash_at_fix`).
-
-**On "Skip":** Proceed with the audit. The findings remain `fixed` but are flagged for next session.
-
-**On "Mark as needs-review":** Set status to `pending_recheck`, which prevents capstone from counting them as resolved.
-
-### Fix Verification Command
-
-`/radar-suite verify` -- re-verify all fixed findings:
-
-1. For each `fixed` finding in the ledger:
-   - Re-run the verification pattern (from `fixed.verification_pattern`)
-   - If pattern no longer matches: confirmed fixed (update hash)
-   - If pattern still matches: reopen (status → `open`, append history)
-2. Report results
-
-`/radar-suite verify RS-001` -- verify a single finding.
-
-`/radar-suite verify --changed` -- only verify findings in files that have changed (hash mismatch).
-
-### Verification Pattern Storage
-
-When a finding is fixed, store a verification pattern that can later confirm the fix is still in place:
-
-```yaml
-fixed:
-  verification_pattern: "grep 'importCSV.*Room' Sources/Managers/CSVManager.swift"
-```
-
-The pattern should be a grep command that would match the original bug. If the grep returns results, the bug is back. If it returns nothing, the fix holds.
-
-Not all findings have simple grep patterns. For complex fixes, store a description instead:
-
-```yaml
-fixed:
-  verification_pattern: "manual: check that batch delete is used instead of object delete in SafeDeletionManager.swift:89"
-```
-
-Manual verification patterns require the skill to read the file and verify the fix is intact.
-
----
-
-## Finding Relationships (v3.0)
-
-Findings can be linked to express causal and lifecycle relationships. These links enable fix cascading -- when a root cause is fixed, its symptoms are automatically flagged for re-check.
-
-### Relationship Types
-
-```yaml
-relationships:
-  - type: root_cause    # this finding is the root cause of others
-    targets: [RS-003, RS-004, RS-005]
-  - type: symptom_of    # this finding is a symptom of another
-    target: RS-002
-  - type: duplicate_of  # exact same issue found by different skill
-    target: RS-007
-  - type: supersedes    # this finding replaces an older one
-    target: RS-001
-```
-
-### Auto-Inference Rules (capstone-radar)
-
-When capstone runs, scan for these relationship patterns:
-
-| Pattern | Relationship |
-|---------|-------------|
-| Data-model gap + roundtrip data loss in same model | data-model finding is `root_cause`, roundtrip finding is `symptom_of` |
-| UI-path dead end + ui-enhancer missing button in same view | Link as `related_to` (neither is clearly root cause) |
-| Time-bomb + roundtrip aged-data failure for same deletion code | time-bomb finding is `root_cause` |
-| Two skills flag the exact same file:line | Earlier finding gets `duplicate_of` link to newer one (or merge via dedup) |
-
-### Root-Cause Fix Cascade
-
-When a finding with `root_cause` relationship is marked `fixed`:
-
-1. All `symptom_of` findings move to status `pending_recheck`
-2. The next audit run re-verifies each symptom
-3. If symptom is gone: auto-mark `fixed` with history entry `resolved_by: "root cause RS-NNN fixed"`
-4. If symptom persists: reopen as independent finding (remove `symptom_of` link)
-
-### Manual Linking
-
-Users can create relationships via `/radar-suite link`:
-
-```
-/radar-suite link RS-002 --root-cause-of RS-003 RS-004
-/radar-suite link RS-009 --duplicate-of RS-007
-/radar-suite link RS-015 --supersedes RS-001
-```
-
----
-
-## Confidence Decay (v3.0)
-
-Accepted findings are not permanent. Over time, the codebase changes and an accepted risk may no longer be valid -- the field might have been renamed, the workaround removed, or the context that justified the acceptance changed.
-
-### Decay Rules
-
-Findings with status `accepted` have a `decay_after_days` field (default: 180 days). At every `/radar-suite` invocation, check for accepted findings older than their decay threshold:
-
-```
-📋 1 accepted finding is due for re-evaluation (180+ days old):
-  RS-019 [accepted] Room excluded from CSV — accepted Apr 8, 2026
-
-Still valid? [Yes, extend 180 days / Reopen / Change to deferred]
-```
-
-**On "Yes, extend":** Update `accepted.last_reviewed` to today. The next decay check happens in another 180 days.
-
-**On "Reopen":** Set status back to `open`, append history entry `action: reopened_from_decay, by: user`.
-
-**On "Change to deferred":** Set status to `deferred`, add `deferred` block with a new `review_by` date.
-
-### Custom Decay Periods
-
-When accepting a finding, the user can specify a custom decay period:
-
-```
-Accept risk with custom review period? [180 days (default) / 90 days / 365 days / Never]
-```
-
-"Never" sets `decay_after_days: null` -- the finding will never resurface automatically. Use sparingly.
-
----
-
-## Partial Re-Audit (v3.0)
-
-`/radar-suite audit --changed` scopes the audit to files that changed since the last session:
+A fixed bug can reappear in a *different* file. Regression detection (file hash changes) catches re-breaks in the same file. Pattern fingerprints catch the same anti-pattern introduced elsewhere.
 
 ### How It Works
 
-1. Read the ledger to find the most recent session timestamp
-2. Run `git diff --name-only` against that timestamp to find changed files
-3. Filter to files that either:
-   - Have existing findings in the ledger, OR
-   - Are new files not previously audited
-4. Run only the skills relevant to those file types:
-   - `.swift` model files (in Models/) → data-model-radar, time-bomb-radar
-   - `.swift` view files (in Views/) → ui-path-radar, ui-enhancer-radar
-   - Any file with existing roundtrip findings → roundtrip-radar
-5. Skip capstone unless new findings are discovered
+1. **On fix:** When a finding is marked `status: fixed` in the ledger, store its `pattern_fingerprint` and `grep_pattern` alongside the fix record.
+2. **On audit startup:** Read the ledger for all `status: fixed` findings that have a `pattern_fingerprint`. For each:
+   - Run `grep_pattern` against the entire codebase (excluding test files, build artifacts)
+   - For each match, check if `exclusion_pattern` appears within 5 lines of context
+   - If `grep_pattern` matches AND `exclusion_pattern` is absent → **reintroduced pattern**
+3. **Reporting:** Reintroduced patterns are reported as new findings with:
+   - Default urgency: 🟡 HIGH (a fixed bug coming back is worse than a new bug)
+   - Description prefix: "Reintroduced pattern:"
+   - Reference to the original fixed finding ID
+4. **Deduplication:** If the match is in the same file as the original finding and the file hash matches the fix hash, skip it (this is a regression, not a reintroduction -- handled by regression detection).
 
-### Command Variants
+### Built-In Pattern Categories
 
-```
-/radar-suite audit --changed                    # since last audit session
-/radar-suite audit --changed --since 2026-04-01 # since specific date
-```
+All skills check these 5 patterns on startup, regardless of whether they were previously found:
 
-### Expected Time
+| Fingerprint | Grep Pattern | Exclusion Pattern | What It Catches |
+|---|---|---|---|
+| `try?_swallow` | `try\?` | `do \{.*\} catch` within 5 lines | Silent error swallowing |
+| `force_unwrap_production` | `[^/]!\\.` or `as!` | File path contains `Tests/` or `Preview` | Force unwraps outside tests |
+| `todo_in_production` | `// TODO\|// FIXME\|// HACK\|// XXX` | none | Unresolved markers |
+| `shared_mutable_static` | `static var ` | `let \|nonisolated\|Mutex\|Lock\|actor ` in same type | Unprotected shared mutable state |
+| `missing_file_protection` | `\.write\(to:` | `\.completeFileProtection\|\.protectedUntilFirstUserAuthentication` within 10 lines | File writes without protection |
 
-Partial audit: 15-30 minutes (vs 2.5-4 hours for full audit).
+**Rules:**
+- Built-in patterns are checked in addition to project-specific fingerprints from the ledger
+- They use the same reporting format as reintroduced patterns
+- They do NOT require a previous finding to exist -- they are always-on baseline checks
+- If a built-in pattern match is in `known-intentional.yaml`, it is suppressed normally
 
-### Output
+### Populating Fingerprints
 
-```
-═══════════════════════════════════════════════
-  PARTIAL AUDIT — [N] files changed since [date]
-  Skills to run: [list]
-  Estimated time: ~[N] minutes
-═══════════════════════════════════════════════
-
-Changed files with existing findings:
-  Sources/Managers/CSVManager.swift — RS-001 [fixed], RS-007 [open]
-  Sources/Views/SettingsView.swift — RS-019 [accepted]
-
-New files (no prior audit):
-  Sources/Views/NewFeatureView.swift
-
-Proceed? [Yes / Full audit instead / Skip]
-```
+When creating a finding, assign a `pattern_fingerprint` if the anti-pattern is generalizable:
+- Use a short, descriptive name (e.g., `try?_context_save_no_catch`, `missing_backup_field`)
+- Populate `grep_pattern` with a regex that would find this pattern in any file
+- Populate `exclusion_pattern` with a regex for the correct version of the pattern (what makes it NOT a violation)
+- If the finding is too specific to generalize (e.g., a one-off logic error), leave fingerprint fields empty
 
 ---
 
@@ -843,6 +636,7 @@ Proceed? [Yes / Full audit instead / Skip]
 I found [X] issues:
 - [N] critical (brief description)
 - [N] high / [N] medium / [N] low
+[If intentional_suppressed > 0:] (N known-intentional entries suppressed — --show-suppressed to review)
 
 You can:
 1. **Fix critical issues now** (~[time]) — [description]

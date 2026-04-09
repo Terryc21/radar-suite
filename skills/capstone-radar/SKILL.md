@@ -24,6 +24,8 @@ It does NOT:
 | `/capstone-radar quick` | Quick check — own domains only, ignores companion results |
 | `/capstone-radar report` | No scanning, re-grade from existing handoff files only |
 | `/capstone-radar diff` | Compare against previous audit — show resolved/new issues |
+| `--trust-all` | Override staleness decay -- treat all companion handoffs as Fresh |
+| `--show-suppressed` | Show findings suppressed by known-intentional entries |
 
 ---
 
@@ -118,6 +120,12 @@ On first invocation, ask the user two questions in a single `AskUserQuestion` ca
 - **Quick** — Quick check — only looks at its own areas, ignores other audit results
 - **Report only** — No scanning, just re-grade from existing handoff files
 
+**Question 3: "Include user impact explanations?"**
+- **No (default)** — Table only. Findings speak for themselves.
+- **Yes** — After the table, each finding gets a 3-line explanation: what's wrong, the fix, and how a user experiences it before/after.
+
+Can also be toggled mid-session with `--explain` / `--no-explain`. See `skills/shared/rating-system.md` "User Impact Explanations" for format and rules.
+
 **Experience-adapted explanations for Capstone Radar:**
 
 - **Beginner**: "Capstone Radar is the final check before your app goes to the App Store. It combines results from 4 other audit tools (if you've run them) with its own security, testing, and code quality checks, then gives your whole app a letter grade and tells you if it's safe to ship. Think of it as the building inspector who reviews all the specialist reports plus checks the things no one else covered."
@@ -134,7 +142,15 @@ Store the experience level as `USER_EXPERIENCE` and apply to ALL output for the 
 
 ## Shared Patterns
 
-See `radar-suite-core.md` for: Table Format, Plain Language Communication, Work Receipts, Contradiction Detection, Finding Classification, Audit Methodology, Context Exhaustion, Progress Banner, Issue Rating Tables, Handoff YAML schema.
+See `radar-suite-core.md` for: Table Format, Plain Language Communication, Work Receipts, Contradiction Detection, Finding Classification, Audit Methodology, Context Exhaustion, Progress Banner, Issue Rating Tables, Handoff YAML schema, Known-Intentional Suppression, Pattern Reintroduction Detection, Experience-Level Output Rules, Implementation Sort Algorithm.
+
+## Pre-Scan Startup (MANDATORY — before Step 1)
+
+1. **Known-intentional check:** Read `.radar-suite/known-intentional.yaml` (if exists). Store as `KNOWN_INTENTIONAL`. Before presenting any finding from own domain scans, check it against these entries. If file + pattern match, skip silently and increment `intentional_suppressed` counter. Companion findings that were suppressed at the companion level are already excluded.
+
+2. **Pattern reintroduction check:** Read `.radar-suite/ledger.yaml` for `status: fixed` findings with `pattern_fingerprint` and `grep_pattern`. For each, grep the codebase. If the pattern appears in a new file without the `exclusion_pattern`, report as "Reintroduced pattern" at 🟡 HIGH urgency.
+
+3. **Experience-level auto-apply:** If `USER_EXPERIENCE` = Beginner, auto-set `EXPLAIN_FINDINGS = true` and default sort to `impact`. If Senior/Expert, default sort to `effort`. Apply all output rules from Experience-Level Output Rules table in `radar-suite-core.md`.
 
 ---
 
@@ -216,6 +232,44 @@ When a companion handoff is found, check its `audit_depth` and `_verified` flags
 - No depth/verified flags (older handoff format) → Treat as partial. Note: "Handoff from older skill version — depth not verified."
 
 **Do not give full credit for unverified companion work.** A handoff that says "backup verified, CSV not checked" should not produce an A for the Model Layer domain. The unverified targets represent unknown risk.
+
+### Companion Handoff Staleness Decay
+
+After assessing quality, calculate staleness for each companion handoff:
+
+```
+staleness_score = (days_since_handoff * 0.3) + (commits_since_handoff * 0.1)
+```
+
+Where:
+- `days_since_handoff` = calendar days since the handoff's `timestamp` field
+- `commits_since_handoff` = output of `git rev-list --count <handoff_commit>..HEAD` (use `git log --oneline --since="<timestamp>"` if commit hash unavailable)
+
+| Score | Label | Behavior |
+|-------|-------|----------|
+| 0-2 | Fresh | Full trust -- use handoff as-is |
+| 2-5 | Aging | Trust grades, but spot-check HIGH findings (read the file, verify pattern still exists) |
+| 5-10 | Stale | Downgrade companion grades by one letter. Spot-check all CRITICAL + HIGH findings. |
+| 10+ | Expired | Ignore handoff entirely. Recommend re-running the companion skill. |
+
+**Freshness summary** (print in companion status output):
+```
+Companion freshness:
+  data-model-radar: Fresh (1 day, 3 commits)
+  ui-path-radar: Aging (8 days, 12 commits)
+  roundtrip-radar: Stale (22 days, 47 commits) — grades downgraded by one letter
+  ui-enhancer-radar: Expired (35 days, 89 commits) — handoff ignored, re-run recommended
+```
+
+**Spot-check protocol** (for Aging and Stale handoffs):
+1. Read the finding's file at the cited line range
+2. Check if the pattern still exists (grep the finding's work receipt pattern if available)
+3. If pattern gone → mark finding as `possibly-resolved (stale handoff)` and exclude from grade calculation
+4. If pattern still present → mark as `re-verified` and keep the finding
+
+**`--trust-all` flag:** Overrides staleness calculation. All companions treated as Fresh regardless of age. Use when you know nothing has changed since the last audit.
+
+**Stale/Expired companions** are flagged in the "Next Steps" section of the report.
 
 ---
 
@@ -383,6 +437,42 @@ If `TEAM_SIZE` > 1:
 ### 6.3 Cross-Cutting Patterns
 
 If roundtrip-radar handoff includes `cross_cutting_patterns[]`, incorporate them. Flag patterns that affect 3+ workflows.
+
+---
+
+## Step 6.5: Dependency Graph Construction
+
+Build a dependency graph across ALL findings (own + companion) for `--sort implement` ordering.
+
+### Input
+
+Scan all findings for `depends_on` and `enables` fields. These may be populated by individual skills (within-skill dependencies) or inferred here (cross-skill dependencies).
+
+### Auto-Inference Rules (cross-skill)
+
+Apply these rules to infer dependencies that individual skills could not see:
+
+1. **Requires/provides:** If Finding A's description says "requires X" (e.g., "requires Codable conformance") and Finding B adds X (e.g., "add Codable to Item"), then B `enables` A.
+2. **Structural before behavioral:** If two findings touch the same file and one is structural (model change, protocol addition, enum case) while the other is behavioral (UI update, export logic, validation), the structural finding `enables` the behavioral one.
+3. **Type/protocol reference:** If a finding references a type or protocol that another finding introduces, the introducing finding is a dependency.
+
+### Algorithm
+
+1. **Build DAG:** Create directed edges from each `depends_on` entry and each `enables` entry. Auto-inferred edges are marked `inferred: true`.
+2. **Topological sort:** Order findings so dependencies come before dependents. Within a topological level, break ties by urgency (descending).
+3. **Cycle detection:** If the graph contains cycles:
+   - Warn the user: "Cycle detected: RS-014 → RS-016 → RS-014 — falling back to urgency sort for these items"
+   - Remove cycle members from the DAG and sort them by urgency instead
+   - Non-cycle findings remain topologically sorted
+4. **Output dependency chains** in the report:
+   ```
+   Fix RS-014 first (enables RS-015, RS-016)
+   Fix RS-003 and RS-007 (independent, parallel-safe)
+   ```
+
+### When to Use
+
+This graph is consulted when the user selects `--sort implement`. It also informs the "relationship-aware reporting" in Step 10 (root cause findings first, symptoms indented beneath).
 
 ---
 
@@ -616,32 +706,22 @@ cross_domain_risk: 80
 
 ### Impact-Based Finding Organization (v3.0)
 
-When the unified ledger (`.radar-suite/ledger.yaml`) exists, section 14 presents ALL findings organized by impact category instead of by skill:
+When the unified ledger (`.radar-suite/ledger.yaml`) exists, section 14 presents ALL findings in a single 9-column table with the Source column showing provenance. The table is sorted by impact category (Crash Risk → Data Loss → UX Broken → UX Degraded → Polish → Hygiene), then by Urgency within each category:
 
-```
-## Crash Risk ([N] findings)
-RS-002 [CRITICAL] Cascade delete on archived items (time-bomb-radar)
-RS-014 [HIGH] Force unwrap on nil photo data (roundtrip-radar)
-
-## Data Loss ([N] findings)
-RS-001 [HIGH] CSV export drops Room and UPC (roundtrip-radar)
-RS-007 [HIGH] InsuranceProfile not in backup (data-model-radar)
-RS-011 [MEDIUM] DonationRecord FMV not persisted (data-model-radar)
-
-## UX Broken ([N] findings)
-RS-009 [HIGH] Settings > Export has no back button (ui-path-radar)
-
-## UX Degraded ([N] findings)
-...
-
-## Polish ([N] findings)
-...
-
-## Hygiene ([N] findings)
-...
+```markdown
+| # | Finding | Source | Urgency | Risk: Fix | Risk: No Fix | ROI | Blast Radius | Fix Effort |
+|---|---------|--------|---------|-----------|--------------|-----|--------------|------------|
+| | **Crash Risk** | | | | | | | |
+| 1 | Cascade delete on archived items | time-bomb | 🔴 CRITICAL | ... | ... | ... | ... | ... |
+| 2 | Force unwrap on nil photo data | roundtrip | 🟡 HIGH | ... | ... | ... | ... | ... |
+| | **Data Loss** | | | | | | | |
+| 3 | CSV export drops Room and UPC | roundtrip | 🟡 HIGH | ... | ... | ... | ... | ... |
+| 4 | InsuranceProfile not in backup | data-model | 🟡 HIGH | ... | ... | ... | ... | ... |
+| | **UX Broken** | | | | | | | |
+| 5 | Settings > Export has no back button | ui-path | 🟡 HIGH | ... | ... | ... | ... | ... |
 ```
 
-User can request the legacy by-skill view: `/capstone-radar report --by-skill`
+Category separator rows (bold text, empty rating columns) divide the table visually without breaking the single-table rule. The Source column replaces the old `(skill-name)` suffix that was appended to finding text.
 
 ### Relationship-Aware Reporting (v3.0)
 
@@ -687,10 +767,17 @@ Test Coverage Gaps:
 
 ### Issue Rating Format
 
-For every finding in per-domain sections:
+Capstone-radar uses a **9-column table** with a Source column. This is the only skill that uses 9 columns -- it's the aggregator, so provenance matters. All other radar skills use the standard 8-column table.
 
-| # | Finding | Urgency | Risk: Fix | Risk: No Fix | ROI | Blast Radius | Fix Effort |
-|---|---------|---------|-----------|--------------|-----|--------------|------------|
+| # | Finding | Source | Urgency | Risk: Fix | Risk: No Fix | ROI | Blast Radius | Fix Effort |
+|---|---------|--------|---------|-----------|--------------|-----|--------------|------------|
+| 1 | CSV export drops Room and UPC | roundtrip | 🟡 HIGH | ⚪ Low | 🟡 High | 🟠 Excellent | 🟢 2 files | Small |
+| 2 | InsuranceProfile not in backup | data-model | 🟡 HIGH | ⚪ Low | 🟡 High | 🟢 Good | 🟢 3 files | Medium |
+| 3 | TODO marker in production path | capstone | 🟢 MEDIUM | ⚪ Low | 🟢 Medium | 🟠 Excellent | ⚪ 1 file | Trivial |
+
+**Source column values:** Use short names -- `capstone`, `data-model`, `ui-path`, `roundtrip`, `ui-enhancer`, `time-bomb`. For findings from capstone's own scans, use `capstone`.
+
+**Single table rule still applies.** The Source column eliminates the need for separate tables per companion skill. ALL findings -- from own scans and all companion handoffs -- go into ONE table. The impact-based organization (v3.0) groups rows by impact category within this single table; the Source column shows where each finding originated.
 
 **Blast Radius:** Always include the number of files the fix touches (e.g., `3 files`, `1 file`). Count by grepping for callers/references before rating.
 

@@ -39,6 +39,8 @@ You are performing a systematic UI enhancement on a specific iOS/SwiftUI view, a
 | `/ui-enhancer-radar compare` | Compare before/after screenshots for progress |
 | `/ui-enhancer-radar revert` | Undo all changes back to last checkpoint |
 | `/ui-enhancer-radar batch [path]` | Audit all views in a directory, rank by severity |
+| `--show-suppressed` | Show findings suppressed by known-intentional entries |
+| `--accept-intentional` | Mark current finding as known-intentional (not a bug) |
 | `/ui-enhancer-radar --capture` | Capture screenshot from running simulator (optional) |
 | `/ui-enhancer-radar --devices` | Analyze layout across device sizes (optional) |
 | `/ui-enhancer-radar fix-deferred` | Resolve items deferred from a previous run |
@@ -117,11 +119,21 @@ On first invocation, ask the user two questions in a single `AskUserQuestion` ca
 
 Store the experience level as `USER_EXPERIENCE` and apply to ALL output for the session.
 
+**User impact explanations:** Can be toggled at any time with `--explain` / `--no-explain`. When enabled, each finding gets a 3-line companion explanation (what's wrong, fix, user experience before/after). See the shared rating system doc for format and rules. Store as `EXPLAIN_FINDINGS` (default: false).
+
+**Experience-level auto-apply:** If `USER_EXPERIENCE` = Beginner, auto-set `EXPLAIN_FINDINGS = true` and default sort to `impact`. If Senior/Expert, default sort to `effort`. Apply all output rules from Experience-Level Output Rules table in `radar-suite-core.md`.
+
 ---
 
 ## Shared Patterns
 
-See `radar-suite-core.md` for: Table Format, Plain Language Communication, Work Receipts, Contradiction Detection, Finding Classification, Audit Methodology, Context Exhaustion, Progress Banner, Issue Rating Tables, Handoff YAML schema.
+See `radar-suite-core.md` for: Table Format, Plain Language Communication, Work Receipts, Contradiction Detection, Finding Classification, Audit Methodology, Context Exhaustion, Progress Banner, Issue Rating Tables, Handoff YAML schema, Known-Intentional Suppression, Pattern Reintroduction Detection, Experience-Level Output Rules, Implementation Sort Algorithm.
+
+## Pre-Scan Startup (MANDATORY — before any domain scan)
+
+1. **Known-intentional check:** Read `.radar-suite/known-intentional.yaml` (if exists). Store as `KNOWN_INTENTIONAL`. Before presenting any finding during the audit, check it against these entries. If file + pattern match, skip silently and increment `intentional_suppressed` counter.
+
+2. **Pattern reintroduction check:** Read `.radar-suite/ledger.yaml` for `status: fixed` findings with `pattern_fingerprint` and `grep_pattern`. For each, grep the codebase. If the pattern appears in a new file without the `exclusion_pattern`, report as "Reintroduced pattern" at 🟡 HIGH urgency.
 
 ---
 
@@ -2433,6 +2445,13 @@ Every `AskUserQuestion` that presents a design decision, implementation choice, 
 If the user selects "Explain pros/cons": present a brief analysis (3-5 bullets), then re-prompt with the same options (minus "Explain pros/cons").
 
 **Never silently note findings "for future."** Every finding discovered during the audit must be presented with the full Issue Rating Table and a decision prompt (Fix / Defer / Accept / Explain pros/cons).
+
+### Finding Dependencies and Fingerprints
+
+When creating findings, populate these optional fields where relationships are obvious:
+
+- **`depends_on`/`enables`:** Visual fixes sometimes depend on each other -- e.g., a color system change enables contrast fixes across multiple views. If one fix must come before another, populate with finding IDs.
+- **`pattern_fingerprint`/`grep_pattern`/`exclusion_pattern`:** Assign fingerprints for generalizable UI anti-patterns (e.g., `hardcoded_color`, `missing_dynamic_type`, `insufficient_contrast`, `missing_dark_mode_adaptive`).
 
 ---
 

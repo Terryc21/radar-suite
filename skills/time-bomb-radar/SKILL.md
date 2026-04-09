@@ -30,6 +30,8 @@ Time bombs are deferred operations that pass every test, every code review, ever
 | `/time-bomb-radar background-tasks` | Pattern 4 only -- accumulated background work |
 | `/time-bomb-radar date-transitions` | Pattern 5 only -- date-threshold state changes |
 | `/time-bomb-radar scheduled-side-effects` | Pattern 6 only -- notifications/reminders scheduled from aged data |
+| `--show-suppressed` | Show findings suppressed by known-intentional entries |
+| `--accept-intentional` | Mark current finding as known-intentional (not a bug) |
 
 ## Key concepts
 
@@ -87,6 +89,16 @@ Present to the user based on experience level:
 
 - **New to this skill**: "I'll search your codebase for operations that fire after a time delay -- deletions, cache purges, trial expirations, background tasks, and date-based state changes. For each one, I'll check whether it can crash on data that's been sitting idle for weeks or months with incomplete cloud sync. The question I ask for every hit: if this runs 90 days after the data was created, with bad network, what breaks?"
 - **Experienced**: "Time bomb audit across 6 patterns: deferred cascade deletes, cache expiry with model relationships, trial/subscription expiry paths, background task accumulation, date-threshold state transitions, and scheduled side effects from aged data. Outputs rated findings with grep evidence."
+
+**User impact explanations:** Can be toggled at any time with `--explain` / `--no-explain`. When enabled, each finding gets a 3-line companion explanation (what's wrong, fix, user experience before/after). See the shared rating system doc for format and rules. Store as `EXPLAIN_FINDINGS` (default: false).
+
+**Experience-level auto-apply:** If `USER_EXPERIENCE` = Beginner, auto-set `EXPLAIN_FINDINGS = true` and default sort to `impact`. If Senior/Expert, default sort to `effort`. Apply all output rules from Experience-Level Output Rules table in `radar-suite-core.md`.
+
+## Pre-Scan Startup (MANDATORY — before any pattern scan)
+
+1. **Known-intentional check:** Read `.radar-suite/known-intentional.yaml` (if exists). Store as `KNOWN_INTENTIONAL`. Before presenting any finding during the audit, check it against these entries. If file + pattern match, skip silently and increment `intentional_suppressed` counter.
+
+2. **Pattern reintroduction check:** Read `.radar-suite/ledger.yaml` for `status: fixed` findings with `pattern_fingerprint` and `grep_pattern`. For each, grep the codebase. If the pattern appears in a new file without the `exclusion_pattern`, report as "Reintroduced pattern" at 🟡 HIGH urgency.
 
 ## Step 0: Codebase scan
 
@@ -509,6 +521,13 @@ For every hit, produce a rated finding:
 - **Safe**: Show the batch delete call, nil guard, or batch limit that prevents the issue.
 
 A rating without evidence is a guess, not an audit.
+
+### Finding Dependencies and Fingerprints
+
+When creating findings, populate these optional fields where relationships are obvious:
+
+- **`depends_on`/`enables`:** If one finding must be fixed before another (e.g., "fix cascade delete" must happen before "add batch purge for cache"), populate with finding IDs.
+- **`pattern_fingerprint`/`grep_pattern`/`exclusion_pattern`:** Time bomb patterns are highly generalizable. Assign fingerprints like `cascade_delete_with_external_storage`, `object_level_purge_with_relationships`, `unbounded_batch_accumulation`.
 
 ---
 

@@ -203,6 +203,23 @@ When linking `--root-cause-of`, the system records the relationship so that when
      - Pattern returns no match → confirmed still fixed (update hash)
      - Pattern matches → **regression detected** (reopen finding)
 
+### Known-Intentional Cleanup
+
+As part of verification, also check `.radar-suite/known-intentional.yaml` for orphaned entries:
+1. For each entry, verify the `file` path still exists (glob match)
+2. If the file has been deleted, flag the entry as orphaned
+3. Report orphaned entries so the user can clean them up
+
+```
+Orphaned known-intentional entries:
+  KI-003: Sources/Old/RemovedFile.swift — file no longer exists
+  KI-007: Sources/Legacy/*.swift — no matching files
+
+Options:
+1. **Remove orphaned entries (Recommended)**
+2. **Keep all** — leave for manual review
+```
+
 ### Output
 
 ```

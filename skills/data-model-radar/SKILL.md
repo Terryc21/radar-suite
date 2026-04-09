@@ -29,6 +29,8 @@ metadata:
 | `/data-model-radar dead-fields` | Domain 5 only — unused model fields |
 | `/data-model-radar time-bombs` | Domain 8 only — deferred operations on aged data |
 | `/data-model-radar status` | Show audit progress |
+| `--show-suppressed` | Show findings suppressed by known-intentional entries |
+| `--accept-intentional` | Mark current finding as known-intentional (not a bug) |
 
 ## Overview
 
@@ -72,6 +74,8 @@ On first invocation, ask the user two questions in a single `AskUserQuestion` ca
 
 Store the experience level as `USER_EXPERIENCE` and apply to ALL output for the session.
 
+**User impact explanations:** Can be toggled at any time with `--explain` / `--no-explain`. When enabled, each finding gets a 3-line companion explanation (what's wrong, fix, user experience before/after). See the shared rating system doc for format and rules. Store as `EXPLAIN_FINDINGS` (default: false).
+
 **Subsequent models (if auditing multiple):** Show one-line reminder:
 ```
 Using: [Beginner] mode, [Auto-fix] or [Review first], [Display only]. Type "adjust" to change, or press Enter to continue.
@@ -81,7 +85,15 @@ Using: [Beginner] mode, [Auto-fix] or [Review first], [Display only]. Type "adju
 
 ## Shared Patterns
 
-See `radar-suite-core.md` for: Table Format, Plain Language Communication, Work Receipts, Contradiction Detection, Finding Classification, Audit Methodology, Context Exhaustion, Progress Banner, Issue Rating Tables, Handoff YAML schema.
+See `radar-suite-core.md` for: Table Format, Plain Language Communication, Work Receipts, Contradiction Detection, Finding Classification, Audit Methodology, Context Exhaustion, Progress Banner, Issue Rating Tables, Handoff YAML schema, Known-Intentional Suppression, Pattern Reintroduction Detection, Experience-Level Output Rules, Implementation Sort Algorithm.
+
+## Pre-Scan Startup (MANDATORY — before any domain scan)
+
+1. **Known-intentional check:** Read `.radar-suite/known-intentional.yaml` (if exists). Store as `KNOWN_INTENTIONAL`. Before presenting any finding during the audit, check it against these entries. If file + pattern match, skip silently and increment `intentional_suppressed` counter.
+
+2. **Pattern reintroduction check:** Read `.radar-suite/ledger.yaml` for `status: fixed` findings with `pattern_fingerprint` and `grep_pattern`. For each, grep the codebase. If the pattern appears in a new file without the `exclusion_pattern`, report as "Reintroduced pattern" at 🟡 HIGH urgency.
+
+3. **Experience-level auto-apply:** If `USER_EXPERIENCE` = Beginner, auto-set `EXPLAIN_FINDINGS = true` and default sort to `impact`. If Senior/Expert, default sort to `effort`. Apply output rules from Experience-Level Output Rules table in core.
 
 ---
 
@@ -373,6 +385,13 @@ For every finding, use this table format sorted by Urgency (descending), then RO
 | Blast Radius | Number of files the fix touches (e.g., `3 files`, `1 file`). Count by grepping for callers/references before rating. |
 | Fix Effort | Trivial / Small / Medium / Large |
 | Status | Fixed / Documented / Deferred (reason) |
+
+### Finding Dependencies and Fingerprints
+
+When creating findings, populate these optional fields where relationships are obvious:
+
+- **`depends_on`/`enables`:** If one finding must be fixed before another (e.g., "add Codable conformance" enables "serialize to JSON backup"), populate these fields with finding IDs. Common in data-model-radar: structural changes (new field, new enum case) enable serialization/UI fixes.
+- **`pattern_fingerprint`/`grep_pattern`/`exclusion_pattern`:** If the anti-pattern is generalizable, assign a fingerprint so it can be detected if reintroduced elsewhere. Example: `missing_backup_field` with `grep_pattern: "case .backup"` and exclusion checking for the field name.
 
 ---
 

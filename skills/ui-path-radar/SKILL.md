@@ -33,6 +33,8 @@ You are performing a systematic UI path audit on this SwiftUI application.
 | `/ui-path-radar diff` | Compare current findings against previous audit |
 | `/ui-path-radar fix` | Generate fixes for found issues |
 | `/ui-path-radar status` | Show audit progress and remaining issues |
+| `--show-suppressed` | Show findings suppressed by known-intentional entries |
+| `--accept-intentional` | Mark current finding as known-intentional (not a bug) |
 
 ## Overview
 
@@ -263,11 +265,21 @@ On first invocation, ask the user two questions in a single `AskUserQuestion` ca
 
 Store the experience level as `USER_EXPERIENCE` and apply to ALL output for the session.
 
+**User impact explanations:** Can be toggled at any time with `--explain` / `--no-explain`. When enabled, each finding gets a 3-line companion explanation (what's wrong, fix, user experience before/after). See the shared rating system doc for format and rules. Store as `EXPLAIN_FINDINGS` (default: false).
+
+**Experience-level auto-apply:** If `USER_EXPERIENCE` = Beginner, auto-set `EXPLAIN_FINDINGS = true` and default sort to `impact`. If Senior/Expert, default sort to `effort`. Apply all output rules from Experience-Level Output Rules table in `radar-suite-core.md`.
+
 ---
 
 ## Shared Patterns
 
-See `radar-suite-core.md` for: Table Format, Plain Language Communication, Work Receipts, Contradiction Detection, Finding Classification, Audit Methodology, Context Exhaustion, Progress Banner, Issue Rating Tables, Handoff YAML schema.
+See `radar-suite-core.md` for: Table Format, Plain Language Communication, Work Receipts, Contradiction Detection, Finding Classification, Audit Methodology, Context Exhaustion, Progress Banner, Issue Rating Tables, Handoff YAML schema, Known-Intentional Suppression, Pattern Reintroduction Detection, Experience-Level Output Rules, Implementation Sort Algorithm.
+
+## Pre-Scan Startup (MANDATORY — before any layer scan)
+
+1. **Known-intentional check:** Read `.radar-suite/known-intentional.yaml` (if exists). Store as `KNOWN_INTENTIONAL`. Before presenting any finding during the audit, check it against these entries. If file + pattern match, skip silently and increment `intentional_suppressed` counter.
+
+2. **Pattern reintroduction check:** Read `.radar-suite/ledger.yaml` for `status: fixed` findings with `pattern_fingerprint` and `grep_pattern`. For each, grep the codebase. If the pattern appears in a new file without the `exclusion_pattern`, report as "Reintroduced pattern" at 🟡 HIGH urgency.
 
 ---
 
@@ -1311,6 +1323,13 @@ Items 3-5 may be omitted if not applicable.
 - **ROI:** 🟠 Excellent · 🟢 Good · 🟡 Marginal · 🔴 Poor
 - **Blast Radius:** Number of files the fix touches. Do not use `<br>` tags. Count by grepping for callers/references before rating.
 - **Fix Effort:** Trivial / Small / Medium / Large
+
+### Finding Dependencies and Fingerprints
+
+When creating findings, populate these optional fields where relationships are obvious:
+
+- **`depends_on`/`enables`:** UI path findings often chain -- a dead-end fix enables a flow that was previously untestable. If one fix must come before another, populate with finding IDs.
+- **`pattern_fingerprint`/`grep_pattern`/`exclusion_pattern`:** Assign fingerprints for generalizable UI anti-patterns (e.g., `dead_end_sheet`, `unhandled_navigation_case`, `mock_data_in_production`, `missing_platform_parity`).
 
 ---
 
