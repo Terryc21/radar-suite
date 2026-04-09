@@ -13,14 +13,23 @@ One install gives you a complete audit pipeline — from data model integrity to
 
 ## Recent Changes
 
-| Version | Highlight |
-|---------|-----------|
-| **v3.0** | **Unified Finding Ledger** -- cross-skill finding management with RS-NNN IDs, impact-based organization, deduplication, regression detection, fix verification, and partial re-audit |
-| **v2.4** | **roundtrip-radar v1.6.0** -- new "bridge parity" check compares multiple consumers of the same model type and flags when one reads fewer fields than the others |
-| **v2.3** | **roundtrip-radar v1.5.0** -- new "collection narrowing" check finds arrays silently reduced to single elements at handoff points |
-| **v2.2** | **time-bomb-radar** -- new skill that finds deferred operations crashing on aged data (6 patterns) |
-| **v2.1** | Fix-forward bias (recommend fixing over deferring) + stale test detection |
-| **v2.0** | Unified entry point, checkpoint/resume, batch mode, session persistence |
+| Version  | Highlight                                          |
+|----------|----------------------------------------------------|
+| **v3.1** | **5 infrastructure specs** -- false positive        |
+|          | suppression, dependency graph for --sort implement, |
+|          | pattern fingerprints, staleness decay, experience-  |
+|          | level enforcement. Cross-skill handoff with         |
+|          | workflow-audit (persona evaluation sharing).        |
+|          | Compact table headers for terminal readability.     |
+| **v3.0** | **Unified Finding Ledger** -- cross-skill finding   |
+|          | management with RS-NNN IDs, impact-based org,       |
+|          | deduplication, regression detection, fix             |
+|          | verification, and partial re-audit                  |
+| **v2.4** | roundtrip-radar v1.6.0 -- "bridge parity" check    |
+| **v2.3** | roundtrip-radar v1.5.0 -- "collection narrowing"   |
+| **v2.2** | time-bomb-radar -- deferred operations on aged data |
+| **v2.1** | Fix-forward bias + stale test detection             |
+| **v2.0** | Unified entry point, checkpoint/resume, batch mode  |
 
 Full details in [CHANGELOG.md](CHANGELOG.md).
 

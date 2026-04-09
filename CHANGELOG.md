@@ -6,6 +6,18 @@ Format: [skill-name vX.Y.Z] or [all skills] when changes apply to every skill.
 
 ---
 
+## 2026-04-09 (late)
+
+### [ui-path-radar] Cross-Skill Handoff with workflow-audit
+
+- Reads `.workflow-audit/persona-handoff.yaml` (if exists) to enrich Layer 4 semantic evaluation with user personas and D/E/F/R ratings
+- Reads `.workflow-audit/handoff.yaml` (if exists) to import companion findings
+- Adds `checks_performed` section to handoff YAML (automated_checks count, categories_scanned list, confidence_scoring flag)
+- All reads are "if exists" -- zero behavior change when workflow-audit is not installed
+- Compact table headers (Risk:Fix, Risk:NoFix, Blast, Effort) and terminal width cue added
+
+---
+
 ## 2026-04-09
 
 ### [all skills] 5 Infrastructure Improvements

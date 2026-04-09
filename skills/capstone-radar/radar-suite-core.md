@@ -460,8 +460,10 @@ Always follow with `AskUserQuestion`. Never leave blank prompt.
 
 **8 columns required (no exceptions):**
 
-| # | Finding | Urgency | Risk: Fix | Risk: No Fix | ROI | Blast Radius | Fix Effort |
-|---|---------|---------|-----------|--------------|-----|--------------|------------|
+| #   | Finding              | Urgency      | Risk:Fix | Risk:NoFix | ROI      | Blast    | Effort |
+|-----|----------------------|--------------|----------|------------|----------|----------|--------|
+
+> **Terminal width:** If the table renders as vertical blocks instead of horizontal rows, tell the user: "The rating table needs a wider terminal to display correctly. Try widening your window or using full-screen mode." Do NOT switch to a vertical/list format -- always render as a table.
 
 **Indicator scale:**
 - 🔴 Critical/high concern (ROI: poor return)

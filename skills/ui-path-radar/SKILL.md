@@ -1293,18 +1293,19 @@ Items 3-5 may be omitted if not applicable.
 
 **Hard formatting rule — Table, not list:** ALL findings MUST be in a single markdown table. Each finding is ONE ROW. Never expand into individual sections or bullet-pointed ratings. ALL categories go in the same table.
 
-**Full table (160+ cols):**
+**Full table:**
 ```markdown
-| # | Finding | Confidence | Urgency | Risk: Fix | Risk: No Fix | ROI | Blast Radius | Fix Effort |
-|---|---------|------------|---------|-----------|-------------|-----|-------------|------------|
-| 1 | Dead end: ".warranty" unhandled | verified | 🔴 Critical | ⚪ Low | 🔴 Critical | 🟠 Excellent | 🟢 2 files | Trivial |
+| #   | Finding                   | Conf     | Urgency      | Risk:Fix | Risk:NoFix | ROI      | Blast    | Effort  |
+|-----|---------------------------|----------|--------------|----------|------------|----------|----------|---------|
+| 1   | Dead end: ".warranty"     | verified | 🔴 Critical | ⚪ Low  | 🔴 Crit   | 🟠 Exc  | 🟢 2f   | Trivial |
+|     | unhandled                 |          |              |          |            |          |          |         |
 ```
 
-**Compact table (under 160 cols):**
+**Compact table (narrow terminal):**
 ```markdown
-| # | Finding | Conf. | Urgency | Fix Effort |
-|---|---------|-------|---------|------------|
-| 1 | Dead end: ".warranty" unhandled | verified | 🔴 Critical | Trivial |
+| #   | Finding                   | Conf     | Urgency      | Effort  |
+|-----|---------------------------|----------|--------------|---------|
+| 1   | Dead end: ".warranty"     | verified | 🔴 Critical | Trivial |
 ```
 
 ### Indicator Scale
@@ -1527,6 +1528,41 @@ for_capstone_radar:
     - finding: "<description>"
       urgency: "<CRITICAL|HIGH>"
       group_hint: "<optional>"
+
+checks_performed:
+  automated_checks: 18
+  categories_scanned:
+    - dead_end
+    - wrong_destination
+    - mock_data
+    - destructive_no_confirm
+    - silent_state_reset
+    - incomplete_navigation
+    - missing_activation
+    - unwired_data
+    - platform_gap
+    - promise_scope_mismatch
+    - buried_primary_action
+    - dismiss_trap
+    - context_dropping
+    - notif_nav_fragility
+    - sheet_asymmetry
+    - empty_state_missing
+    - error_recovery_missing
+    - nav_container_mismatch
+    - two_step_flow
+    - missing_feedback
+    - gesture_only_action
+    - loading_state_trap
+    - stale_nav_context
+    - phantom_touch_target
+    - race_condition_ux
+    - invisible_selection
+    - inconsistent_pattern
+    - orphaned_code
+    - double_nested_nav
+  persona_evaluation: false
+  confidence_scoring: true
 ```
 
 ### Write to Unified Ledger (MANDATORY)
@@ -1556,7 +1592,24 @@ Read .agents/ui-audit/data-model-radar-handoff.yaml (if exists)
 Read .agents/ui-audit/roundtrip-radar-handoff.yaml (if exists)
 Read .agents/ui-audit/ui-enhancer-radar-handoff.yaml (if exists)
 Read .agents/ui-audit/capstone-radar-handoff.yaml (if exists)
+Read .workflow-audit/persona-handoff.yaml (if exists)
+Read .workflow-audit/handoff.yaml (if exists)
 ```
+
+### Workflow-Audit Persona Integration
+
+When `.workflow-audit/persona-handoff.yaml` exists:
+
+1. Display: "Persona evaluation from workflow-audit available -- incorporating."
+2. **Layer 4 enrichment:** Use persona D/E/F/R ratings to weight your own Layer 4 scoring. If workflow-audit rated a workflow's Feedback as 2/5, weight Feedback-related issues higher for that workflow.
+3. **Skip persona derivation:** Use workflow-audit's personas instead of re-deriving them. They were built from semantic analysis you don't replicate.
+4. **Category overlap:** Read `checks_performed.categories_scanned`. For categories both skills check, still run your own automated checks but note "Also flagged by workflow-audit" for duplicate findings in the same file.
+
+When `.workflow-audit/handoff.yaml` exists (without persona handoff):
+- Import CRITICAL/HIGH findings as companion findings tagged `[via workflow-audit]`
+- Note which categories workflow-audit checked
+
+When neither exists: proceed normally. No change to audit behavior.
 
 **Ledger check:** If the ledger contains findings for views you're about to audit, note their RS-NNN IDs. When you find the same issue, update the existing finding instead of creating a new one.
 
