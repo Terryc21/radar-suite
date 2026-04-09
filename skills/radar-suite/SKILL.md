@@ -48,6 +48,50 @@ inherits: radar-suite-core.md
 
 ---
 
+## Session Setup (MANDATORY -- runs before anything else)
+
+On EVERY `/radar-suite` invocation, check `.radar-suite/session-prefs.yaml`:
+
+**If file exists AND has `experience_level` set:** Show stored preferences and ask `[Enter to continue] or type "change" to adjust settings.` Then proceed to Stale-Deferred Check, then Interactive Menu.
+
+**If file does not exist OR `experience_level` is missing:** Run full setup below before presenting the menu, fix timing, or any audit work. Do NOT skip this. Do NOT jump to exploration.
+
+### Setup Questions (single AskUserQuestion, 4 questions)
+
+**Q1 — Experience level?**
+- **Experienced (Recommended)** -- Concise, no definitions
+- **Senior/Expert** -- Terse, file:line only
+- **Intermediate** -- Standard terms, explain non-obvious
+- **Beginner** -- Plain language, define terms
+
+**Q2 — Table format?**
+- **Full tables (Recommended)** -- 8-column Issue Rating Tables
+- **Compact tables** -- 3-column with details below
+
+**Q3 — Fix handling?**
+- **Auto-fix safe items (Recommended)** -- Apply isolated, low-blast-radius fixes automatically
+- **Review first** -- Present all findings, approve each wave
+- **Batch mode** -- Approve all fixes in each wave at once
+
+**Q4 — Explain what this skill does?**
+- **No, let's go (Recommended)** -- Skip explanation
+- **Yes, briefly** -- 3-5 sentence explanation
+
+Store answers in `.radar-suite/session-prefs.yaml` as `experience_level`, `table_format`, `fix_mode`. See `radar-suite-core.md` for experience-level output rules.
+
+### Execution Order
+
+The invocation flow is strictly:
+1. **Session Setup** (this section) -- configure or confirm preferences
+2. **Stale-Deferred Check** -- check for overdue findings
+3. **Fix Timing** -- ask when fixes should be applied (fresh audits only)
+4. **Interactive Menu** -- choose what to audit
+5. **Skill execution** -- run the selected skill(s)
+
+Never skip steps 1-3. Never start exploration or scanning before completing them.
+
+---
+
 ## Interactive Menu
 
 On invocation without arguments, present:
@@ -373,4 +417,4 @@ Capstone-radar reads all handoffs to:
 
 ## Shared Patterns
 
-See `radar-suite-core.md` for: Session Setup, Session Persistence, Checkpoint & Resume, Accepted Risks, Wave-Based Fix Presentation, Table Format, Issue Rating Tables, Unified Finding Ledger Protocol.
+See `radar-suite-core.md` for: Experience-Level Output Rules, Session Persistence, Checkpoint & Resume, Accepted Risks, Wave-Based Fix Presentation, Table Format, Issue Rating Tables, Unified Finding Ledger Protocol.
