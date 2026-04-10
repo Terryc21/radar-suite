@@ -22,8 +22,10 @@ SKILLS=(
     "data-model-radar"
     "ui-path-radar"
     "roundtrip-radar"
+    "time-bomb-radar"
     "ui-enhancer-radar"
     "capstone-radar"
+    "radar-suite"
 )
 
 for skill in "${SKILLS[@]}"; do
@@ -43,11 +45,15 @@ for skill in "${SKILLS[@]}"; do
 done
 
 echo ""
-echo "Done! All 5 Radar Suite skills are now available in Claude Code."
+echo "Done! All 7 Radar Suite skills are now available in Claude Code."
 echo ""
 echo "Recommended run order:"
 echo "  1. /data-model-radar    — Check your data definitions"
 echo "  2. /ui-path-radar       — Trace navigation flows"
 echo "  3. /roundtrip-radar     — Verify data survives complete cycles"
-echo "  4. /ui-enhancer-radar   — Review visual quality"
-echo "  5. /capstone-radar      — Get overall grade and release recommendation"
+echo "  4. /time-bomb-radar     — Find deferred operations that crash on aged data"
+echo "  5. /ui-enhancer-radar   — Review visual quality"
+echo "  6. /capstone-radar      — Get overall grade and release recommendation"
+echo ""
+echo "Or run them all in sequence with:"
+echo "  /radar-suite            — Orchestrator that routes to each skill in order"
