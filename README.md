@@ -65,6 +65,36 @@ cd radar-suite
 
 That's it. All 7 skills are now available in Claude Code.
 
+### Installed between 2026-03-24 and 2026-04-10? Re-run `install.sh`
+
+If you cloned this repo and ran `./install.sh` between **2026-03-24** and **2026-04-10**, your install was silently incomplete. The installer was missing two skills: `time-bomb-radar` (the 30-day crash detector) and `radar-suite` (the orchestrator). The `/time-bomb-radar` and `/radar-suite` commands would have returned "skill not found" errors even though the skill files existed in the repo.
+
+The bug was fixed on 2026-04-10. To backfill the missing skills:
+
+```bash
+cd radar-suite
+git pull
+./install.sh
+```
+
+`install.sh` is idempotent and safe to re-run. Existing symlinks are updated in place; missing symlinks are created. Nothing else in your Claude Code install is touched.
+
+The root cause: `install.sh` was a hand-maintained shell script with a hardcoded `SKILLS=()` array. When new skills were added to `skills/` in later commits, the array was not updated to match. Documentation (this README) said "7 skills" while the installer shipped 5. This class of drift is exactly what a plugin manifest prevents -- which is why Radar Suite is moving to one. See the next section.
+
+### Coming soon: Claude Code plugin distribution
+
+Radar Suite will migrate from a shell-script installer to a **Claude Code plugin** in the next release. The rationale:
+
+- **Single source of truth for what's installed.** A plugin manifest declares every skill the plugin ships with. There's no second list to keep in sync. The 17-day install.sh bug described above is impossible in a plugin.
+- **One-command install with no shell script to trust.** Users install with `/plugin install` instead of cloning a repo and running an arbitrary shell script. That is a meaningful security and friction improvement, especially for users who don't read shell scripts before running them.
+- **Push-based updates.** Today, staying current requires `git pull && ./install.sh`. A plugin can notify users when a new version is available and update in place without re-running anything.
+- **Cleaner uninstall.** A plugin is removed with one command. A shell-script install leaves symlinks in `~/.claude/skills/` that have to be cleaned up manually.
+- **Plugin manifest as dependency declaration.** Cross-skill dependencies (e.g. "capstone-radar runs after all other radars") are encoded in the manifest instead of in prose inside `radar-suite-core.md`. Tooling can enforce the order; documentation can just describe it.
+
+The plugin conversion is scheduled to ship before the next major feature upgrade (the "axis classification" framework described in the next CHANGELOG release). The plan and rationale are documented in `AXIS-CLASSIFICATION-PLAN.md` and `NEXT-SESSION-PROMPT.md` in this repo if you want to follow along or contribute.
+
+Existing users will not be forced to migrate immediately. `install.sh` will remain as a fallback install path for at least one version after the plugin ships, with a deprecation notice. Clone-and-run users will keep working; new users will be pointed at the plugin as the recommended path.
+
 ## Updates
 
 Each skill checks for updates on startup. If a newer version is available, you'll see a one-line notice — it never blocks your audit.
@@ -146,7 +176,7 @@ At the start of every audit, you choose when findings get fixed:
 |--------|-------------|
 | **Fix recommended after each skill** (default) | After each skill, fix high-urgency + low-effort findings immediately. Defer the rest to a post-capstone fix session. Best balance of speed and thoroughness. |
 | **Fix all after each skill** | Fix every finding before moving to the next skill. Most thorough, but slower. |
-| **Fix all after capstone** | Run all 5 skills first for the full picture, then fix everything in one session using the capstone report as a punch list. Fastest audit, largest fix backlog. |
+| **Fix all after capstone** | Run all 7 skills first for the full picture, then fix everything in one session using the capstone report as a punch list. Fastest audit, largest fix backlog. |
 
 The default option uses a simple rule: fix now if the finding is high urgency, low effort, and touches 2 files or fewer. Everything else benefits from the full audit picture — capstone might reveal it's part of a larger pattern, or deprioritize it entirely.
 

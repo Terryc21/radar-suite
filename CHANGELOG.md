@@ -6,6 +6,46 @@ Format: [skill-name vX.Y.Z] or [all skills] when changes apply to every skill.
 
 ---
 
+## 2026-04-10
+
+### [installer] install.sh was silently incomplete for 17 days -- FIXED
+
+**If you installed Radar Suite between 2026-03-24 and 2026-04-10, your install is missing `time-bomb-radar` and the `radar-suite` orchestrator.** Pull the latest and re-run `./install.sh` to backfill.
+
+```bash
+cd radar-suite
+git pull
+./install.sh
+```
+
+The installer is idempotent and safe to re-run.
+
+**What happened.** `install.sh` was last updated on 2026-03-24 in commit `ca926a9`. Since then, two skills were added to the repo but the installer's hardcoded `SKILLS=()` array was never updated to match. Users who cloned the repo and ran `./install.sh` during the 17-day window received a working but incomplete install. `/time-bomb-radar` and `/radar-suite` commands would have returned "skill not found" errors even though the skill directories existed in `skills/`.
+
+**How long it was broken.** 17 days (2026-03-24 to 2026-04-10). GitHub traffic shows 161 clones from 114 unique cloners in the 14-day window ending 2026-04-09. Some unknown fraction of those users got the incomplete install.
+
+**What was fixed.** `install.sh` now installs all 7 skills (`data-model-radar`, `ui-path-radar`, `roundtrip-radar`, `time-bomb-radar`, `ui-enhancer-radar`, `capstone-radar`, and the `radar-suite` orchestrator). The completion message and recommended run order in the installer output were updated to match. See commit `d7e3191`.
+
+**Why this happened.** A hand-maintained shell script is too fragile to be the source of truth for what a skill suite ships with. The README correctly said "7 skills" but the installer shipped 5, and the drift was not caught because nothing verified the two lists matched. This is exactly the kind of two-sources-of-truth bug that the upcoming plugin conversion (see below) is designed to prevent.
+
+### [all skills] Announcement: Claude Code plugin distribution coming next release
+
+Radar Suite is migrating from the current shell-script installer (`./install.sh`) to a **Claude Code plugin** before the next major feature upgrade. The rationale:
+
+- **Single source of truth for what's installed.** A plugin manifest declares every skill the plugin ships with. There is no second list to keep in sync. The 17-day `install.sh` bug above is impossible in a plugin because the manifest IS the installer.
+- **One-command install with no shell script to trust.** Users install with `/plugin install` instead of cloning a repo and running an arbitrary shell script. Meaningful security and friction improvement.
+- **Push-based updates.** Plugins can notify users of new versions and update in place. No more `git pull && ./install.sh`.
+- **Cleaner uninstall.** A plugin is removed with one command. Today's shell-script install leaves symlinks in `~/.claude/skills/` that have to be cleaned up manually.
+- **Cross-skill dependencies in the manifest instead of prose.** The "run capstone after all other radars" order is encoded in the plugin manifest so tooling can enforce it, not just documentation that describes it.
+
+**What this means for existing users.** Nothing changes immediately. The `install.sh` path will remain working for at least one release after the plugin ships, with a deprecation notice pointing to the plugin as the recommended path. Users who want to stay on the clone-and-run flow can. Users who want the plugin can switch at their convenience.
+
+**When.** Target: next release, before the "axis classification" framework upgrade that is also in progress. Both are documented in the repo: see `AXIS-CLASSIFICATION-PLAN.md` and `NEXT-SESSION-PROMPT.md` for the full plan and rationale.
+
+**Why announce this now instead of at ship time.** Two reasons. First, the `install.sh` bug is the direct motivation for the plugin conversion, and users deserve to see that cause-and-effect explained when they learn about the bug. Second, with 114 unique cloners in the last 14 days, silent structural changes are rude. A CHANGELOG announcement gives users a heads-up and a place to push back if the new install mechanism misses their use case.
+
+---
+
 ## 2026-04-09 (late)
 
 ### [ui-path-radar] Cross-Skill Handoff with workflow-audit
