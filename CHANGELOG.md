@@ -44,6 +44,32 @@ Radar Suite is migrating from the current shell-script installer (`./install.sh`
 
 **Why announce this now instead of at ship time.** Two reasons. First, the `install.sh` bug is the direct motivation for the plugin conversion, and users deserve to see that cause-and-effect explained when they learn about the bug. Second, with 114 unique cloners in the last 14 days, silent structural changes are rude. A CHANGELOG announcement gives users a heads-up and a place to push back if the new install mechanism misses their use case.
 
+### [all skills] Announcement: axis classification framework coming after the plugin
+
+The major feature upgrade shipping after the plugin conversion is called **axis classification**. It is a structural change to how every radar skill reports findings.
+
+**The problem it solves.** Today, every finding the radars produce looks equally urgent. A real user-facing crash and a stale comment in an unreachable branch get reported the same way. Users have to read each finding, understand the context, and decide for themselves which ones matter now. This works when you have 5 findings. It does not scale when you have 50.
+
+**How it works.** The upgrade tags every finding as one of three things:
+
+- **Axis 1 -- real bugs users will hit.** These are ship blockers. Fix the behavior. Same severity scale as today.
+- **Axis 2 -- correct code that is hard to read.** The code runs correctly, but a reviewer or future maintainer cannot verify that it runs correctly without cross-referencing multiple locations. Fix by reorganizing, not by changing behavior.
+- **Axis 3 -- dead or unreachable code.** The code exists in the repo but no user path reaches it, or the branch has no documented reason to be there. Usually safe to delete.
+
+The capstone report will split findings into a "fix before shipping" section (axis 1 only) and a "hygiene backlog" section (axis 2 and axis 3). Users will be able to triage a 50-finding audit in minutes instead of reading each finding one at a time.
+
+**The behavioral change.** This is the part that matters most. Today, the radars operate like a bug finder. They pattern-match for known-bad code and flag it. After the upgrade, the radars will still do that (axis 1 findings do not go away), but they will also start recommending better approaches for code that already runs correctly. The skills become more like a code reviewer than a bug finder.
+
+Concrete example from the motivating case: a view in a real iOS project handles three different empty states, and the handlers for those states are spread out across 500 lines in the same file. Today, a radar scanning that view would either miss the structural issue entirely or flag one of the handlers as "wrong" because it did not scroll far enough to find the other two. After the upgrade, the radar will confirm the code is correct and suggest pulling the state machine into one place so the next person reading it can see all three handlers at once. This is a suggestion, not a bug report. It is an axis 2 finding that ships in the hygiene backlog, not a ship blocker.
+
+**What motivated this.** A real retraction in the last few days. I ran the workflow audit on an iOS project. It flagged two empty states as user-facing dead ends. I went to fix them. Both turned out to be false positives for completely different reasons. One was unreachable code that looked broken in isolation but no user would ever see it (axis 3). The other was correct code whose handler lived 500 lines further down in the same file (axis 2). The audit caught the patterns and was wrong about the diagnosis in both cases. The axis framework is the structural fix for that class of mis-diagnosis.
+
+**What this means for existing users.** The output format is changing. Every finding in the handoff YAML will get a new `axis` field. The capstone report will gain a hygiene backlog section that did not exist before. Users who built tooling around the current format will need to update it, but the new field is additive and the old fields will remain, so most consumers can ignore the new field and keep working.
+
+**When.** After the plugin conversion. No firm date, but the plan and rationale are documented in `AXIS-CLASSIFICATION-PLAN.md` in the repo. The plan is a living document and feedback is welcome.
+
+**Why announce this now instead of at ship time.** The axis framework is a larger behavioral change than any previous radar upgrade. Announcing the direction early gives users a chance to push back on the design before I commit to an implementation, and it sets expectations so the next release does not feel like a surprise shift in what the skills are for.
+
 ---
 
 ## 2026-04-09 (late)
