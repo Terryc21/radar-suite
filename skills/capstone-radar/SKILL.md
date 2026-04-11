@@ -1,7 +1,7 @@
 ---
 name: capstone-radar
 description: 'Unified A-F grading and ship/no-ship decisions for the 5-skill radar family. Aggregates companion handoffs, owns 5 grep-reliable domains, tracks velocity, celebrates improvements. Triggers: "capstone radar", "can I ship", "grade codebase", "/capstone-radar".'
-version: 3.3.0
+version: 2.0.0  # unified plugin version as of 2026-04-10 (was 3.3.0 per-skill)
 author: Terry Nyberg
 license: MIT
 inherits: radar-suite-core.md
@@ -270,6 +270,63 @@ Companion freshness:
 **`--trust-all` flag:** Overrides staleness calculation. All companions treated as Fresh regardless of age. Use when you know nothing has changed since the last audit.
 
 **Stale/Expired companions** are flagged in the "Next Steps" section of the report.
+
+---
+
+## Step 3.6: Axis Classification Consumption (MANDATORY — after companion handoffs, before risk-ranking)
+
+> **New in v1.1 (axis framework).** Every companion handoff now includes an `axis_summary` block and every finding includes an `axis` field. Capstone splits findings by axis before grading: only axis_1 findings count toward the A-F grade. axis_2 and axis_3 findings land in a separate Hygiene Backlog section.
+
+### What to read
+
+For each companion handoff found in Step 3, read:
+
+1. **`axis_summary`** (top-level block) — counts by axis
+2. **`checks_performed`** (top-level block) — what the companion scanned
+3. **`axis`** (per-finding field) — classification for each finding
+4. **`before_after_experience.audience`** (per-finding field) — surface in the report
+
+### What to do
+
+1. **Split findings by axis into two buckets:**
+   - **fix_before_shipping** — all findings where `axis == axis_1_bug`
+   - **hygiene_backlog** — all findings where `axis in (axis_2_scatter, axis_3_dead_code, axis_3_smelly)`
+
+2. **Verify schema gate compliance.** For each finding in either bucket, confirm it has:
+   - A non-empty `better_approach` field
+   - A file:line citation matching regex `[A-Za-z0-9_/+.-]+\.swift:\d+` in the `better_approach` body
+   - A `pattern_citation_lookup` entry in `verification_log`
+   - A `before_after_experience` with `audience` set
+
+   Findings failing the gate are still displayed but are tagged `coaching incomplete` and excluded from the top-10 prioritized list. This makes bad coaching visible rather than silently dropped.
+
+3. **Aggregate `checks_performed`** across all companions into a single "Audit Coverage" block:
+   ```
+   Audit Coverage:
+     source_roots: Sources/
+     files scanned: 588 (ui-path), 588 (roundtrip), 120 (capstone own)
+     patterns ran: reachability_trace, whole_file_scan, branch_enumeration, pattern_citation_lookup
+     patterns skipped: source_root_introspection (single-root project)
+   ```
+
+4. **Count `rejected_no_citation`** across all handoffs. If any radar rejected findings at the gate, surface this prominently — it means the radar had candidate findings it could not coach.
+
+### Grade impact rule (CRITICAL)
+
+**Only axis_1_bug findings affect the A-F grade.** axis_2 and axis_3 findings are NOT counted for grading. The grade cap rules from `radar-suite-core.md` apply only to axis_1 findings:
+
+- CRITICAL axis_1 findings cap grade at C
+- HIGH axis_1 findings cap grade at B+
+
+A codebase with 0 axis_1 findings but 50 axis_2 findings can still grade A. Hygiene debt does not block shipping.
+
+### Backward compatibility
+
+Handoffs from older radar versions (pre-v1.1) lack the `axis_summary` block and the per-finding `axis` field. For these:
+
+1. Treat all findings as `axis_1_bug` (the pre-v1.1 default behavior)
+2. Note in the "Audit Coverage" section: `"ui-enhancer-radar handoff is pre-axis (v1.0.x); all findings counted as axis_1"`
+3. Do not retroactively infer axis; old handoffs are preserved as-is
 
 ---
 
@@ -700,9 +757,108 @@ cross_domain_risk: 80
 10. **Per-domain sections** — grade, score trail, strengths, CONFIRMED issues with Issue Rating Tables
 11. **Regressions** — new issues traced to commits
 12. **Test coverage gaps** — untested source files, especially those appearing in findings
-13. **Top 10 prioritized issues** — composite: `(Urgency x 3) + (Risk x 2) + (ROI x 2) + (1/LOE)`
-14. **Impact-organized findings** — all findings grouped by impact category (see below)
-15. **Next steps** — which companion radars to run for unaudited domains
+13. **Top 10 prioritized issues** — composite: `(Urgency x 3) + (Risk x 2) + (ROI x 2) + (1/LOE)` (axis_1 only)
+14. **Fix Before Shipping** — axis_1_bug findings with full coaching (see below)
+14a. **Hygiene Backlog** — axis_2 and axis_3 findings (see below)
+14b. **Audit Coverage** — what was checked across all radars (see below)
+15. **Impact-organized findings** — all findings grouped by impact category (see below)
+16. **Next steps** — which companion radars to run for unaudited domains
+
+### Axis-Split Output Format (v1.1)
+
+**Section 14 — Fix Before Shipping (axis_1 only)**
+
+This section lists every axis_1_bug finding from all companion handoffs plus capstone's own scans. The A-F grade reflects ONLY this section. Format:
+
+```markdown
+## Fix Before Shipping
+
+> Audience legend: 👤 end_user | 👓 code_reader | 🔧 future_maintainer
+> All findings in this section are user-facing bugs that should be fixed before release.
+
+### #1 — CSV import freezes main thread on large files
+**Source:** roundtrip-radar | **Axis:** axis_1_bug | **Audience:** 👤 end_user
+**File:** Sources/Features/ImportExport/ImportCSVView.swift:142
+
+**Before:** User taps Import CSV, app freezes 10-30s with no feedback, some users force-quit thinking the app crashed.
+**After:** User sees progress bar with row count, can cancel mid-import, UI stays responsive.
+
+**Current approach:** Import call runs synchronously on @MainActor from onTapGesture. CPU-bound parsing loop blocks main thread.
+**Minimum fix:** Wrap in Task { @MainActor in ... }, move parsing to Task.detached(priority: .userInitiated), add progress overlay + cancel button.
+**Better approach:** Follow the pattern at Sources/Managers/CloudSyncManager.swift:104-112 which shows both the @MainActor bridge and Task.detached in adjacent lines. Extract an AsyncImportOperation type if there are 2+ similar imports.
+**Tradeoffs:** Apply when the operation is >200ms or involves file I/O on large inputs. Don't apply for <50ms operations.
+
+| Urgency | Risk: Fix | Risk: No Fix | ROI | Blast Radius | Fix Effort |
+|---------|-----------|--------------|-----|--------------|------------|
+| 🔴 CRITICAL | 🟢 Medium | 🔴 Critical | 🟠 Excellent | ⚪ 1 file | Small |
+```
+
+Each finding in this section displays the full coaching schema. The rating table stays 8-column per `radar-suite-core.md`.
+
+**Section 14a — Hygiene Backlog (axis_2 + axis_3)**
+
+This section does NOT affect the grade. It is a separate list organized by axis sub-type:
+
+```markdown
+## Hygiene Backlog
+
+> Audience legend: 👤 end_user | 👓 code_reader | 🔧 future_maintainer
+> These findings do not block shipping. Fix opportunistically when touching the affected files.
+
+### Scatter (axis_2) — correct code, reorganize for clarity
+
+#### S1 — Empty states handled 500 lines apart in LegacyWishesView.swift
+**Source:** ui-path-radar | **Axis:** axis_2_scatter | **Audience:** 👓 code_reader
+**File:** Sources/Features/LegacyWishes/Views/LegacyWishesView.swift:120,480,640
+**Severity:** rolling_hygiene
+
+**Before:** Developer reading the file has to scroll between 3 regions to trace state machine.
+**After:** Single enum ViewState at top of file, single switch at top of body.
+
+**Better approach:** Follow pattern at Sources/Views/Navigation/NavigationTypes.swift:21 (String-backed enum with per-case computed properties).
+
+### Dead Code (axis_3_dead_code) — unreachable branches
+
+#### D1 — Unreachable empty-state branch in SomeListView.swift
+**Source:** ui-path-radar | **Axis:** axis_3_dead_code | **Audience:** 🔧 future_maintainer
+**File:** Sources/Views/SomeListView.swift:NNN
+**Severity:** backlog_hygiene
+
+**Before:** Future developer assumes the branch handles empty collections, wastes time tracing it.
+**After:** Branch deleted, comment at upstream filter site documents why downstream views don't see empty.
+
+### Smelly (axis_3_smelly) — reachable but poorly justified
+
+[similar format]
+```
+
+Hygiene findings use a simpler format (no 8-column rating table) since they don't block shipping and don't need severity ranking. Each finding still includes its coaching and file:line citation.
+
+**Section 14b — Audit Coverage**
+
+```markdown
+## Audit Coverage
+
+Source roots scanned: Sources/
+Files scanned across radars:
+  - ui-path-radar: 588 Swift files
+  - roundtrip-radar: 588 Swift files (20 workflows traced)
+  - capstone-radar own domains: 120 files
+
+Patterns executed:
+  - reachability_trace: 42 traces (3 findings reclassified from axis_1 to axis_3_dead_code)
+  - whole_file_scan: 18 scans (2 findings reclassified from axis_1 to axis_2_scatter)
+  - branch_enumeration: 8 #if blocks enumerated
+  - pattern_citation_lookup: 57 lookups (47 hits, 10 generic fallbacks)
+  - source_root_introspection: 1 (single-root project confirmed)
+
+Patterns skipped: none
+
+Findings rejected at schema gate: 0
+  (If >0: "3 findings dropped for missing citation — listed under 'Coaching Incomplete' below")
+```
+
+This section answers "what was checked" so a clean audit run is not ambiguous.
 
 ### Impact-Based Finding Organization (v3.0)
 

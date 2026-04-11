@@ -1,7 +1,7 @@
 ---
 name: ui-path-radar
 description: 'UI path tracer for SwiftUI/UIKit apps. 5-layer audit with 30 issue categories: discover entry points, trace flows, detect dead ends and broken promises, evaluate UX impact, verify data wiring. Supports targeted trace, diff against previous audits, and handoff to planning skills. Triggers: "trace UI paths", "find dead ends", "/ui-path-radar".'
-version: 4.0.0
+version: 2.0.0  # unified plugin version as of 2026-04-10 (was 4.0.0 per-skill)
 author: Terry Nyberg
 license: MIT
 allowed-tools: [Read, Grep, Glob, Bash, Edit, Write, AskUserQuestion]
@@ -52,40 +52,78 @@ UI Path Radar uses a 5-layer approach:
 
 ## Issue Categories
 
-| Category | Severity | Description |
-|----------|----------|-------------|
-| Dead End | 🔴 CRITICAL | Entry point leads nowhere |
-| Wrong Destination | 🔴 CRITICAL | Entry point leads to wrong place |
-| Mock Data | 🔴 CRITICAL | Feature shows fabricated data when real data exists |
-| Destructive Without Confirmation | 🔴 CRITICAL | Delete/clear happens immediately without confirmation dialog |
-| Silent State Reset | 🔴 CRITICAL | In-progress work lost when navigating away and back (form clears, selections lost) |
-| Incomplete Navigation | 🟡 HIGH | User must scroll/search after landing |
-| Missing Auto-Activation | 🟡 HIGH | Expected mode/state not set |
-| Unwired Data | 🟡 HIGH | Model data exists but feature ignores it |
-| Platform Parity Gap | 🟡 HIGH | Feature works on one platform, broken on another |
-| Promise-Scope Mismatch | 🟡 HIGH | Specific CTA opens generic/broad destination |
-| Buried Primary Action | 🟡 HIGH | Primary button hidden below scroll fold |
-| Dismiss Trap | 🟡 HIGH | Only visible action is Cancel/back, no forward path |
-| Context Dropping | 🟡 HIGH | Navigation path loses item context between platforms or via notifications |
-| Notification Nav Fragility | 🟡 HIGH | Untyped NotificationCenter dict used for navigation context |
-| Sheet Presentation Asymmetry | 🟡 HIGH | Different presentation mechanisms per platform for same feature |
-| Empty State Missing | 🟡 HIGH | No guidance when list/view is empty — users think app is broken |
-| Error Recovery Missing | 🟡 HIGH | Error displayed but no retry button or recovery path |
-| Keyboard Obscures Input | 🟡 HIGH | Text field covered by keyboard with no scroll adjustment (iOS) |
-| Permission Denied Dead End | 🟡 HIGH | Permission denied but no explanation or path to Settings |
-| Modal Stacking | 🟡 HIGH | Multiple sheets/alerts open on top of each other |
-| Navigation Container Mismatch | 🟡 HIGH | selectedSection value not a valid tag in current TabView/sidebar |
-| Two-Step Flow | 🟢 MEDIUM | Intermediate selection required |
-| Missing Feedback | 🟢 MEDIUM | No confirmation of success |
-| Gesture-Only Action | 🟢 MEDIUM | Feature only accessible via swipe/long-press |
-| Loading State Trap | 🟢 MEDIUM | Spinner with no cancel/timeout/escape |
-| Stale Navigation Context | 🟢 MEDIUM | Cached context with no clearing/validation mechanism |
-| Phantom Touch Target | 🟢 MEDIUM | Visual element looks tappable but isn't (icon without action, card without nav) |
-| Race Condition UX | 🟢 MEDIUM | User can trigger conflicting operations simultaneously (double-tap, edit while sync) |
-| Invisible Selection | 🟢 MEDIUM | Item is selected/active but visual indicator missing or too subtle |
-| Inconsistent Pattern | ⚪ LOW | Same feature accessed differently |
-| Orphaned Code | ⚪ LOW | Feature exists but no entry point |
-| Double-Nested Navigation | ⚪ LOW | NavigationStack inside NavigationStack causing doubled nav bars |
+Each category maps to a **default axis** (see `skills/radar-suite-axis-classification/SKILL.md` for the framework). The default axis may be overridden by the verification checklist (see "Axis Classification Protocol" section below) — e.g., a "Dead End" finding whose branch is unreachable from any production call site gets reclassified from `axis_1_bug` to `axis_3_dead_code` by the reachability trace.
+
+| Category | Severity | Default Axis | Description |
+|----------|----------|--------------|-------------|
+| Dead End | 🔴 CRITICAL | axis_1_bug (→ axis_3_dead_code if unreachable) | Entry point leads nowhere |
+| Wrong Destination | 🔴 CRITICAL | axis_1_bug | Entry point leads to wrong place |
+| Mock Data | 🔴 CRITICAL | axis_1_bug | Feature shows fabricated data when real data exists |
+| Destructive Without Confirmation | 🔴 CRITICAL | axis_1_bug | Delete/clear happens immediately without confirmation dialog |
+| Silent State Reset | 🔴 CRITICAL | axis_1_bug | In-progress work lost when navigating away and back (form clears, selections lost) |
+| Incomplete Navigation | 🟡 HIGH | axis_1_bug | User must scroll/search after landing |
+| Missing Auto-Activation | 🟡 HIGH | axis_1_bug | Expected mode/state not set |
+| Unwired Data | 🟡 HIGH | axis_1_bug (→ axis_3_smelly if model field has no read/write sites) | Model data exists but feature ignores it |
+| Platform Parity Gap | 🟡 HIGH | axis_1_bug | Feature works on one platform, broken on another |
+| Promise-Scope Mismatch | 🟡 HIGH | axis_1_bug | Specific CTA opens generic/broad destination |
+| Buried Primary Action | 🟡 HIGH | axis_1_bug | Primary button hidden below scroll fold |
+| Dismiss Trap | 🟡 HIGH | axis_1_bug | Only visible action is Cancel/back, no forward path |
+| Context Dropping | 🟡 HIGH | axis_1_bug | Navigation path loses item context between platforms or via notifications |
+| Notification Nav Fragility | 🟡 HIGH | axis_1_bug | Untyped NotificationCenter dict used for navigation context |
+| Sheet Presentation Asymmetry | 🟡 HIGH | axis_2_scatter (→ axis_1_bug if only one platform works) | Different presentation mechanisms per platform for same feature |
+| Empty State Missing | 🟡 HIGH | axis_1_bug (→ axis_3_dead_code if empty case unreachable) | No guidance when list/view is empty — users think app is broken |
+| Error Recovery Missing | 🟡 HIGH | axis_1_bug | Error displayed but no retry button or recovery path |
+| Keyboard Obscures Input | 🟡 HIGH | axis_1_bug | Text field covered by keyboard with no scroll adjustment (iOS) |
+| Permission Denied Dead End | 🟡 HIGH | axis_1_bug | Permission denied but no explanation or path to Settings |
+| Modal Stacking | 🟡 HIGH | axis_1_bug | Multiple sheets/alerts open on top of each other |
+| Navigation Container Mismatch | 🟡 HIGH | axis_1_bug | selectedSection value not a valid tag in current TabView/sidebar |
+| Two-Step Flow | 🟢 MEDIUM | axis_1_bug | Intermediate selection required |
+| Missing Feedback | 🟢 MEDIUM | axis_1_bug | No confirmation of success |
+| Gesture-Only Action | 🟢 MEDIUM | axis_1_bug | Feature only accessible via swipe/long-press |
+| Loading State Trap | 🟢 MEDIUM | axis_1_bug | Spinner with no cancel/timeout/escape |
+| Stale Navigation Context | 🟢 MEDIUM | axis_2_scatter (→ axis_1_bug if user observes stale data) | Cached context with no clearing/validation mechanism |
+| Phantom Touch Target | 🟢 MEDIUM | axis_1_bug | Visual element looks tappable but isn't (icon without action, card without nav) |
+| Race Condition UX | 🟢 MEDIUM | axis_1_bug | User can trigger conflicting operations simultaneously (double-tap, edit while sync) |
+| Invisible Selection | 🟢 MEDIUM | axis_1_bug | Item is selected/active but visual indicator missing or too subtle |
+| Inconsistent Pattern | ⚪ LOW | axis_2_scatter | Same feature accessed differently |
+| Orphaned Code | ⚪ LOW | axis_3_dead_code (if unreachable) or axis_3_smelly (if reachable but unjustified) | Feature exists but no entry point |
+| Double-Nested Navigation | ⚪ LOW | axis_2_scatter | NavigationStack inside NavigationStack causing doubled nav bars |
+
+### Axis Classification Protocol (MANDATORY — before emitting any finding)
+
+Every finding must be classified on the 3-axis framework and pass the schema gate in `radar-suite-core.md` before emission. The protocol:
+
+1. **Assign default axis** from the table above based on the issue category.
+
+2. **Run required verification checks:**
+   - **Reachability trace** (MANDATORY for Dead End, Empty State Missing, Orphaned Code) — walk upstream from the flagged branch at least 2 call-site levels. If no production call site reaches it, RECLASSIFY to `axis_3_dead_code`.
+   - **Whole-file scan** (MANDATORY for "missing handler" categories: Empty State Missing, Error Recovery Missing, Missing Feedback) — read the ENTIRE file (not just the flagged region) for handlers elsewhere. If found, RECLASSIFY to `axis_2_scatter`.
+   - **Branch enumeration** (MANDATORY for Platform Parity Gap, Sheet Presentation Asymmetry) — read BOTH sides of every `#if os(iOS)` / `#else` block before claiming platform-broken. Stuffolio has 266 such blocks; dropping the `#else` branch is the #1 false-positive source.
+   - **Pattern citation lookup** (MANDATORY for every finding, regardless of category) — grep the audited codebase for a similar pattern shape. Cite by file:line in the `better_approach` field. A finding without this citation is REJECTED.
+
+3. **Write coaching fields.** Populate `current_approach`, `suggested_fix`, `better_approach` (with citation), `better_approach_tradeoffs` — all mandatory. Load coaching examples via `.radar-suite/project.yaml` `coaching_examples` array.
+
+4. **Validate against schema gate.** Run the gate checks from `radar-suite-core.md`. If any mandatory field is missing, either fix the finding or downgrade confidence to `possible` and increment `rejected_no_citation` in the handoff.
+
+5. **Write the finding** to the handoff YAML with full axis + coaching fields.
+
+**Reclassification logging:** When the verification checklist reclassifies a finding's axis (e.g., "Dead End" → `axis_3_dead_code` via reachability trace), log the reclassification in the finding's `verification_log` so capstone and the user can see the framework caught a would-be false positive:
+
+```yaml
+verification_log:
+  - check: reachability_trace
+    result: "no production call site found; reclassified from axis_1_bug (Dead End) to axis_3_dead_code"
+```
+
+**Axis summary block.** At the end of the handoff, include:
+```yaml
+axis_summary:
+  axis_1_bug: [count]
+  axis_2_scatter: [count]
+  axis_3_dead_code: [count]
+  axis_3_smelly: [count]
+  rejected_no_citation: [count]
+```
 
 ## Design Principles
 

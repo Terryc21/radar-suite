@@ -1,0 +1,54 @@
+{
+  "name": "radar-suite",
+  "version": "2.0.0",
+  "description": "Six-skill audit suite for iOS/Swift codebases: data models, UI paths, data round-trips, time bombs, visual quality, and capstone grading. As of v2.0 every finding is classified on a 3-axis framework (real bug / scatter / dead code) with mandatory coaching citations to patterns in the audited codebase.",
+  "author": {
+    "name": "Terry Nyberg"
+  },
+  "repository": "https://github.com/Terryc21/radar-suite",
+  "license": "MIT",
+  "keywords": [
+    "swift",
+    "ios",
+    "swiftui",
+    "audit",
+    "code-review",
+    "static-analysis",
+    "swiftdata",
+    "core-data"
+  ],
+  "skills": [
+    {
+      "name": "radar-suite-axis-classification",
+      "description": "Shared axis classification framework. Every radar invokes this before emitting findings. Defines the 3 axes (axis_1_bug, axis_2_scatter, axis_3_dead_code/smelly), verification checklist (reachability, whole-file scan, branch enumeration, pattern citation lookup, source root introspection), coaching schema with mandatory file:line citations, and the schema gate rules."
+    },
+    {
+      "name": "radar-suite",
+      "description": "Orchestrator and entry point. Routes to individual radars, runs full audit sequences, manages the unified ledger, handles session preferences, checkpoint/resume, and cross-skill handoffs."
+    },
+    {
+      "name": "data-model-radar",
+      "description": "Audits SwiftData and Core Data models for field completeness, serialization gaps, relationship integrity, and migration safety. Foundation layer — run before other radars for best results."
+    },
+    {
+      "name": "ui-path-radar",
+      "description": "Traces UI paths in SwiftUI and UIKit apps. Five-layer audit with 30 issue categories: discovers entry points, traces user flows, detects dead ends and broken promises, evaluates UX impact, verifies data wiring. Every category has a default axis classification with reclassification rules."
+    },
+    {
+      "name": "roundtrip-radar",
+      "description": "Per-workflow audit that traces data end-to-end through complete user journeys. Verifies fields survive the full round-trip from UI to model to persistence and back. Emits full_path_trace verification logs that show every hop."
+    },
+    {
+      "name": "time-bomb-radar",
+      "description": "Finds deferred operations that crash on aged data. Six temporal patterns: deferred deletes, cache TTL, trial expiry, accumulation, date arithmetic, scheduled events. Almost all findings are axis_1_bug by nature."
+    },
+    {
+      "name": "ui-enhancer-radar",
+      "description": "Systematic SwiftUI UI audit with design intent interview and 11-domain analysis including a colorblind-safe Color Audit domain. Supports batch mode and adaptive view profiles."
+    },
+    {
+      "name": "capstone-radar",
+      "description": "Aggregator and gap filler. Consumes companion handoffs, owns 5 grep-reliable domains, produces unified A-F grading with a ship/no-ship decision. As of v2.0 produces a two-section report: 'Fix Before Shipping' (axis_1 only, counts toward grade) and 'Hygiene Backlog' (axis_2/3, does not affect grade)."
+    }
+  ]
+}

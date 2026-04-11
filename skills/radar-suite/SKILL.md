@@ -1,7 +1,7 @@
 ---
 name: radar-suite
 description: 'Unified entry point for the 5-skill radar family. Routes to individual skills or runs full audit sequence. Triggers: "radar suite", "full audit", "run all radars", "/radar-suite".'
-version: 3.0.0
+version: 2.0.0  # unified plugin version as of 2026-04-10 (was 3.0.0 per-skill)
 author: Terry Nyberg
 license: MIT
 inherits: radar-suite-core.md

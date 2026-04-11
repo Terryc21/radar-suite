@@ -1,7 +1,7 @@
 ---
 name: ui-enhancer-radar
 description: 'Systematic iOS/SwiftUI UI audit with design intent interview, 11-domain analysis (including Color Audit with adaptive Color Profile), element compaction, cross-view consistency checks, layout reorganization, design-aware push-back, App Store guardrails, and incremental apply with revert safety. 17 subcommands. Run /ui-enhancer-radar help for all commands. Triggers: "enhance this UI", "ui enhancer radar", "improve this view", "screen review", "ux audit".'
-version: 3.4.0
+version: 2.0.0  # unified plugin version as of 2026-04-10 (was 3.4.0 per-skill)
 author: Terry Nyberg
 license: MIT
 allowed-tools: [Read, Grep, Glob, Bash, Write, Edit, AskUserQuestion]

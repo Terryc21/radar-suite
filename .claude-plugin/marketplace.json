@@ -1,0 +1,22 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "radar-suite",
+  "description": "Six-skill audit suite for iOS/Swift codebases with 3-axis classification framework",
+  "owner": {
+    "name": "Terry Nyberg"
+  },
+  "plugins": [
+    {
+      "name": "radar-suite",
+      "version": "2.0.0",
+      "source": "./",
+      "description": "Six-skill audit suite for iOS/Swift codebases. Every finding is classified on a 3-axis framework (real bug / scatter / dead code) with mandatory coaching citations to patterns in the audited codebase.",
+      "author": {
+        "name": "Terry Nyberg"
+      },
+      "homepage": "https://github.com/Terryc21/radar-suite",
+      "license": "MIT",
+      "category": "development"
+    }
+  ]
+}

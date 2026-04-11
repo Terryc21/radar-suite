@@ -1,7 +1,7 @@
 ---
 name: time-bomb-radar
 description: 'Finds deferred operations that crash on aged data -- code that passes every test but breaks weeks or months after release. Covers cascade deletes, cache expiry, trial paths, background accumulation, date-threshold transitions, and scheduled side effects. Triggers: "time bomb", "time-bomb", "/time-bomb-radar", "aged data", "deferred deletion".'
-version: 1.1.0
+version: 2.0.0  # unified plugin version as of 2026-04-10 (was 1.1.0 per-skill)
 author: Terry Nyberg
 license: MIT
 allowed-tools: [Read, Grep, Glob, Bash, AskUserQuestion]

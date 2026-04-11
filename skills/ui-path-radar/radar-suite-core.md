@@ -529,6 +529,8 @@ Rules:
 
 ## Handoff YAML Schema (common fields)
 
+> **Axis classification (MANDATORY as of v1.1):** Every finding must include an `axis` label and the coaching fields (`before_after_experience`, `current_approach`, `suggested_fix`, `better_approach`, `better_approach_tradeoffs`, `verification_log`). See `skills/radar-suite-axis-classification/SKILL.md` for the full framework, schema gate rules, and invocation protocol. A finding missing any mandatory coaching field, or whose `better_approach` lacks a file:line citation backed by a `pattern_citation_lookup` verification_log entry, is REJECTED by the schema gate.
+
 ```yaml
 # .radar-suite/[skill]-handoff.yaml
 skill: [skill-name]
@@ -544,6 +546,14 @@ domains_audited: [count]
 domains_clean: [count]
 overall_grade: [A-F or null if incomplete]
 
+# Axis summary (populated by every radar as of v1.1)
+axis_summary:
+  axis_1_bug: [count]              # real user-facing bugs
+  axis_2_scatter: [count]          # correct code, reorganize only
+  axis_3_dead_code: [count]        # unreachable branches
+  axis_3_smelly: [count]           # reachable but poorly justified
+  rejected_no_citation: [count]    # findings dropped at the schema gate for missing coaching
+
 # Cross-skill suspects (for downstream skills to investigate)
 suspects:
   - file: [path]
@@ -556,7 +566,7 @@ findings:
   - id: [unique-hash]
     description: [plain language]
     confidence: verified|probable|possible
-    urgency: critical|high|medium|low
+    urgency: critical|high|medium|low  # axis_1 uses 4-tier; axis_2/3 use hygiene scale (urgent|rolling|backlog)
     status: open|fixed|deferred|accepted
     file: [path]
     line: [number]
@@ -571,6 +581,46 @@ findings:
     fix_applied: [description of fix if status=fixed]
     test_added: [test file path if applicable]
 
+    # ========================================================================
+    # AXIS CLASSIFICATION FIELDS (MANDATORY as of v1.1)
+    # See skills/radar-suite-axis-classification/SKILL.md for full spec
+    # ========================================================================
+
+    axis: axis_1_bug | axis_2_scatter | axis_3_dead_code | axis_3_smelly  # REQUIRED
+
+    before_after_experience:
+      audience: end_user | code_reader | future_maintainer  # REQUIRED (defaults by axis)
+      before: "Concrete description of current experience from the named audience's POV"
+      after: "Concrete description after the fix, same audience"
+
+    current_approach: |   # REQUIRED
+      How the code is structured today. Specific file:line references.
+    suggested_fix: |      # REQUIRED
+      The minimum change that addresses the immediate finding.
+    better_approach: |    # REQUIRED — MUST cite existing pattern by file:line
+      How a senior reviewer would write this beyond the minimum fix.
+      Format: "Follow the pattern at [File.swift:NN] which [...]."
+      A better_approach without a file:line citation is REJECTED by the schema gate.
+    better_approach_tradeoffs: |   # REQUIRED — both "when to apply" and "when not to apply"
+      Honest tradeoffs. When the better approach is overkill vs when it is the right call.
+
+    verification_log:     # REQUIRED — pattern_citation_lookup entry is mandatory
+      - check: reachability_trace | whole_file_scan | branch_enumeration | pattern_citation_lookup | source_root_introspection
+        result: "concrete outcome of the check"
+
+# Checks performed (MANDATORY as of v1.1 — replaces silent absence of failure)
+checks_performed:
+  source_roots_scanned: [list of source root paths]
+  files_scanned: [count]
+  patterns_checked:
+    - reachability_trace
+    - whole_file_scan
+    - branch_enumeration
+    - pattern_citation_lookup
+    - source_root_introspection
+  patterns_not_run: []                # empty if all checks ran
+  reason_for_skipped_checks: null     # document why any check was skipped
+
 # Session metadata
 context_exhaustion_after: [N or null]
 tool_calls: [count]
@@ -579,11 +629,45 @@ accepted_risks_suppressed: [count]
 intentional_suppressed: [count]  # known-intentional entries that filtered findings
 ```
 
+### Schema Gate Rules (enforced before finding emission)
+
+A finding is REJECTED (not emitted) if any of these apply:
+
+1. `axis` field is missing or not one of the four valid values
+2. `before_after_experience` is missing or any sub-field is empty
+3. `current_approach`, `suggested_fix`, or `better_approach` is missing or empty
+4. `better_approach` does not contain a file:line citation (regex: `[A-Za-z0-9_/+.-]+\.swift:\d+`)
+5. `verification_log` is missing or does not contain a `pattern_citation_lookup` entry
+6. `better_approach_tradeoffs` does not contain both a "when to apply" and a "when not to apply" sentence
+
+**When rejected:** the radar either (a) fills the missing fields and retries, or (b) downgrades confidence to `possible`, marks it `coaching incomplete`, and increments `rejected_no_citation` in the handoff. It is NEVER silently dropped.
+
+### Severity Scale by Axis
+
+| Axis | Severity scale | Grade impact |
+|---|---|---|
+| axis_1_bug | 4-tier (critical, high, medium, low) | Counts toward fix-before-shipping grade |
+| axis_2_scatter | Hygiene (urgent_hygiene, rolling_hygiene, backlog_hygiene) | None — hygiene backlog only |
+| axis_3_dead_code | Hygiene | None |
+| axis_3_smelly | Hygiene | None |
+
+Both scales may coexist in the same handoff. Capstone splits by `axis`, not by severity value.
+
+### Audience Defaults by Axis
+
+| Axis | Default audience | Override when |
+|---|---|---|
+| axis_1_bug | end_user | Developer-facing bug (crash on debug path, build-time error) → code_reader |
+| axis_2_scatter | code_reader | Observable user lag from bundle size / view churn → end_user |
+| axis_3_dead_code | future_maintainer | Hygiene issue a reviewer would catch in next PR → code_reader |
+| axis_3_smelly | future_maintainer | Same → code_reader |
+
 **Cross-skill handoff rules:**
 1. data-model-radar → roundtrip-radar: Pass `suspects` for serialization gaps
 2. roundtrip-radar → capstone-radar: Pass workflow-level findings
 3. ui-path-radar → ui-enhancer-radar: Pass dead-end views for visual audit
-4. All → capstone-radar: Pass `overall_grade` for aggregation
+4. All → capstone-radar: Pass `overall_grade` AND `axis_summary` for aggregation
+5. All → capstone-radar: Pass `checks_performed` for audit-coverage reporting
 
 ---
 

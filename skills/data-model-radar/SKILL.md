@@ -1,7 +1,7 @@
 ---
 name: data-model-radar
 description: 'Audits SwiftData/Core Data model layer for field completeness, serialization gaps, relationship integrity, semantic ambiguity, dead fields, and migration safety. Finds model-layer bugs that manifest as workflow bugs. Triggers: "audit models", "model radar", "/data-model-radar".'
-version: 1.4.0
+version: 2.0.0  # unified plugin version as of 2026-04-10 (was 1.4.0 per-skill)
 author: Terry Nyberg
 license: MIT
 allowed-tools: [Read, Grep, Glob, Bash, Edit, Write, AskUserQuestion]

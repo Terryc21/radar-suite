@@ -1,7 +1,7 @@
 ---
 name: roundtrip-radar
 description: 'Per-journey code audit tracing data through complete user flows for bugs, data safety, performance, and round-trip completeness. Discovers workflows, audits each end-to-end, rolls up cross-cutting issues, and supports natural-language flow tracing. Triggers: "roundtrip audit", "trace user journey", "/roundtrip-radar".'
-version: 1.6.0
+version: 2.0.0  # unified plugin version as of 2026-04-10 (was 1.6.0 per-skill)
 author: Terry Nyberg
 license: MIT
 inherits: radar-suite-core.md
@@ -126,6 +126,87 @@ If the user types "adjust", re-ask only the question(s) they want to change. Use
 ## Shared Patterns
 
 See `radar-suite-core.md` for: Table Format, Plain Language Communication, Work Receipts, Contradiction Detection, Finding Classification, Audit Methodology, Context Exhaustion, Progress Banner, Issue Rating Tables, Handoff YAML schema, Known-Intentional Suppression, Pattern Reintroduction Detection, Experience-Level Output Rules, Implementation Sort Algorithm.
+
+## Axis Classification Protocol (MANDATORY — before emitting any finding)
+
+Every roundtrip-radar finding must be classified on the 3-axis framework and pass the schema gate in `radar-suite-core.md` before emission. The framework is defined in `skills/radar-suite-axis-classification/SKILL.md`.
+
+### Roundtrip-specific axis mapping
+
+roundtrip-radar's findings are organized by what part of the round-trip path is broken. Each finding category maps to a default axis, with reclassification rules based on verification checks.
+
+| Finding category | Default axis | Reclassification rule |
+|---|---|---|
+| Data loss on cancel | axis_1_bug | Stays axis_1 (user-facing data loss) |
+| Data loss on error | axis_1_bug | Stays axis_1 |
+| Missing feedback after save | axis_1_bug | Stays axis_1 |
+| Field written but not read | axis_3_smelly | Reclassify to axis_1_bug ONLY if a user feature depends on the field (check feature flags and view usage) |
+| Field read but not written | axis_3_smelly | Reclassify to axis_1_bug if feature claims the field is set |
+| Field exists but unwired end-to-end | axis_3_smelly | Reclassify to axis_1_bug if a user action should write it |
+| Round-trip path opaque (cannot be traced from UI to persistence) | axis_2_scatter | Stays axis_2 — data flow is correct but impossible to verify |
+| Inconsistent serialization across paths (CSV, backup, CloudKit) | axis_1_bug | Stays axis_1 — ONE path loses user data |
+| Serialization paths duplicated across multiple managers | axis_2_scatter | Stays axis_2 — correct but hard to maintain |
+| Serialization call reaches a dead branch (e.g., guard always true) | axis_3_dead_code | Stays axis_3 |
+
+### Full-path verification rule (roundtrip-specific)
+
+**Every finding must cite the full roundtrip path in its `verification_log`.** The path is the sequence of file:line hops from UI entry point to persistence and back to UI. If the path cannot be traced end-to-end, the finding is `axis_2_scatter` regardless of its category (the data flow is opaque even if correct).
+
+Example `verification_log` for a roundtrip finding:
+```yaml
+verification_log:
+  - check: full_path_trace
+    path:
+      - ImportCSVView.swift:142 (user taps Import)
+      - CSVImportManager.swift:420 (parse loop)
+      - Item.swift:58 (Item init with room: nil  ← MISSING FIELD)
+      - ModelContext (save)
+      - ItemListView.swift:84 (Query fetches items)
+      - ItemRowView.swift:29 (displays room, which is nil)
+    result: "path traced end-to-end; room field is dropped at CSVImportManager.swift:420 and displayed as nil downstream"
+  - check: pattern_citation_lookup
+    result: "found existing round-trip pattern at Sources/Managers/BackupManager.swift:NNN which correctly serializes room"
+```
+
+If any hop cannot be found (e.g., "no persistence call in this workflow"), the path entry documents the gap:
+```yaml
+path:
+  - AddItemView.swift:120 (user taps Save)
+  - AddItemViewModel.swift:85 (validate inputs)
+  - [GAP: no modelContext.insert found for this workflow in scope]
+result: "round-trip path INCOMPLETE; finding classified as axis_2_scatter (opaque flow)"
+```
+
+### Required checks before emission
+
+1. **Full-path trace** (MANDATORY for every finding) — walk UI → manager → model → persistence → UI. Log every hop.
+2. **Pattern citation lookup** (MANDATORY) — find an existing correct round-trip pattern in the same codebase and cite it by file:line in `better_approach`.
+3. **Whole-file scan** (MANDATORY when claiming a field is "not serialized") — scan the ENTIRE serializer file (CSV import/export, backup encode/decode, CloudKit mapper) for the field name. If found, it IS serialized — the finding is probably about a different code path (reclassify as axis_2_scatter if the serialization is scattered).
+4. **Multi-path comparison** (MANDATORY for serialization findings) — a field may be serialized in one path (backup) but not another (CSV). Check ALL known serialization paths before claiming "missing." Stuffolio has at least 4: CSV export, CSV import, backup (JSON), CloudKit (CKRecordMapper).
+
+### Schema gate
+
+Per `radar-suite-core.md`, a finding is REJECTED if:
+- `axis` field is missing
+- `before_after_experience` is missing or incomplete
+- `better_approach` lacks a file:line citation matching the pattern shape
+- `verification_log` lacks a `pattern_citation_lookup` entry
+
+Rejected findings are NOT silently dropped: downgrade confidence to `possible`, mark as `coaching incomplete`, and increment `rejected_no_citation` in the handoff's `axis_summary`.
+
+### Axis summary block
+
+At the end of every roundtrip-radar handoff:
+```yaml
+axis_summary:
+  axis_1_bug: [count]              # data loss, missing feedback, broken serialization paths
+  axis_2_scatter: [count]          # opaque flows, duplicated serialization
+  axis_3_dead_code: [count]        # unreachable serialization branches
+  axis_3_smelly: [count]           # unwired fields with no user feature dependency
+  rejected_no_citation: [count]
+```
+
+---
 
 ## Pre-Scan Startup (MANDATORY — before any workflow scan)
 

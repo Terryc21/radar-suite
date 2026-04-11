@@ -2,13 +2,95 @@
 
 All notable changes to the Radar Suite skills are documented here.
 
-Format: [skill-name vX.Y.Z] or [all skills] when changes apply to every skill.
+Format: [skill-name vX.Y.Z] for legacy per-skill entries, [plugin vX.Y.Z] for unified plugin entries as of v2.0.
 
 ---
 
-## 2026-04-10
+## 2026-04-10 (later in the day) — [plugin v2.0.0] Axis classification framework SHIPPED + plugin distribution SHIPPED
 
-### [installer] install.sh was silently incomplete for 17 days -- FIXED
+This is the v2.0 unified-plugin release. Two major changes ship together.
+
+### What shipped
+
+**1. Claude Code plugin distribution.**
+
+- `.claude-plugin/plugin.json` is the new single source of truth for what ships. It declares all 8 skills as an explicit array (not directory enumeration). See the file for the full manifest.
+- `.claude-plugin/marketplace.json` declares radar-suite as its own single-plugin marketplace. Users add it with `/plugin marketplace add Terryc21/radar-suite`, then install with `/plugin install radar-suite@radar-suite`.
+- `.claude-plugin/verify-manifest.sh` is a drift guardrail. It diffs the plugin.json `skills` array against `ls skills/` and fails non-zero if they disagree. The 17-day silent install bug (same day, earlier entry below) becomes structurally impossible as long as this script runs in CI or pre-commit.
+- `install.sh` is kept as a fallback with a deprecation banner. It now runs verify-manifest.sh at install time and warns on drift. Its internal `SKILLS=()` array was updated to include `radar-suite-axis-classification` (the new 8th skill).
+- All skill SKILL.md frontmatter `version:` fields now read `2.0.0` (unified plugin version). Previous per-skill versions are preserved as inline comments (`# was 3.3.0 per-skill`) so history is not lost. Future changelog entries will land under the plugin version, not per skill.
+
+**2. Axis classification framework.**
+
+Every finding from every radar is now classified on three axes before it can be emitted:
+
+| Axis | Label | Meaning | Grade impact |
+|---|---|---|---|
+| **axis_1_bug** | Real bug | User-facing defect that needs a behavior change | Counts toward A-F grade |
+| **axis_2_scatter** | Scatter | Correct code, bad structure, reorganize only | Hygiene backlog — no grade impact |
+| **axis_3_dead_code** | Dead code | Unreachable branch verified by reachability trace | Hygiene backlog — no grade impact |
+| **axis_3_smelly** | Smelly | Reachable but poorly justified (undocumented defensive guard, unused field) | Hygiene backlog — no grade impact |
+
+**New shared skill: `radar-suite-axis-classification`.** Lives at `skills/radar-suite-axis-classification/`. Defines the 3-axis framework, the verification checklist (reachability trace, whole-file scan, branch enumeration, pattern citation lookup, source root introspection), the coaching schema, and the schema gate that rejects findings without proper coaching. Every other radar invokes this skill before emitting findings. Ships with two reference files:
+
+- `coaching-examples-generic.md` — 5 anonymized worked examples covering all 3 axes. Default fallback for any iOS project.
+- `coaching-examples-stuffolio.md` — 7 examples with real file:line citations from the Stuffolio codebase. Used when auditing Stuffolio via `.radar-suite/project.yaml` `coaching_examples: [stuffolio, generic]`. Future project overlays: add `coaching-examples-<projectname>.md` and reference it in the target's project.yaml.
+
+**Mandatory coaching fields on every finding.** Every finding now includes:
+- `before_after_experience` with explicit `audience` (`end_user` / `code_reader` / `future_maintainer`) and before/after description written from that audience's POV
+- `current_approach` — how the code is structured today
+- `suggested_fix` — the minimum change
+- `better_approach` — **must cite a real file:line pattern in the audited codebase**, not generic advice. A better_approach without a `pattern_citation_lookup` entry in the verification_log is REJECTED by the schema gate.
+- `better_approach_tradeoffs` — honest "when to apply / when not to apply" guidance
+- `verification_log` — log of which verification checks were run with concrete results
+
+**Extended `radar-suite-core.md` handoff schema.** Every handoff YAML now includes an `axis_summary` top-level block (counts by axis + `rejected_no_citation` count) and a `checks_performed` block (what was scanned, so "no bugs in this category" is distinguishable from "this category was not scanned"). The core file was propagated to all 7 per-skill copies (still byte-identical as of this release; future release will move to a single canonical copy).
+
+**Per-radar integrations (3 of 6 radars wired up in this release).**
+
+- **capstone-radar** — New Step 3.6 reads `axis_summary` from every companion handoff. Report splits into "Fix Before Shipping" (axis_1, graded) and "Hygiene Backlog" (axis_2/3, ungraded). A-F grade reflects ONLY axis_1 findings. "Audit Coverage" section surfaces aggregated `checks_performed` across radars. Backward compatible with pre-v2.0 handoffs (treated as all-axis_1).
+- **ui-path-radar** — All 30 issue categories tagged with default axis. Reclassification rules documented: Dead End → axis_3_dead_code if unreachable, Empty State Missing → axis_3_dead_code if empty case unreachable, Sheet Presentation Asymmetry → axis_2_scatter if both platforms work. New Axis Classification Protocol section enforces pre-emission checks.
+- **roundtrip-radar** — Roundtrip-specific axis mapping (data loss = axis_1, opaque flow = axis_2, unwired field = axis_3_smelly unless a user feature depends on it). Every finding must cite the full UI → manager → model → persistence → UI path in its verification_log. New `full_path_trace` check type.
+
+**Per-radar integrations deferred to a future release:** data-model-radar, ui-enhancer-radar, time-bomb-radar. Reasons in `gleaming-cuddling-wreath.md` plan file. These radars still work under v2.0 but their findings are treated as legacy (all-axis_1) by capstone.
+
+### Why both changes ship together
+
+The plugin conversion and the axis framework were originally scheduled as separate releases. They ship together in v2.0 because the new axis-classification skill (`radar-suite-axis-classification`) is the 8th skill in the plugin manifest and needs to ship simultaneously. Splitting them would have required either (a) releasing a v1.x plugin with only 7 skills then immediately bumping to v2.x with 8, or (b) releasing the axis framework without the plugin, which would have re-introduced the install.sh drift risk. Neither was acceptable.
+
+### Migration for existing users
+
+- **If you're on `install.sh`:** do nothing. The script still works. It will print a deprecation banner pointing at the plugin path. Switch when convenient.
+- **If you want the plugin:** run `/plugin marketplace add Terryc21/radar-suite` then `/plugin install radar-suite@radar-suite`. You may need to remove the existing symlinks in `~/.claude/skills/` manually first.
+- **If you're a skill developer who depended on per-skill version numbers:** the plugin version (2.0.0) is now the only user-visible version. Old per-skill versions are preserved as inline comments in each SKILL.md frontmatter for reference.
+
+### Files added/changed in this release
+
+Added:
+- `.claude-plugin/plugin.json` — plugin manifest (source of truth)
+- `.claude-plugin/marketplace.json` — single-plugin marketplace declaration
+- `.claude-plugin/verify-manifest.sh` — drift guardrail
+- `skills/radar-suite-axis-classification/SKILL.md` — shared framework
+- `skills/radar-suite-axis-classification/coaching-examples-generic.md`
+- `skills/radar-suite-axis-classification/coaching-examples-stuffolio.md`
+
+Changed:
+- `radar-suite-core.md` (+ all 7 per-skill copies) — extended handoff schema, axis_summary, checks_performed, schema gate rules
+- `skills/capstone-radar/SKILL.md` — Step 3.6 axis consumption, two-section report format
+- `skills/ui-path-radar/SKILL.md` — axis mapping on 30 categories, Axis Classification Protocol section
+- `skills/roundtrip-radar/SKILL.md` — Axis Classification Protocol section, full-path verification rule
+- `install.sh` — deprecation banner, updated SKILLS array with radar-suite-axis-classification, drift check integration, updated completion message to "8 skills"
+- `README.md` — plugin install path first, install.sh documented as fallback, "Coming soon" section replaced with "Shipped in v2.0" section
+- All 8 `skills/*/SKILL.md` — `version:` field set to `2.0.0` with inline legacy-version comment
+
+Not changed (deferred):
+- `skills/data-model-radar/SKILL.md` — axis integration deferred
+- `skills/ui-enhancer-radar/SKILL.md` — axis integration deferred
+- `skills/time-bomb-radar/SKILL.md` — axis integration deferred
+
+---
+
+## 2026-04-10 — [installer] install.sh was silently incomplete for 17 days -- FIXED
 
 **If you installed Radar Suite between 2026-03-24 and 2026-04-10, your install is missing `time-bomb-radar` and the `radar-suite` orchestrator.** Pull the latest and re-run `./install.sh` to backfill.
 
@@ -26,49 +108,7 @@ The installer is idempotent and safe to re-run.
 
 **What was fixed.** `install.sh` now installs all 7 skills (`data-model-radar`, `ui-path-radar`, `roundtrip-radar`, `time-bomb-radar`, `ui-enhancer-radar`, `capstone-radar`, and the `radar-suite` orchestrator). The completion message and recommended run order in the installer output were updated to match. See commit `d7e3191`.
 
-**Why this happened.** A hand-maintained shell script is too fragile to be the source of truth for what a skill suite ships with. The README correctly said "7 skills" but the installer shipped 5, and the drift was not caught because nothing verified the two lists matched. This is exactly the kind of two-sources-of-truth bug that the upcoming plugin conversion (see below) is designed to prevent.
-
-### [all skills] Announcement: Claude Code plugin distribution coming next release
-
-Radar Suite is migrating from the current shell-script installer (`./install.sh`) to a **Claude Code plugin** before the next major feature upgrade. The rationale:
-
-- **Single source of truth for what's installed.** A plugin manifest declares every skill the plugin ships with. There is no second list to keep in sync. The 17-day `install.sh` bug above is impossible in a plugin because the manifest IS the installer.
-- **One-command install with no shell script to trust.** Users install with `/plugin install` instead of cloning a repo and running an arbitrary shell script. Meaningful security and friction improvement.
-- **Push-based updates.** Plugins can notify users of new versions and update in place. No more `git pull && ./install.sh`.
-- **Cleaner uninstall.** A plugin is removed with one command. Today's shell-script install leaves symlinks in `~/.claude/skills/` that have to be cleaned up manually.
-- **Cross-skill dependencies in the manifest instead of prose.** The "run capstone after all other radars" order is encoded in the plugin manifest so tooling can enforce it, not just documentation that describes it.
-
-**What this means for existing users.** Nothing changes immediately. The `install.sh` path will remain working for at least one release after the plugin ships, with a deprecation notice pointing to the plugin as the recommended path. Users who want to stay on the clone-and-run flow can. Users who want the plugin can switch at their convenience.
-
-**When.** Target: next release, before the "axis classification" framework upgrade that is also in progress. Both are documented in the repo: see `AXIS-CLASSIFICATION-PLAN.md` and `NEXT-SESSION-PROMPT.md` for the full plan and rationale.
-
-**Why announce this now instead of at ship time.** Two reasons. First, the `install.sh` bug is the direct motivation for the plugin conversion, and users deserve to see that cause-and-effect explained when they learn about the bug. Second, with 114 unique cloners in the last 14 days, silent structural changes are rude. A CHANGELOG announcement gives users a heads-up and a place to push back if the new install mechanism misses their use case.
-
-### [all skills] Announcement: axis classification framework coming after the plugin
-
-The major feature upgrade shipping after the plugin conversion is called **axis classification**. It is a structural change to how every radar skill reports findings.
-
-**The problem it solves.** Today, every finding the radars produce looks equally urgent. A real user-facing crash and a stale comment in an unreachable branch get reported the same way. Users have to read each finding, understand the context, and decide for themselves which ones matter now. This works when you have 5 findings. It does not scale when you have 50.
-
-**How it works.** The upgrade tags every finding as one of three things:
-
-- **Axis 1 -- real bugs users will hit.** These are ship blockers. Fix the behavior. Same severity scale as today.
-- **Axis 2 -- correct code that is hard to read.** The code runs correctly, but a reviewer or future maintainer cannot verify that it runs correctly without cross-referencing multiple locations. Fix by reorganizing, not by changing behavior.
-- **Axis 3 -- dead or unreachable code.** The code exists in the repo but no user path reaches it, or the branch has no documented reason to be there. Usually safe to delete.
-
-The capstone report will split findings into a "fix before shipping" section (axis 1 only) and a "hygiene backlog" section (axis 2 and axis 3). Users will be able to triage a 50-finding audit in minutes instead of reading each finding one at a time.
-
-**The behavioral change.** This is the part that matters most. Today, the radars operate like a bug finder. They pattern-match for known-bad code and flag it. After the upgrade, the radars will still do that (axis 1 findings do not go away), but they will also start recommending better approaches for code that already runs correctly. The skills become more like a code reviewer than a bug finder.
-
-Concrete example from the motivating case: a view in a real iOS project handles three different empty states, and the handlers for those states are spread out across 500 lines in the same file. Today, a radar scanning that view would either miss the structural issue entirely or flag one of the handlers as "wrong" because it did not scroll far enough to find the other two. After the upgrade, the radar will confirm the code is correct and suggest pulling the state machine into one place so the next person reading it can see all three handlers at once. This is a suggestion, not a bug report. It is an axis 2 finding that ships in the hygiene backlog, not a ship blocker.
-
-**What motivated this.** A real retraction in the last few days. I ran the workflow audit on an iOS project. It flagged two empty states as user-facing dead ends. I went to fix them. Both turned out to be false positives for completely different reasons. One was unreachable code that looked broken in isolation but no user would ever see it (axis 3). The other was correct code whose handler lived 500 lines further down in the same file (axis 2). The audit caught the patterns and was wrong about the diagnosis in both cases. The axis framework is the structural fix for that class of mis-diagnosis.
-
-**What this means for existing users.** The output format is changing. Every finding in the handoff YAML will get a new `axis` field. The capstone report will gain a hygiene backlog section that did not exist before. Users who built tooling around the current format will need to update it, but the new field is additive and the old fields will remain, so most consumers can ignore the new field and keep working.
-
-**When.** After the plugin conversion. No firm date, but the plan and rationale are documented in `AXIS-CLASSIFICATION-PLAN.md` in the repo. The plan is a living document and feedback is welcome.
-
-**Why announce this now instead of at ship time.** The axis framework is a larger behavioral change than any previous radar upgrade. Announcing the direction early gives users a chance to push back on the design before I commit to an implementation, and it sets expectations so the next release does not feel like a surprise shift in what the skills are for.
+**Why this happened.** A hand-maintained shell script is too fragile to be the source of truth for what a skill suite ships with. The README correctly said "7 skills" but the installer shipped 5, and the drift was not caught because nothing verified the two lists matched. This is exactly the kind of two-sources-of-truth bug that the plugin conversion shipped in v2.0 (entry above) was designed to prevent.
 
 ---
 
