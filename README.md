@@ -69,12 +69,23 @@ Radar Suite is deliberately thorough. It reads whole files to catch handlers the
 
 **Recommended: Claude Code plugin**
 
+Run these two commands **one at a time** in Claude Code. Wait for Step 1 to confirm "Successfully added marketplace" before running Step 2.
+
+Step 1 — add the marketplace:
+
 ```
 /plugin marketplace add Terryc21/radar-suite
+```
+
+Step 2 — install the plugin:
+
+```
 /plugin install radar-suite@radar-suite
 ```
 
-That's it. All 8 skills are now available in Claude Code. The plugin manifest at `.claude-plugin/plugin.json` is the single source of truth for what ships, and `.claude-plugin/verify-manifest.sh` detects drift between the manifest and disk.
+All 8 skills are now available in Claude Code. The plugin manifest at `.claude-plugin/plugin.json` is the single source of truth for what ships, and `.claude-plugin/verify-manifest.sh` detects drift between the manifest and disk.
+
+> **Why two separate blocks?** If you copy both `/plugin` lines at once and paste them into Claude Code, the slash-command dispatcher treats the first `/plugin` as the command and the rest of the paste (including the second `/plugin install...`) as its arguments. Claude Code then tries to clone a repo literally named `Terryc21/radar-suite /plugin install radar-suite` and fails with a misleading SSH authentication error. Running them one at a time avoids the trap.
 
 **Fallback: clone and install.sh (deprecated as of v2.0)**
 
