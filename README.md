@@ -5,6 +5,10 @@
 ![GitHub stars](https://img.shields.io/github/stars/Terryc21/radar-suite?style=flat)
 ![GitHub forks](https://img.shields.io/github/forks/Terryc21/radar-suite?style=flat)
 
+<a href="https://buymeacoffee.com/stuffolio">
+  <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" width="150">
+</a>
+
 **7 audit skills for Claude Code that find bugs in your Swift/SwiftUI app before your users do.**
 
 Built for [Stuffolio](https://stuffolio.app), an iOS/macOS inventory management app.
