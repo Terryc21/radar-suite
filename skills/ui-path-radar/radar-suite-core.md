@@ -152,6 +152,64 @@ Found checkpoint from [timestamp]: [skill] Phase [N] completed.
 
 ---
 
+## Artifact Lifecycle (MANDATORY)
+
+Every file a radar skill writes belongs to exactly one of three artifact classes. Each class has specific lifecycle rules. **Skills MUST NOT invent new artifact classes or ad-hoc file patterns.** If a skill needs to communicate something to the next session, it uses the class that fits — not a new one-off file.
+
+### Class 1: Persistent state (rewritten in place, never archived)
+
+Files that represent the current state of the audit. They grow and change across sessions but never accumulate copies.
+
+**Examples:** `.radar-suite/ledger.yaml`, `.radar-suite/session-prefs.yaml`, `.radar-suite/project.yaml`, `.radar-suite/known-intentional.yaml`
+
+**Rules:**
+- One canonical path. Never dated, never numbered.
+- Writes are in-place updates (append to `findings:` arrays, update `last_skill`, etc.).
+- Never duplicated, never archived. The file IS the current state.
+
+### Class 2: Single-use handoff (always overwritten, no dates)
+
+Files that communicate "what to do next" to the next session. They have no historical value — yesterday's handoff is garbage once you're past it.
+
+**Examples:** `.radar-suite/NEXT_STEPS.md`, `.radar-suite/checkpoint.yaml`, `.radar-suite/{skill}-handoff.yaml`
+
+**Rules:**
+- One canonical path per handoff purpose.
+- **Every write is an overwrite.** Never write `NEXT_STEPS_PHASE_2.md`, `NEXT_STEPS_v2.md`, `RESUME_YYYY-MM-DD.md`, etc.
+- No dates in filenames.
+- Deleted by `capstone-radar` on successful audit completion (except `{skill}-handoff.yaml` which capstone consumes then keeps for one cycle).
+- **Anti-pattern:** Do NOT create `RESUME_PHASE_N.md`, `RESUME_POST_CAPSTONE.md`, or similar per-phase handoff files. They accumulate forever because no skill knows to delete yesterday's version. If you need to communicate a next step, overwrite `NEXT_STEPS.md`.
+
+### Class 3: Dated snapshot (auto-archived when superseded)
+
+Files that represent a point-in-time snapshot and have historical value for diff/trend analysis.
+
+**Examples:** `.agents/research/YYYY-MM-DD-capstone-audit.md`, `.radar-suite/capstone-report-YYYY-MM-DD.md`
+
+**Rules:**
+- Filenames include the ISO date: `YYYY-MM-DD`.
+- Before writing a new snapshot, the skill MUST move any existing snapshots matching the same base pattern to `.radar-suite/archive/superseded/`. Only ONE live snapshot exists at the top level at any time.
+- Archive directory is bounded: skills MAY prune archived snapshots older than 90 days, but this is not mandatory.
+- **Anti-pattern:** Do not leave multiple live dated snapshots in `.radar-suite/`. Always archive the old one before writing the new one.
+
+### End-of-run cleanup (every skill, mandatory)
+
+Before returning from any phase, every skill performs this cleanup:
+
+1. **Lint the directory:** List files in `.radar-suite/` and `.radar-suite/archive/`. Any file matching `RESUME_PHASE_*.md`, `RESUME_*.md` (except the single canonical `NEXT_STEPS.md`), or `*-v[0-9]*.md` is a stale handoff. Move it to `.radar-suite/archive/superseded/` or delete if the archive already has an identical copy.
+2. **Verify Class 1 files are in-place rewrites:** if the skill accidentally wrote `ledger-v2.yaml` or similar, that's a bug — the write should have been to `ledger.yaml`.
+3. **Verify Class 3 snapshots are singular:** at most one `*-capstone-audit.md` at the top level; older ones in `archive/superseded/`.
+
+This cleanup takes 2-3 tool calls and prevents directory bloat across long audits.
+
+### Why this matters
+
+Without this convention, every skill improvises its own continuation pattern, and files pile up across sessions because no skill knows which files belong to another skill's purview. The user's `.radar-suite/` directory becomes unreadable within 2-3 runs, and the next session's Claude wastes context reading stale files.
+
+One canonical path per purpose, enforced by every skill at end-of-run, keeps the working directory the same size whether the audit has run once or fifty times.
+
+---
+
 ## Accepted Risks
 
 Users can mark findings as "accept risk" to suppress them in future audits.

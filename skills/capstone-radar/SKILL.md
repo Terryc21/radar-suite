@@ -720,6 +720,8 @@ Ship recommendation is based on {N}/10 domains. Run missing companions for full 
 
 ### Write Report
 
+**Before writing:** Per the Artifact Lifecycle rules in `radar-suite-core.md` (Class 3: Dated Snapshot), list any existing `.agents/research/*-capstone-audit.md` files. Move them to `.agents/research/archive/superseded/` (create the directory if missing) before writing the new snapshot. Only ONE live capstone audit file exists at the top level at any time.
+
 Write to `.agents/research/YYYY-MM-DD-capstone-audit.md`. Write sections as generated.
 
 **Report sections:**
@@ -1028,6 +1030,18 @@ Optional field for batching related issues. Common hints:
 - `build_health` — scheme issues, dependency problems
 
 **Automatic:** This file is always written so other audit skills can pick up where this one left off. No user action needed.
+
+### End-of-Run Directory Cleanup (MANDATORY)
+
+Per the Artifact Lifecycle rules in `radar-suite-core.md`, capstone is the LAST phase of an audit and is responsible for final cleanup:
+1. List files in `.radar-suite/` and `.agents/research/`.
+2. Move any stale single-use handoffs (`RESUME_PHASE_*.md`, `RESUME_*.md` except `NEXT_STEPS.md`, `*-v[0-9]*.md`) to `.radar-suite/archive/superseded/`.
+3. Verify only ONE live `*-capstone-audit.md` exists at the top of `.agents/research/`; older ones must already be in `archive/superseded/` from the Step 10 "Write Report" archive rule.
+4. On successful completion, delete `.radar-suite/checkpoint.yaml` per the Checkpoint & Resume rule.
+5. Write `.radar-suite/NEXT_STEPS.md` (overwrite, no dates, no phase numbers in filename) containing the post-capstone fix session prompt. This is the ONLY single-use handoff file capstone is allowed to create.
+6. Confirm Class 1 persistent-state files (`ledger.yaml`, `session-prefs.yaml`) are in-place rewrites — not dated or versioned.
+
+This prevents `.radar-suite/` from accumulating stale prose artifacts across runs.
 
 ### Write to Unified Ledger (MANDATORY)
 

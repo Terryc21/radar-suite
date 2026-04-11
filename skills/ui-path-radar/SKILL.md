@@ -176,7 +176,7 @@ Ask the user:
 
 **Question 2: "How should results be delivered?"**
 - **Display only (Recommended)** — Show findings in the conversation. No file written.
-- **Report only** — Write findings to `.ui-path-radar/[DATE]-audit.md`. Minimal conversation output.
+- **Report only** — Write findings to `.ui-path-radar/[DATE]-audit.md`. Minimal conversation output. **Before writing**, per Artifact Lifecycle (Class 3) in `radar-suite-core.md`, archive any existing `.ui-path-radar/*-audit.md` to `.ui-path-radar/archive/superseded/`.
 - **Display and report** — Show findings in the conversation AND write to file.
 
 **Question 3: "What's your experience level with Swift/SwiftUI?"**
@@ -1602,6 +1602,16 @@ checks_performed:
   persona_evaluation: false
   confidence_scoring: true
 ```
+
+### End-of-Run Directory Cleanup (MANDATORY)
+
+Per the Artifact Lifecycle rules in `radar-suite-core.md`, before returning from this skill:
+1. List files in `.radar-suite/` (and `.ui-path-radar/` if used).
+2. Move any stale single-use handoffs (`RESUME_PHASE_*.md`, `RESUME_*.md` except `NEXT_STEPS.md`, `*-v[0-9]*.md`) to `.radar-suite/archive/superseded/`.
+3. Confirm Class 1 persistent-state files (`ledger.yaml`, `session-prefs.yaml`) are in-place rewrites — not dated or versioned.
+4. Confirm Class 2 handoff files are overwrites, not appends.
+
+This prevents `.radar-suite/` from accumulating stale prose artifacts across runs.
 
 ### Write to Unified Ledger (MANDATORY)
 

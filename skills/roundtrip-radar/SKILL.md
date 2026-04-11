@@ -303,7 +303,7 @@ Ask the user these questions **once per session** in a single prompt. For subseq
 **Question 3: "How should results be delivered?"**
 - **Display only (Recommended)** — Show findings in the conversation. No file written.
 - **Report only** — Write findings to `.agents/research/[DATE]-[WORKFLOW]-audit.md`.
-  Minimal conversation output.
+  Minimal conversation output. **Before writing**, per Artifact Lifecycle (Class 3) in `radar-suite-core.md`, archive any existing `.agents/research/*-[WORKFLOW]-audit.md` matching the same workflow to `.agents/research/archive/superseded/`.
 - **Display and report** — Show findings in the conversation AND write to file.
 
 **Question 4: "Will you be stepping away during the audit?"**
@@ -849,6 +849,16 @@ Optional field suggesting how consuming skills might batch related issues:
 - Common hints: `data_loss`, `silent_failure`, `round_trip_gap`, `error_handling`, `concurrency`, `collection_narrowing`, `bridge_parity`
 
 **Automatic:** This file is always written so other audit skills can pick up where this one left off. No user action needed.
+
+### End-of-Run Directory Cleanup (MANDATORY)
+
+Per the Artifact Lifecycle rules in `radar-suite-core.md`, before returning from this skill:
+1. List files in `.radar-suite/` (and `.agents/research/` if used).
+2. Move any stale single-use handoffs (`RESUME_PHASE_*.md`, `RESUME_*.md` except `NEXT_STEPS.md`, `*-v[0-9]*.md`) to `.radar-suite/archive/superseded/`.
+3. Confirm Class 1 persistent-state files (`ledger.yaml`, `session-prefs.yaml`) are in-place rewrites — not dated or versioned.
+4. Confirm Class 2 handoff files are overwrites, not appends.
+
+This prevents `.radar-suite/` from accumulating stale prose artifacts across runs.
 
 ### Write to Unified Ledger (MANDATORY)
 

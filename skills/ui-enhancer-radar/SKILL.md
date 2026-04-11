@@ -2628,6 +2628,16 @@ Optional field for batching related issues. Common hints:
 
 **Automatic:** This file is always written so other audit skills can pick up where this one left off. No user action needed.
 
+### End-of-Run Directory Cleanup (MANDATORY)
+
+Per the Artifact Lifecycle rules in `radar-suite-core.md`, before returning from this skill:
+1. List files in `.radar-suite/`.
+2. Move any stale single-use handoffs (`RESUME_PHASE_*.md`, `RESUME_*.md` except `NEXT_STEPS.md`, `*-v[0-9]*.md`) to `.radar-suite/archive/superseded/`.
+3. Confirm Class 1 persistent-state files (`ledger.yaml`, `session-prefs.yaml`, `DEFERRED.md`) are in-place rewrites — not dated or versioned.
+4. Confirm Class 2 handoff files are overwrites, not appends.
+
+This prevents `.radar-suite/` from accumulating stale prose artifacts across runs.
+
 ### Write to Unified Ledger (MANDATORY)
 
 After writing the handoff YAML, also write findings to `.radar-suite/ledger.yaml` following the Ledger Write Rules in `radar-suite-core.md`:

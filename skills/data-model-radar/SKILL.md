@@ -570,6 +570,16 @@ Optional field for batching related issues. Common hints:
 
 **Honesty rule:** The handoff must distinguish "verified clean" from "not checked." Use `_verified: true/false` for each serialization target. Capstone-radar uses these flags to determine how much credit to give.
 
+### End-of-Run Directory Cleanup (MANDATORY)
+
+Per the Artifact Lifecycle rules in `radar-suite-core.md`, before returning from this skill:
+1. List files in `.radar-suite/` (and `.agents/ui-audit/` or equivalent if used).
+2. Move any stale single-use handoffs (`RESUME_PHASE_*.md`, `RESUME_*.md` except `NEXT_STEPS.md`, `*-v[0-9]*.md`) to `.radar-suite/archive/superseded/`.
+3. Confirm Class 1 persistent-state files (`ledger.yaml`, `session-prefs.yaml`) are in-place rewrites — not dated or versioned.
+4. Confirm Class 2 handoff files are overwrites, not appends.
+
+This prevents `.radar-suite/` from accumulating stale prose artifacts across runs.
+
 ### Write to Unified Ledger (MANDATORY)
 
 After writing the handoff YAML, also write findings to `.radar-suite/ledger.yaml` following the Ledger Write Rules in `radar-suite-core.md`:
