@@ -79,7 +79,7 @@ Still Open:
 | 1 | Force unwrap in error path | 🟡 HIGH | BackupManager.swift:89 | 14 days |
 
 New Issues:
-| # | Finding | Urgency | Risk: Fix | Risk: No Fix | ROI | Blast Radius | Fix Effort |
+| # | Finding | Urgency | Risk: Fix | Risk: No Fix | ROI | Blast Radius | Fix Effort | Status |
 ```
 
 ### When to Use
@@ -834,7 +834,7 @@ This section lists every axis_1_bug finding from all companion handoffs plus cap
 | 🔴 CRITICAL | 🟢 Medium | 🔴 Critical | 🟠 Excellent | ⚪ 1 file | Small |
 ```
 
-Each finding in this section displays the full coaching schema. The rating table stays 8-column per `radar-suite-core.md`.
+Each finding in this section displays the full coaching schema. The rating table stays 9-column per `radar-suite-core.md`.
 
 **Section 14a — Hygiene Backlog (axis_2 + axis_3)**
 
@@ -873,7 +873,7 @@ This section does NOT affect the grade. It is a separate list organized by axis 
 [similar format]
 ```
 
-Hygiene findings use a simpler format (no 8-column rating table) since they don't block shipping and don't need severity ranking. Each finding still includes its coaching and file:line citation.
+Hygiene findings use a simpler format (no 9-column rating table) since they don't block shipping and don't need severity ranking. Each finding still includes its coaching and file:line citation.
 
 **Section 14b — Audit Coverage**
 
@@ -906,9 +906,9 @@ This section answers "what was checked" so a clean audit run is not ambiguous.
 When the unified ledger (`.radar-suite/ledger.yaml`) exists, section 14 presents ALL findings in a single 9-column table with the Source column showing provenance. The table is sorted by impact category (Crash Risk → Data Loss → UX Broken → UX Degraded → Polish → Hygiene), then by Urgency within each category:
 
 ```markdown
-| # | Finding | Source | Urgency | Risk: Fix | Risk: No Fix | ROI | Blast Radius | Fix Effort |
-|---|---------|--------|---------|-----------|--------------|-----|--------------|------------|
-| | **Crash Risk** | | | | | | | |
+| # | Finding | Source | Urgency | Risk: Fix | Risk: No Fix | ROI | Blast Radius | Fix Effort | Status |
+|---|---------|--------|---------|-----------|--------------|-----|--------------|------------|--------|
+| | **Crash Risk** | | | | | | | | |
 | 1 | Cascade delete on archived items | time-bomb | 🔴 CRITICAL | ... | ... | ... | ... | ... |
 | 2 | Force unwrap on nil photo data | roundtrip | 🟡 HIGH | ... | ... | ... | ... | ... |
 | | **Data Loss** | | | | | | | |
@@ -964,10 +964,10 @@ Test Coverage Gaps:
 
 ### Issue Rating Format
 
-Capstone-radar uses a **9-column table** with a Source column. This is the only skill that uses 9 columns -- it's the aggregator, so provenance matters. All other radar skills use the standard 8-column table.
+Capstone-radar uses a **10-column table** with a Source column added to the standard 9. This is the only skill that adds Source -- it's the aggregator, so provenance matters. All other radar skills use the standard 9-column table.
 
-| # | Finding | Source | Urgency | Risk: Fix | Risk: No Fix | ROI | Blast Radius | Fix Effort |
-|---|---------|--------|---------|-----------|--------------|-----|--------------|------------|
+| # | Finding | Source | Urgency | Risk: Fix | Risk: No Fix | ROI | Blast Radius | Fix Effort | Status |
+|---|---------|--------|---------|-----------|--------------|-----|--------------|------------|--------|
 | 1 | CSV export drops Room and UPC | roundtrip | 🟡 HIGH | ⚪ Low | 🟡 High | 🟠 Excellent | 🟢 2 files | Small |
 | 2 | InsuranceProfile not in backup | data-model | 🟡 HIGH | ⚪ Low | 🟡 High | 🟢 Good | 🟢 3 files | Medium |
 | 3 | TODO marker in production path | capstone | 🟢 MEDIUM | ⚪ Low | 🟢 Medium | 🟠 Excellent | ⚪ 1 file | Trivial |

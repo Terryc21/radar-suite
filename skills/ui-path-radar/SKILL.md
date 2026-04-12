@@ -257,18 +257,18 @@ Adjust ALL output based on the user's experience level:
 - Use standard SwiftUI terminology without defining basics.
 - Explain non-obvious patterns.
 - Standard file:line format.
-- Full 8-column format with brief finding descriptions.
+- Full 9-column format with brief finding descriptions.
 
 #### Experienced (default)
 - Concise findings. No definitions or explanations of standard patterns.
 - Recommendations: what to fix, where.
-- Full 8-column format, terse findings.
+- Full 9-column format, terse findings.
 
 #### Senior/Expert
 - Minimal findings text. No prose between tables.
 - File:line + one-line fix description only.
 - Skip: progress explanations, design principle citations, category definitions.
-- Full 8-column format, maximally compressed.
+- Full 9-column format, maximally compressed.
 
 #### Enforcement Rule
 At the **start of each layer**, silently check: "Am I writing at the selected experience level?" Do NOT drift toward "Experienced" as a default.
@@ -1333,9 +1333,9 @@ Items 3-5 may be omitted if not applicable.
 
 **Full table:**
 ```markdown
-| #   | Finding                   | Conf     | Urgency      | Risk:Fix | Risk:NoFix | ROI      | Blast    | Effort  |
-|-----|---------------------------|----------|--------------|----------|------------|----------|----------|---------|
-| 1   | Dead end: ".warranty"     | verified | 🔴 Critical | ⚪ Low  | 🔴 Crit   | 🟠 Exc  | 🟢 2f   | Trivial |
+| #   | Finding                   | Conf     | Urgency      | Risk:Fix | Risk:NoFix | ROI      | Blast    | Effort  | Status |
+|-----|---------------------------|----------|--------------|----------|------------|----------|----------|---------|--------|
+| 1   | Dead end: ".warranty"     | verified | 🔴 Critical | ⚪ Low  | 🔴 Crit   | 🟠 Exc  | 🟢 2f   | Trivial | Open   |
 |     | unhandled                 |          |              |          |            |          |          |         |
 ```
 

@@ -1,7 +1,7 @@
 ---
 name: data-model-radar
 description: 'Audits SwiftData/Core Data model layer for field completeness, serialization gaps, relationship integrity, semantic ambiguity, dead fields, and migration safety. Finds model-layer bugs that manifest as workflow bugs. Triggers: "audit models", "model radar", "/data-model-radar".'
-version: 2.1.0  # 3-tier depth model (was 2.0.0)
+version: 2.2.0  # +Domain 1.5/7.5, scoring rubric, discovery/exclusion fixes (was 2.1.0)
 author: Terry Nyberg
 license: MIT
 allowed-tools: [Read, Grep, Glob, Bash, Edit, Write, AskUserQuestion]
@@ -21,8 +21,9 @@ metadata:
 
 | Command | Description |
 |---------|-------------|
-| `/data-model-radar` | Full 7-domain audit of all models (+ delegates to time-bomb-radar for Domain 8) |
+| `/data-model-radar` | Full 9-domain audit of all models (+ delegates to time-bomb-radar for Domain 8) |
 | `/data-model-radar [ModelName]` | Audit a single model in depth |
+| `/data-model-radar models` | Show all models with risk ranking (no audit, discovery only) |
 | `/data-model-radar serialization` | Domain 2 only — backup/export coverage |
 | `/data-model-radar relationships` | Domain 3 only — cascade rules, orphan risk |
 | `/data-model-radar migration` | Domain 6 only — schema version safety |
@@ -39,12 +40,14 @@ Data Model Radar audits the foundation your app is built on — the data models.
 | Domain | What It Finds | Est. Time |
 |--------|--------------|-----------|
 | **1. Field Completeness** | Missing fields, enum gaps, semantic holes | ~3-5 min |
+| **1.5 Computed Properties** | Business logic bugs in computed properties (nil chains, fallback defaults, currency math) | ~5-10 min |
 | **2. Serialization Coverage** | Backup/export fields that don't round-trip | ~10-20 min |
 | **3. Relationship Integrity** | Cascade rules, inverse relationships, orphan risk | ~3-5 min |
 | **4. Semantic Clarity** | nil vs zero ambiguity, missing type distinctions | ~2-3 min |
 | **5. Field Usage Mapping** | Dead fields (no UI reads), phantom fields (UI shows, model doesn't store) | ~10-20 min |
 | **6. Migration Safety** | Schema versions, VersionedSchema coverage, migration plan gaps | ~5-10 min |
 | **7. Cross-Model Consistency** | Identifier strategy, naming conventions, shared pattern violations | ~3-5 min |
+| **7.5 Near-Duplicate Detection** | Models sharing 70%+ fields that should be consolidated | ~3-5 min |
 
 ---
 
@@ -85,7 +88,7 @@ Using: [Beginner] mode, [Auto-fix] or [Review first], [Display only]. Type "adju
 
 ## Shared Patterns
 
-See `radar-suite-core.md` for: Tier System, Pipeline UX Enhancements, Table Format, Plain Language Communication, Work Receipts, Contradiction Detection, Finding Classification, Audit Methodology, Context Exhaustion, Progress Banner, Issue Rating Tables, Handoff YAML schema, Known-Intentional Suppression, Pattern Reintroduction Detection, Experience-Level Output Rules, Implementation Sort Algorithm, short_title requirement.
+See `radar-suite-core.md` for: Rules Summary, Tier System, Pipeline UX Enhancements, Table Format, Rating Table Gate, Plain Language Communication, Work Receipts, Contradiction Detection, Finding Classification, Audit Methodology, Context Exhaustion, Progress Banner, Issue Rating Tables, Handoff YAML schema, Known-Intentional Suppression, Pattern Reintroduction Detection, Experience-Level Output Rules, Implementation Sort Algorithm, short_title requirement.
 
 ## Pre-Scan Startup (MANDATORY — before any domain scan)
 
@@ -167,26 +170,89 @@ This table determines where time is spent. Domains that touch "GO DEEP" items ge
 
 ## Step 0: Model Discovery
 
-Scan the codebase and identify all data models.
+Scan the codebase and identify all data models. This step runs automatically before any audit and is also available standalone via `/data-model-radar models`.
 
 ### How to Find Them
 
-1. Search for `@Model` classes: `Grep pattern="@Model" glob="**/*.swift" path="Sources/"`
+**IMPORTANT:** Models can live anywhere under Sources/, not just Sources/Models/. Scan the full tree.
+
+1. Search for `@Model` classes across ALL of Sources/: `Grep pattern="@Model" glob="**/*.swift" path="Sources/"`
 2. Search for Core Data entities if applicable: `Glob pattern="**/*.xcdatamodeld"`
 3. Search for Codable structs used in serialization: backup structs, export structs
-4. Search for relationship models: `Grep pattern="@Relationship" glob="**/*.swift"`
+4. Search for relationship models: `Grep pattern="@Relationship" glob="**/*.swift" path="Sources/"`
+5. Check for recently changed models: `git log --since="3 months ago" --name-only --diff-filter=M -- "Sources/**/*.swift"` (note: `**` not just `Sources/Models/`)
 
-### Output
+**Common locations missed if only checking Sources/Models/:**
+- `Sources/Features/*/` (feature-specific models like ScoutBookmark, ScoutRecentScan)
+- `Sources/Data/` or `Sources/Database/`
+- Root of `Sources/` itself
 
-| # | Model | File | Fields | Relationships | Serialized In | Risk |
-|---|-------|------|--------|---------------|---------------|------|
-| 1 | Item | Item.swift | 47 | 12 | Backup, CSV, CloudKit | High |
-| 2 | PhotoAttachment | PhotoAttachment.swift | 6 | 1 | Backup, CloudKit | Medium |
+### Risk Criteria
 
-**Risk criteria:**
-- **High** — Many fields (>20) + multiple serialization targets + external sync
-- **Medium** — Moderate fields (10-20) + some serialization
-- **Low** — Simple model (<10 fields), local only, cache/ephemeral
+| Risk | Criteria |
+|------|----------|
+| **High** | Many fields (>20) + multiple serialization targets + external sync or externalStorage |
+| **Medium** | Moderate fields (10-20) + some serialization |
+| **Low** | Simple model (<10 fields), local only, cache/ephemeral |
+
+**Risk boosters** (promote a model one level):
+- Has `@Attribute(.externalStorage)` on any field (delete/sync crash risk)
+- Changed in the last 3 months (new fields may be missing from serialization)
+- Has prior findings in `.radar-suite/ledger.yaml`
+- Is referenced by 3+ other models (hub model, high blast radius)
+
+### Output: Risk-Ranked Model Inventory
+
+Present models grouped by risk level, sorted within each group by field count descending. Include recently-changed indicator and prior finding count.
+
+```
+Found [N] @Model classes. Ranked by audit priority:
+
+HIGH RISK (recommend auditing first)
+  1. Item              — 88 fields, 10 rels, Backup+CSV+CloudKit, changed 3d ago
+  2. ExtendedWarranty  — 43 fields, 1 rel, Backup+CloudKit
+  3. RMARecord         — 41 fields, 1 rel, Backup, changed 2w ago
+
+MEDIUM RISK
+  4. DonationRecord    — 30 fields, 0 rels, Backup+CSV, externalStorage ⚠
+  5. MaintenanceTask   — 28 fields, 1 rel, Backup
+  6. ScoutBookmark     — 25 fields, 0 rels, Backup, externalStorage ⚠
+  ...
+
+LOW RISK (cache/ephemeral, audit only if time permits)
+  18. AIResponseCache  — 14 fields, cache only, externalStorage ⚠
+  ...
+
+[N] models with prior findings: [list RS-NNN IDs if any]
+```
+
+Mark externalStorage models with ⚠ since they have elevated delete/sync crash risk.
+
+### Standalone Command: `/data-model-radar models`
+
+When invoked with the `models` argument, run ONLY Step 0 (discovery) and present the risk-ranked inventory. Do not start any audit. Do not ask setup questions. This is a read-only browse command.
+
+After presenting the inventory, offer:
+```
+Options:
+1. Audit a specific model — pick from the list above
+2. Audit all High Risk models — deep audit of [N] models (~[time])
+3. Full audit — all [N] models across 7 domains (~[time])
+4. Done — exit without auditing
+```
+
+### Model Selection Menu (when user chooses "Audit a specific model")
+
+When the user selects a single-model audit (either from the interactive menu or via `/data-model-radar [ModelName]`), **always run Step 0 first** to present the risk-ranked inventory before asking which model. Do NOT ask the user to name a model blind.
+
+**Exception:** If the user provided a model name directly (e.g., `/data-model-radar Item`), skip the selection menu and audit that model immediately. The user already knows what they want.
+
+After presenting the inventory, ask:
+```
+Which model to deep-audit? (enter number, model name, or "all high")
+```
+
+The `AskUserQuestion` options should list the top 4 models by risk as selectable options, with "Other" allowing any model name.
 
 ### Recently Changed Fields (Deep mode)
 
@@ -195,15 +261,13 @@ For high-risk models, identify fields most likely to have serialization gaps:
 git log --since="3 months ago" -p -- Sources/Models/Item.swift | grep "^+.*var " | head -20
 ```
 
-Fields added recently are highest risk — they may not have been added to backup/CSV/CloudKit structs yet. **Audit these first in Domain 2.**
-
-Recommend which models to audit first (highest risk, most relationships).
+Fields added recently are highest risk -- they may not have been added to backup/CSV/CloudKit structs yet. **Audit these first in Domain 2.**
 
 ---
 
 ## Step 1: Per-Model Audit
 
-Audit one model at a time across all 8 domains.
+Audit one model at a time across all 9 domains (1, 1.5, 2, 3, 4, 5, 6, 7, 7.5) plus Domain 8 delegation.
 
 ### Before Starting (First Model Only)
 
@@ -229,6 +293,32 @@ Ask setup questions:
 
 **Output per finding:** What field is missing, why it should exist, which code paths would use it.
 
+### Domain 1.5: Computed Property Correctness `mixed`
+
+Models often embed business logic in computed properties (e.g., `effectiveReplacementCostInCents`, `isNearingEndOfLife`, `warrantyStatus`). A wrong computation is a model-layer bug that affects every view consuming it.
+
+**What to check:**
+
+- **Nil propagation chains:** Computed properties that chain optional fields. Does `effectiveReplacementCostInCents` correctly fall back from `replacementCostInCents` to `priceInCents` to `0`? Does the fallback chain match business intent?
+- **Fallback default correctness:** When a computed property returns a default for nil input, is the default appropriate? Returning `0` for a missing price may be wrong if downstream code interprets `0` as "free" rather than "unknown."
+- **Stale input assumptions:** Properties like `isReplacementCostStale` that use `assetAge > 2.0` embed a threshold. Is the threshold reasonable? Is it documented? Could it be a user-configurable setting?
+- **Circular dependencies:** Property A reads property B which reads property A. SwiftData models can create subtle cycles through relationship traversal.
+- **Calendar/date correctness:** Properties computing durations (`assetAge`, `daysRemaining`) that use hardcoded values like `365.25` instead of `Calendar` APIs. Check for leap year handling, timezone assumptions.
+- **Currency computation safety:** Properties combining `*InCents` fields. Verify they handle nil correctly and don't accidentally mix dollars and cents.
+
+**Method (Deep):**
+1. Grep the model file and its extensions for `var.*:.*{` (computed properties with getters)
+2. For each computed property that involves arithmetic, date math, or chained optionals, read the implementation
+3. Check: are the inputs always available when this property is accessed? What happens when they're nil?
+4. For currency computations, verify consistent units (all cents, no mixed dollars/cents)
+
+**Method (Quick):**
+1. List computed properties from the model file
+2. Check only currency and date computations
+3. Label grade as `(quick)`
+
+**Output per finding:** The property, what it computes, what's wrong, and a concrete example of incorrect output.
+
 ### Domain 2: Serialization Coverage `enumerate-required`
 
 **MANDATORY CHECKLIST — verify each target explicitly:**
@@ -246,8 +336,37 @@ For the model being audited, check ALL applicable serialization targets. Do not 
 **Method:**
 1. Read the model — list all stored properties (exclude `@Transient` computed properties)
 2. Read each serialization struct/function listed above
-3. Diff: model fields NOT in serialization = potential data loss on round-trip
-4. For each gap, determine: intentional exclusion or oversight?
+3. Diff: model fields NOT in serialization = potential gap
+4. For each gap, classify using the Intentional Exclusion Framework below
+
+### Intentional Exclusion Framework
+
+Not every serialization gap is a bug. Some fields are intentionally excluded from certain targets. Before reporting a gap as a finding, classify it:
+
+| Classification | Meaning | Action | Example |
+|---------------|---------|--------|---------|
+| **Gap (report)** | Field carries user data that would be lost on round-trip | Report as finding | `purchasePrice` missing from CSV import |
+| **Intentional: format mismatch** | Field type doesn't fit the target format | Document, don't report | `priceHistoryData` (JSON blob) excluded from CSV |
+| **Intentional: internal metadata** | Field is sync/system infrastructure, not user data | Document, don't report | `cloudSyncID`, `cloudKitRecordID` excluded from CSV |
+| **Intentional: relationship data** | Nested objects that need their own serialization | Document, note if the child model IS serialized | `attachments` excluded from CSV (binary data) |
+| **Intentional: scope boundary** | Target intentionally covers a subset | Document, don't report | SharedZone CloudKit syncs 22 fields (household subset) |
+
+**How to classify:**
+- **User data test:** If this field were lost during export-import, would the user notice? If yes, it's a gap. If no (sync IDs, internal timestamps), it's intentional.
+- **Format test:** Could this field reasonably be represented in the target format? JSON blobs and binary data can't go in CSV. That's a format mismatch, not a gap.
+- **Subset test:** Does the target explicitly define a subset? (e.g., SharedZone syncs "household-visible" fields only.) If the exclusion matches the subset definition, it's intentional scope.
+
+**Output:** In the Domain 2 coverage table, add an `Exclusion` column for fields not in a target:
+
+```
+| Field | Model | Backup | CSV Export | CSV Import | CloudKit | Exclusion Reason |
+|-------|:-----:|:------:|:---------:|:----------:|:--------:|-----------------|
+| cloudSyncID | yes | yes | no | no | yes | Internal metadata |
+| priceHistoryData | yes | yes | no | no | yes | Format mismatch (JSON blob) |
+| attachments | yes | yes | no | no | yes | Relationship data (binary) |
+```
+
+**Grade impact:** Intentional exclusions do NOT lower the domain grade. Only unclassified gaps or gaps classified as "report" lower the grade.
 
 **Output:** Side-by-side coverage table:
 
@@ -324,7 +443,34 @@ For each sampled field:
 Grep pattern="\.fieldName" glob="**/*.swift" path="Sources/" output_mode="files_with_matches"
 ```
 
-Flag: 0 read hits in Sources/ (excluding the model file itself and Tests/) = dead field candidate. Verify by reading one suspected consumer.
+Flag: 0 read hits in Sources/ (excluding the model file itself and Tests/) = dead field candidate.
+
+**MANDATORY verification before reporting any dead field:**
+1. **Confirm the field exists.** Grep the model file itself for `var fieldName`. If the field doesn't exist in the model, it was hallucinated. Do NOT report hallucinated fields.
+2. **Check extension files.** Grep for `extension ModelName` across Sources/ and read any matches. A field may appear "dead" because its consumer is in `Model+Extension.swift`, not the main model file. See Extension Discovery below.
+3. **Check backup/serialization code.** A field that exists only in the model and backup is "backed up but not displayed," which is different from "dead." Classify correctly.
+4. **Read one suspected consumer.** If the field name appears in a file, read the relevant lines to confirm it's actually reading this model's field (not a different type with the same property name).
+
+Only after all 4 checks pass with 0 consumers should a field be reported as dead.
+
+### Extension Discovery (MANDATORY before declaring fields dead)
+
+Models often split logic across multiple files via extensions (e.g., `Item+Warranty.swift`, `Item+Maintenance.swift`). A field consumer in an extension file is invisible if only the main model file is read.
+
+**Before running field usage grep for any model, discover all extension files:**
+
+```
+Grep pattern="extension ModelName" glob="**/*.swift" path="Sources/" output_mode="files_with_matches"
+```
+
+Also check for naming convention files:
+```
+Glob pattern="**/ModelName+*.swift" path="Sources/"
+```
+
+**Include all discovered extension files** in the "exclude self" list when counting consumer files. A field referenced only in the model file AND its extensions is not dead if the extension provides computed properties consumed by views.
+
+**Example:** `Item.swift` has extensions in `Item+Warranty.swift`, `Item+Maintenance.swift`, `Item+Extensions.swift`, `Item+PriceWatch.swift`, `Item+Rating.swift`, `Item+Timeline.swift`, `Item+Accessible.swift`. A field like `warrantyMonths` may only appear in `Item.swift` and `Item+Warranty.swift`, but `Item+Warranty.swift` provides computed properties like `expirationDate` that ARE consumed by views. The field is not dead.
 
 **Method (Quick — for Low-risk models):**
 1. List all stored properties
@@ -356,6 +502,52 @@ Flag: 0 read hits in Sources/ (excluding the model file itself and Tests/) = dea
 - **Naming patterns:** `priceInCents` vs `deductibleInCents` vs `fairMarketValue` (not in cents?) — consistent currency representation?
 - **Shared protocol conformances:** Do models that should be `Sendable` all conform? Do models with `cloudSyncID` all use it the same way?
 
+### Domain 7.5: Near-Duplicate Model Detection `mixed`
+
+Detect models that share a high percentage of fields and methods, indicating they should be consolidated via a shared protocol or base pattern.
+
+**When to run:**
+- **3+ models audited this session:** Always run. Compare all audited models pairwise.
+- **Single model audit:** Check the model's field list against all other models discovered in Step 0. Use a lightweight comparison (field name overlap) rather than deep reading.
+
+**How to detect:**
+
+1. For each pair of models (A, B), compute field overlap:
+   ```
+   shared_fields = fields_in_A ∩ fields_in_B (by name AND type)
+   overlap_ratio = shared_fields / min(fields_in_A, fields_in_B)
+   ```
+2. Flag pairs with `overlap_ratio >= 0.70` (70%+ shared fields)
+
+3. For flagged pairs, also check method duplication:
+   - Grep both files for `func ` declarations
+   - Compare method signatures (name + parameter types)
+   - Flag if 50%+ of methods also overlap
+
+**What to look for beyond field overlap:**
+- **Duplicated init logic:** Both models have `init(from session:)` that copies the same fields
+- **Duplicated computed properties:** Same property names with same logic
+- **Duplicated static methods:** `generateThumbnail()`, helper functions copy-pasted
+- **Conversion methods between them:** `modelA.toModelB()` that manually copies every field (fragile, breaks when fields are added to one but not the other)
+
+**Classification:**
+
+| Overlap | Recommendation |
+|---------|---------------|
+| 90%+ fields, 50%+ methods | Extract shared protocol with default implementations |
+| 70-89% fields | Consider shared protocol for common fields; document why they diverge |
+| 50-69% fields | Note the similarity; likely intentional domain separation |
+| <50% fields | Not duplicates, skip |
+
+**Output per finding:** The two models, overlap percentage, list of shared fields, list of duplicated methods, and recommended consolidation approach.
+
+**Example finding:**
+```
+ScoutBookmark and ScoutRecentScan share 90% of fields (20/22) and 6 identical
+computed properties. Both have duplicated init(from:), toSession(), and
+generateThumbnail() methods. Recommend extracting ScoutIdentifiable protocol.
+```
+
 ### Domain 8: Time Bomb Audit
 
 **Delegated to `/time-bomb-radar`** -- a standalone skill in the radar-suite family.
@@ -363,6 +555,88 @@ Flag: 0 read hits in Sources/ (excluding the model file itself and Tests/) = dea
 When running a full data-model-radar audit, invoke `/time-bomb-radar` after completing Domains 1-7. Its findings feed into the data-model-radar handoff under `for_capstone_radar.blockers[]`.
 
 When running data-model-radar standalone (not as part of a full suite run), note in the handoff that Domain 8 was not run and recommend `/time-bomb-radar` as a follow-up.
+
+---
+
+## Domain Scoring Rubric
+
+Every domain produces a letter grade. Use this rubric so grades are consistent across sessions, models, and auditors.
+
+### Grade Scale
+
+| Grade | Score | Meaning |
+|-------|-------|---------|
+| A | 95-100 | No findings. All checks verified with evidence. |
+| A- | 90-94 | Minor observations only (hygiene, documentation). No functional gaps. |
+| B+ | 85-89 | 1-2 LOW findings. No data loss or crash risk. |
+| B | 80-84 | 1 MEDIUM finding or 3+ LOW findings. |
+| B- | 75-79 | 2-3 MEDIUM findings. Functional gaps exist but workarounds available. |
+| C+ | 70-74 | 1 HIGH finding or 4+ MEDIUM findings. |
+| C | 65-69 | 2+ HIGH findings. Significant gaps affecting data integrity. |
+| C- | 60-64 | Multiple HIGH findings with user-visible impact. |
+| D | 50-59 | CRITICAL finding present. Ship blocker. |
+| F | <50 | Multiple CRITICAL findings or fundamental design flaw. |
+
+### Per-Domain Scoring Rules
+
+**Domain 1 (Field Completeness):**
+- Start at A. Deduct per missing field by severity: missing enum case = -3, missing field that would prevent a workflow = -10, missing optional convenience field = -1.
+
+**Domain 1.5 (Computed Property Correctness):**
+- Start at A. Deduct per incorrect computation: wrong fallback default = -5, nil propagation crash risk = -10, stale threshold = -2, currency unit mismatch = -15.
+
+**Domain 2 (Serialization Coverage):**
+- Start at A. Deduct per unintentional gap: field missing from backup = -10, field missing from CSV = -5, field missing from CloudKit = -5. Intentional exclusions (per framework) do NOT deduct.
+- Quick-depth audits cap at B+ (unverified targets may hide gaps).
+
+**Domain 3 (Relationship Integrity):**
+- Start at A. Deduct: missing inverse = -10, wrong delete rule = -15, orphan risk = -5, undocumented cascade to externalStorage = -20.
+
+**Domain 4 (Semantic Clarity):**
+- Start at A. Deduct: nil-vs-zero ambiguity with no distinguishing flag = -5, string field that should be enum = -3, boolean with ambiguous false = -2.
+
+**Domain 5 (Field Usage Mapping):**
+- Start at A. Deduct per dead field: dead field with no serialization = -2, dead field that IS serialized (wasted backup space) = -3, phantom field = -5, write-only field = -3.
+- Quick-depth audits cap at B+ (stratified sampling may miss dead fields).
+
+**Domain 6 (Migration Safety):**
+- Start at A. Deduct: no VersionedSchema at all = -15, schema version behind model = -10, missing migration stage for type change = -20, no migration needed (additive only, correct single-version state) = 0.
+
+**Domain 7 (Cross-Model Consistency):**
+- Start at A. Deduct: inconsistent identifier strategy = -5, inconsistent currency representation = -5, inconsistent timestamp naming = -3, missing shared protocol conformance = -3.
+- Partial comparisons (single model audit) cap at A- (can't fully verify without reading all models).
+
+**Domain 7.5 (Near-Duplicate Detection):**
+- Start at A. Deduct: 90%+ overlap without shared protocol = -5, duplicated methods = -3 each, fragile conversion method = -3.
+
+### Evidence Requirement
+
+**Every grade must include an Evidence block:**
+```
+**Evidence:** Read [files read with line ranges]. Verified [what was checked].
+[What was NOT checked, if anything].
+**Confidence:** [verified | quick | partial]
+```
+
+A grade without evidence is not a grade. It's a guess. Downgrade to `needs-verification` if evidence is absent.
+
+### Overall Model Grade
+
+The overall model grade is the **weighted average** of domain grades:
+
+| Domain | Weight | Rationale |
+|--------|--------|-----------|
+| 1. Field Completeness | 10% | Foundation, but gaps are usually LOW severity |
+| 1.5 Computed Properties | 10% | Business logic correctness |
+| 2. Serialization Coverage | 25% | Data loss is the highest-impact model bug |
+| 3. Relationship Integrity | 15% | Cascade/orphan bugs cause crashes |
+| 4. Semantic Clarity | 5% | Important but rarely causes data loss |
+| 5. Field Usage Mapping | 10% | Dead fields are hygiene, not crashes |
+| 6. Migration Safety | 15% | Wrong migration = app won't launch |
+| 7. Cross-Model Consistency | 5% | Consistency aids maintenance |
+| 7.5 Near-Duplicate Detection | 5% | Code hygiene |
+
+Convert letter grades to numeric (A=97, A-=92, B+=87, B=82, B-=77, C+=72, C=67, C-=62, D=55, F=40), compute weighted average, convert back to letter.
 
 ---
 
@@ -509,7 +783,7 @@ date: <ISO 8601>
 project: <project name>
 models_audited: <count>
 audit_depth: <full | partial | quick>
-domains_verified: [1, 2, 3, 4, 5, 6, 7]
+domains_verified: [1, 1.5, 2, 3, 4, 5, 6, 7, 7.5]
 domains_at_quick_depth: []
 domains_skipped: []
 

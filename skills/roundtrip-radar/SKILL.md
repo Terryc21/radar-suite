@@ -74,7 +74,7 @@ Trace: Dashboard → Add Item → Photo → Save
 | 4 | Save item | ItemViewModel.swift | 112-134 | item + attachments | modelContext.save() | ok |
 
 Issues Found:
-| # | Finding | Urgency | Risk: Fix | Risk: No Fix | ROI | Blast Radius | Fix Effort |
+| # | Finding | Urgency | Risk: Fix | Risk: No Fix | ROI | Blast Radius | Fix Effort | Status |
 ```
 
 ### When to Use
@@ -387,7 +387,7 @@ Never start a new check you can't finish.
 Adjust ALL output based on the user's experience level:
 
 - **Beginner**: Plain language, real-world analogies, define terms on first use ("a model context — the database connection SwiftUI uses to save data"). Explain why each finding matters. Use compact 4-column tables with prose explanations below.
-- **Intermediate**: Standard SwiftUI terminology without defining basics, but explain non-obvious patterns (e.g., why a `Task.sleep` workaround indicates a broken refresh path). Full 8-column tables with brief descriptions.
+- **Intermediate**: Standard SwiftUI terminology without defining basics, but explain non-obvious patterns (e.g., why a `Task.sleep` workaround indicates a broken refresh path). Full 9-column tables with brief descriptions.
 - **Experienced** (default): Concise findings, no definitions. "Missing `modelContext.save()` after batch delete in `BulkEditViewModel.swift:142`". Full tables, terse text.
 - **Senior/Expert**: Minimal prose. File:line + one-line description only. Findings table IS the output. Skip design principle citations and category explanations.
 

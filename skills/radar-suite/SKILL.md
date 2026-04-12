@@ -75,8 +75,9 @@ On EVERY `/radar-suite` invocation, check `.radar-suite/session-prefs.yaml`:
 - **Beginner** -- Plain language, define terms
 
 **Q2 — Table format?**
-- **Full tables (Recommended)** -- 8-column Issue Rating Tables
+- **Full tables (Recommended)** -- 9-column Issue Rating Tables at every decision point
 - **Compact tables** -- 3-column with details below
+- **No tables** -- Skip rating tables entirely (findings listed as text)
 
 **Q3 — Fix handling?**
 - **Auto-fix safe items (Recommended)** -- Apply isolated, low-blast-radius fixes automatically
@@ -93,12 +94,41 @@ Store answers in `.radar-suite/session-prefs.yaml` as `experience_level`, `table
 
 The invocation flow is strictly:
 1. **Session Setup** (this section) -- configure or confirm preferences
-2. **Stale-Deferred Check** -- check for overdue findings
-3. **Fix Timing** -- ask when fixes should be applied (fresh audits only)
-4. **Interactive Menu** -- choose what to audit
-5. **Skill execution** -- run the selected skill(s)
+2. **Write Execution Rules Memory** -- write/update the auto-generated memory (see below)
+3. **Stale-Deferred Check** -- check for overdue findings
+4. **Fix Timing** -- ask when fixes should be applied (fresh audits only)
+5. **Interactive Menu** -- choose what to audit
+6. **Skill execution** -- run the selected skill(s)
 
-Never skip steps 1-3. Never start exploration or scanning before completing them.
+Never skip steps 1-4. Never start exploration or scanning before completing them.
+
+### Write Execution Rules Memory (MANDATORY -- after session setup)
+
+After session setup completes (step 1), write or update a memory file that captures the cross-cutting rules most commonly violated during long sessions. This memory survives context compression and is re-loaded from disk on every session.
+
+**File:** Write to the project's auto-memory directory (the same location used by the `auto memory` system). The file name is `radar_suite_execution_rules.md`.
+
+**Content (write exactly this, substituting session prefs):**
+
+```markdown
+---
+name: Radar Suite execution rules
+description: Auto-generated rules for radar-suite display and behavior. Re-read before every AskUserQuestion.
+type: feedback
+---
+1. 9-column table at every decision point: #, Finding, Urgency, Risk:Fix, Risk:No Fix, ROI, Blast Radius, Fix Effort, Status. Omit Status on first display only. Include on every re-display. Skip if TABLE_FORMAT = none.
+2. Finding IDs always include short_title: RS-NNN (short description), never bare RS-NNN.
+3. Progress banner after every wave, phase, or commit. Never leave a blank prompt. Always follow with the rating table (per rule 1), then AskUserQuestion.
+4. Recommend fixing over deferring when effort <= Medium and finding is in scope.
+5. Session prefs: experience=[USER_EXPERIENCE], tables=[TABLE_FORMAT], fixes=[FIX_MODE]. Re-read .radar-suite/session-prefs.yaml if unsure.
+6. Enumerate-then-verify: any domain grade must cite files read and patterns checked. "Looks clean" without grep is a failing grade for the auditor.
+```
+
+**Rules:**
+- Substitute `[USER_EXPERIENCE]`, `[TABLE_FORMAT]`, `[FIX_MODE]` with actual values from session-prefs.yaml
+- If the file already exists, overwrite it (prefs may have changed)
+- Add an entry to MEMORY.md if not already present: `- [Radar Suite execution rules](radar_suite_execution_rules.md) -- auto-generated display and behavior rules`
+- Do NOT ask the user for permission to write this file; it is part of session setup
 
 ---
 

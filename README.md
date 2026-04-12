@@ -6,11 +6,35 @@
   <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" width="150">
 </a>
 
-**8 audit skills for Claude Code that find bugs in your Swift/SwiftUI app before your users do. Every finding cites a real file:line pattern in your own codebase — not generic advice. Heavy audits; see [Session Strategy](#session-strategy-read-this-before-your-first-run) before your first run.**
+**8 audit skills for Claude Code that find bugs in your Swift/SwiftUI app before your users do. Every finding cites a real file:line pattern in your own codebase — not generic advice. 9-column rating tables with Status tracking at every decision point. Heavy audits; see [Session Strategy](#session-strategy-read-this-before-your-first-run) before your first run.**
 
 Built during the development of [Stuffolio](https://stuffolio.app), an iOS/macOS app that tracks the things you own across their full life cycle — warranty, repair, and legacy. The audit skills came out of shipping real features like Legacy Wishes and Stuff Scout on a 600-file codebase.
 
 One install gives you a complete audit pipeline — from data model integrity to visual quality to release readiness.
+
+## What's New in v2.2 (2026-04-12)
+
+**data-model-radar v2.2.0** with 7 improvements driven by real audit findings:
+
+**Two new domains:**
+- **Domain 1.5: Computed Property Correctness** checks business logic in computed properties for nil propagation bugs, wrong fallback defaults, currency unit mismatches, and stale threshold assumptions.
+- **Domain 7.5: Near-Duplicate Model Detection** flags models sharing 70%+ fields that should be consolidated via a shared protocol.
+
+**Reliability fixes that prevent false findings:**
+- **Full-tree discovery** scans all of `Sources/`, not just `Sources/Models/`. Models under `Sources/Features/` (like ScoutBookmark) are no longer missed.
+- **Field existence gate** requires grep verification that a field actually exists before reporting it dead. Prevents hallucinated field names from reaching you.
+- **Extension discovery** reads `Model+Extension.swift` files before declaring fields unused. A field consumed only in an extension is not dead.
+- **Intentional exclusion framework** classifies serialization gaps as intentional (format mismatch, internal metadata, scope boundary) or real. Intentional exclusions don't lower the domain grade.
+
+**Consistent grading:**
+- **Scoring rubric** with A-F criteria, per-domain deduction rules, evidence requirements, and weighted overall grade (Domain 2 Serialization = 25%, Domain 3 Relationships = 15%, Domain 6 Migration = 15%).
+
+**Cross-suite improvements (all skills):**
+- **9-column rating table** adds Status column (Open/Fixed/Deferred/Skipped) on re-display. Omitted on first display when all findings are Open.
+- **Rating Table Gate** requires the table before every approval/continue/commit prompt. The most common display failure mode is now structurally prevented.
+- **"No tables" opt-out** in session setup for users who prefer text-only findings.
+- **Auto-generated execution rules memory** written on first invocation, survives context compression in long sessions.
+- **Rules Summary** block at top of core.md with the 6 most commonly violated rules.
 
 ## What's New in v2.1 (2026-04-11)
 
@@ -55,7 +79,7 @@ Most auditors are the building code. Radar Suite is the home inspector.
 |-------|---------------|
 | **radar-suite** | Unified entry point — routes to any skill or runs full audit sequence |
 | **radar-suite-axis-classification** | Foundation skill. Invoked automatically by every other radar before findings are emitted. Provides the 3-axis framework, verification checklist (reachability trace, whole-file scan, branch enumeration, pattern citation lookup), coaching schema, and schema gate that rejects findings without file:line citations. |
-| **data-model-radar** | Your data definitions -- are fields backed up correctly? Does CSV export lose data? Are database relationships safe? |
+| **data-model-radar** | Your data definitions across 9 domains: field completeness, computed property correctness, serialization coverage (with intentional exclusion framework), relationship integrity, semantic clarity, field usage mapping (with extension discovery and hallucination guards), migration safety, cross-model consistency, and near-duplicate model detection. Risk-ranked model inventory shows which models to audit first. |
 | **time-bomb-radar** | Deferred operations -- will your app crash 30 days after release? Cascade deletes, cache expiry, trial paths, background tasks, date transitions, scheduled side effects |
 | **ui-path-radar** | Navigation flows -- can users reach every feature? Are there dead ends or broken links? Every one of the 30 issue categories has a default axis with reclassification rules. |
 | **roundtrip-radar** | Data round-trips — does data survive backup→restore, export→import, create→edit→save? Every finding cites the full UI→manager→model→persistence→UI path in its verification log. Detects collection narrowing (arrays silently lose elements) and bridge parity gaps (multiple consumers of the same model read different field subsets). |
@@ -213,7 +237,7 @@ The per-skill handoff YAMLs are still written for backward compatibility. The le
 
 ## What Each Skill Finds (Examples)
 
-**data-model-radar** found that InsuranceProfile and DonationRecord weren't included in backups — meaning users would lose their insurance settings and tax records on restore. Its time bomb audit found a deferred deletion that would crash the app 30 days after archiving items — invisible during development because no test data was old enough to trigger it.
+**data-model-radar** found that InsuranceProfile and DonationRecord weren't included in backups — meaning users would lose their insurance settings and tax records on restore. Its time bomb audit found a deferred deletion that would crash the app 30 days after archiving items — invisible during development because no test data was old enough to trigger it. Its near-duplicate detection (Domain 7.5) found two Scout models sharing 90% of fields and methods with no shared protocol — every bug fix had to be applied twice. Its computed property check (Domain 1.5) catches business logic bugs like fallback chains that return `0` when "unknown" is the correct semantic — invisible in UI because `$0.00` looks intentional.
 
 **ui-path-radar** found 3 dead-end screens where users could navigate in but had no way to navigate out.
 

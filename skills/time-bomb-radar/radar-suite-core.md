@@ -4,6 +4,19 @@
 
 ---
 
+## Rules Summary (re-read before every AskUserQuestion)
+
+These are the 6 rules most commonly violated during long audit sessions. They are elaborated in detail below, but this block exists so the rules survive context compression.
+
+1. **9-column table at every decision point.** Columns: #, Finding, Urgency, Risk:Fix, Risk:No Fix, ROI, Blast Radius, Fix Effort, Status. Omit Status on first display only. Include it on every re-display (progress banners, wave approvals, commit prompts). Skip entirely if `TABLE_FORMAT = none`.
+2. **Finding IDs always include short_title.** Write `RS-002 (CSV isPriceEntered)`, never bare `RS-002`. After hours of auditing, bare IDs are meaningless.
+3. **Progress banner after every wave/commit.** Never leave a blank prompt. Always follow with the rating table (per rule 1), then `AskUserQuestion`.
+4. **Recommend fixing over deferring.** When effort is Trivial/Small/Medium and the finding is in scope, the "(Recommended)" option should be "Fix now", not "Defer."
+5. **Re-read session prefs if unsure.** Experience level, table format, and fix mode are in `.radar-suite/session-prefs.yaml`. These preferences apply to ALL output for the session.
+6. **Enumerate-then-verify.** Any domain grade must cite files read and patterns checked. "Looks clean" without grep evidence is a failing grade for the auditor, not a passing grade for the codebase.
+
+---
+
 ## Session Setup (MANDATORY — first invocation only)
 
 Ask all setup questions in ONE `AskUserQuestion` call with 4 questions:
@@ -15,8 +28,9 @@ Ask all setup questions in ONE `AskUserQuestion` call with 4 questions:
 - **Beginner** — Plain language, define terms
 
 **Question 2: "Table format?"**
-- **Full tables (Recommended)** — 8-column Issue Rating Tables
+- **Full tables (Recommended)** — 8-column Issue Rating Tables at every decision point
 - **Compact tables** — 3-column with details below
+- **No tables** — Skip rating tables entirely (findings still listed as text)
 
 **Question 3: "Fix handling?"**
 - **Auto-fix safe items (Recommended)** — Apply isolated, low-blast-radius fixes automatically
@@ -27,7 +41,7 @@ Ask all setup questions in ONE `AskUserQuestion` call with 4 questions:
 - **No, let's go (Recommended)** — Skip explanation
 - **Yes, briefly** — 3-5 sentence explanation
 
-Store as: `USER_EXPERIENCE`, `TABLE_FORMAT`, `FIX_MODE`. Apply to ALL output for session.
+Store as: `USER_EXPERIENCE`, `TABLE_FORMAT` (`full`, `compact`, or `none`), `FIX_MODE`. Apply to ALL output for session.
 
 **Batch mode behavior:** When enabled, group findings by `group_hint` and present one approval prompt per group instead of per-finding. User can still override individual items by typing "except [N]".
 
@@ -96,7 +110,7 @@ On first radar-suite skill invocation, check for `.radar-suite/session-prefs.yam
 ```yaml
 # .radar-suite/session-prefs.yaml
 experience_level: experienced  # beginner|intermediate|experienced|senior
-table_format: full             # full|compact
+table_format: full             # full|compact|none
 fix_mode: auto                 # auto|review|batch
 last_skill: data-model-radar
 last_session: 2026-03-29T10:30:00Z
@@ -388,13 +402,16 @@ entries:
 Present fixes in waves, not one-by-one. Group by `group_hint` from handoff YAML.
 
 **Per-wave prompt (replaces per-finding prompts):**
+
+Display the full Issue Rating Table per the Rating Table Gate rule. Include a Status column when re-displaying after fixes.
+
 ```
 Wave [N]: [group_hint description] — [count] fixes
 
-| # | Finding | Urgency | Blast Radius | Fix Effort |
-|---|---------|---------|--------------|------------|
-| 1 | ... | 🟡 HIGH | 2 files | Small |
-| 2 | ... | 🟢 MED | 1 file | Trivial |
+| # | Finding | Urgency | Risk: Fix | Risk: No Fix | ROI | Blast Radius | Fix Effort | Status |
+|---|---------|---------|-----------|--------------|-----|--------------|------------|--------|
+| 1 | ... | 🟡 HIGH | ⚪ Low | 🟡 High | 🟠 Excellent | ⚪ 2 files | Small | Open |
+| 2 | ... | 🟢 MEDIUM | ⚪ Low | 🟢 Medium | 🟢 Good | ⚪ 1 file | Trivial | Fixed |
 
 Options:
 1. **Apply all** — fix all [N] items in this wave
@@ -596,7 +613,7 @@ After 50 tool calls:
 
 The last two lines are hints. Omit the `--explain` hint line if `EXPLAIN_FINDINGS` is already true. Omit the sort hint if the user has already changed sort mode this session (they know it exists).
 
-Always follow with `AskUserQuestion`. Never leave blank prompt.
+Always follow with the Issue Rating Table (per Rating Table Gate rule), then `AskUserQuestion`. Never leave blank prompt.
 
 ---
 
@@ -626,7 +643,7 @@ Emitted at every skill transition (start and completion) in Tier 2/3. Distinct f
 
 ### 2. Per-Skill Mini Rating Table
 
-When a skill completes inside a pipeline, it emits its standard 8-column rating table with a "PRELIMINARY" header. This table is kept in the output (not replaced by capstone). It gives users an anchor for evaluating urgency without waiting hours for the capstone report.
+When a skill completes inside a pipeline, it emits its 9-column rating table (including Status) with a "PRELIMINARY" header. This table is kept in the output (not replaced by capstone). It gives users an anchor for evaluating urgency without waiting hours for the capstone report.
 
 **Header format:**
 ```
@@ -695,10 +712,15 @@ RS-002 (cascade delete crash)
 
 ## Issue Rating Table Format
 
-**8 columns required (no exceptions):**
+**9 columns (Status column added on re-display):**
 
-| #   | Finding              | Urgency      | Risk:Fix | Risk:NoFix | ROI      | Blast    | Effort |
-|-----|----------------------|--------------|----------|------------|----------|----------|--------|
+| #   | Finding              | Urgency      | Risk:Fix | Risk:NoFix | ROI      | Blast    | Effort | Status |
+|-----|----------------------|--------------|----------|------------|----------|----------|--------|--------|
+
+**Status column rules:**
+- **Omit on first display** (all findings are Open, so the column adds no information)
+- **Include on every re-display** (progress banners, wave approvals, commit prompts, ledger views)
+- Values: `Open` (default), `Fixed` (code change applied), `Deferred` (postponed with reason), `Skipped` (user declined to fix)
 
 > **Terminal width:** If the table renders as vertical blocks instead of horizontal rows, tell the user: "The rating table needs a wider terminal to display correctly. Try widening your window or using full-screen mode." Do NOT switch to a vertical/list format -- always render as a table.
 
@@ -761,6 +783,30 @@ Rules:
 - For code-only findings (⚪ LOW), use "Developer experience" instead.
 - Order matches the table. Place after the table, before the next-step suggestion.
 - Default is off. The table is the primary output; explanations are supplementary.
+
+---
+
+## Rating Table Gate (MANDATORY unless TABLE_FORMAT = none)
+
+**Self-check rule:** Before emitting ANY `AskUserQuestion` that asks the user to approve, continue, commit, or choose next steps, verify that the current message includes the Issue Rating Table. If it does not, insert it before the prompt.
+
+**When to display (or re-display) the rating table:**
+
+| Trigger | Required? | Status column? | Notes |
+|---------|-----------|:--------------:|-------|
+| Findings first presented after scan | Yes | No | All Open, column adds no info |
+| Progress banner between waves/phases/steps | Yes | **Yes** | Shows Fixed/Open/Deferred mix |
+| Before wave/fix approval prompt | Yes | **Yes** | User needs to see what's done vs. proposed |
+| Before commit prompt | Yes | **Yes** | Final go/no-go snapshot |
+| In plan files | Yes | **Yes** | Multi-wave plans show phased progress |
+| Bundle/wave completion summary | Yes | **Yes** | Post-fix state |
+| Deferred findings review | Yes | **Yes** | Status may have changed |
+
+**When TABLE_FORMAT = `none`:** Skip all table displays. Findings are still listed as text bullets with urgency/effort/status inline (e.g., "RS-022 [LOW, Small, Fixed]: ScoutBookmark.userNotes dead field"). The gate rule does not apply.
+
+**When TABLE_FORMAT = `compact`:** Use the 3-column compact variant at gate points instead of the full 9-column table. Include Status on re-display.
+
+**Why this gate exists:** The most common failure mode is displaying the table when findings are first discovered, then omitting it at the decision points where the user actually needs it (wave approvals, commit prompts, progress summaries). The gate catches this by requiring a check at every prompt.
 
 ---
 

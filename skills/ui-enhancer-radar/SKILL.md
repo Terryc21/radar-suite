@@ -2714,7 +2714,7 @@ Review your own output from this session and fill in each row:
 ```
 | # | Gate | Check | Pass? | Gaps |
 |---|------|-------|-------|------|
-| 1 | Table Format | Every findings table has 8 columns (Finding, Confidence, Urgency, Risk:Fix, Risk:NoFix, ROI, Blast Radius, Fix Effort) | ? | |
+| 1 | Table Format | Every findings table has 9 columns (Finding, Confidence, Urgency, Risk:Fix, Risk:NoFix, ROI, Blast Radius, Fix Effort, Status) | ? | |
 | 2 | Test Gate | Every committed fix has a test — or a documented exemption (visual, dead code, singleton) | ? | |
 | 3 | Visual Inspection | User confirmed they could see every view BEFORE any code changes were applied | ? | |
 | 4 | Pattern Sweep | Every similar-view finding was presented with full table + decision prompt (no silent "noted for future") | ? | |
@@ -2738,7 +2738,7 @@ After every phase/commit: print progress banner → `AskUserQuestion` → never 
 |------|------|
 | **Visual Inspection** | NEVER modify UI without user viewing it first. Phase 7b is non-negotiable. If user can't see view, save playbook and stop. |
 | **Context Exhaustion** | After 50 tool calls, downgrade findings to `probable (long context)`. Add `context_exhaustion_after: [N]` to handoff. |
-| **Table Format** | ALL findings tables need 8 columns. Count before output. No exceptions. |
+| **Table Format** | ALL findings tables need 9 columns. Count before output. No exceptions. |
 | **Test Gate** | Test with each fix. Pure visual/dead code exempt (document why). |
 
 **Phase 7 order:** 7a (Commit) → 7b (Visual Gate) → 7c (Guided Review) → 7d (Apply) → 7e (Pattern Sweep) → 7f (Refinement). Never skip 7b or 7c.
