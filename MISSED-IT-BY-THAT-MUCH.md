@@ -1,6 +1,7 @@
 # Missed It By That Much
+**Sayeth Maxwell Smart**
 
-Six audit skills passed our codebase. Each one verified its own domain correctly. They collectively missed 38 fields where users enter data, save, and can never see it again.
+Six audit skills passed my codebase. Each one verified its own domain correctly. They collectively missed 38 fields where users enter data, save, and can never see it again.
 
 ## What happened
 
@@ -28,7 +29,7 @@ If you've worked with microservices, you've seen this before. Every service pass
 
 ## The fix: cross-skill handoffs
 
-We didn't need more grep or deeper behavioral tracing. We needed a new question.
+I didn't need more grep or deeper behavioral tracing. We needed a new question.
 
 The data model auditor now classifies every field consumer as `form` (read for editing), `detail` (read for display), `serialization`, or `compute`. A field with `form` + `serialization` but no `detail` consumer gets flagged and handed to the UI path auditor, which traces the post-save journey: "After save, does the destination screen actually display this field?"
 
