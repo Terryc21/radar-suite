@@ -1229,7 +1229,28 @@ grep -rn "func fetch\|func load\|func compute" Sources/Features/ --include="*.sw
 |---------|---------------|-----------|--------------|
 | [name] | [model properties] | [what it reads] | [gap] |
 
-5. **Integration gap detection:**
+5. **Form-to-detail parity check (MANDATORY):**
+
+   For every model that has BOTH a form/edit view AND a detail/read-only view, verify that every user-editable field in the form has a corresponding display in the detail view.
+
+   **Method:**
+   a. Identify form/detail view pairs (e.g., `ExtendedWarrantyFormView` + `EnhancedItemDetailView+Sections` extended warranty section; `RMAFormView` + `RMAListView`).
+   b. In each form, enumerate fields bound to TextFields, Pickers, Toggles, DatePickers, Steppers.
+   c. For each editable field, grep the detail view for a display consumer. Classify:
+      - `displayed`: Field appears in a DetailKeyValueRow, Text(), or equivalent read-only rendering.
+      - `form-only`: Field is only read by the form to populate edit state. User enters data that vanishes after save.
+      - `computed`: Field feeds a computed property that IS displayed (indirect display -- acceptable).
+      - `serialization-only`: Field is backed up/exported but never shown to the user in any view.
+
+   d. Report `form-only` fields as findings with `pattern_fingerprint: form_editable_but_no_detail_display`.
+
+   **Why this matters:** Users who enter data and can't see it after saving perceive it as data loss, even when the data is correctly persisted. This is the most common "vanishing field" UX bug pattern and is invisible to data-integrity audits (the data round-trips perfectly).
+
+   **Handoff input:** If data-model-radar ran first, check `.agents/ui-audit/data-model-radar-handoff.yaml` for `form_only_fields[]`. These are pre-identified suspects -- verify each against the actual detail view rather than re-scanning from scratch.
+
+   **Print:** `Layer 5: ✓ Form-to-detail parity (5/[total]) — [N] form-only fields found`
+
+6. **Integration gap detection:**
 ```bash
 # Find Manager/Service classes
 grep -rn "class.*Manager\|class.*Service" Sources/ --include="*.swift" | grep -v "test\|Test"
@@ -1237,7 +1258,7 @@ grep -rn "class.*Manager\|class.*Service" Sources/ --include="*.swift" | grep -v
 # Check if feature views reference them
 ```
 
-6. **Platform parity check:**
+7. **Platform parity check:**
 ```bash
 # Find iOS-only dismiss buttons
 grep -rn "#if os(iOS)" Sources/ --include="*.swift" -A 3 | grep -i "dismiss\|toolbar\|done"
@@ -1245,9 +1266,9 @@ grep -rn "#if os(iOS)" Sources/ --include="*.swift" -A 3 | grep -i "dismiss\|too
 # Find extension files with platform-specific computed properties
 grep -rl "extension.*View" Sources/ --include="*.swift" | grep "+"
 ```
-**Print:** `Layer 5: ✓ Platform parity (4/4)`
+**Print:** `Layer 5: ✓ Platform parity (7/8)`
 
-7. Output to `layer5-data-wiring.yaml`
+8. Output to `layer5-data-wiring.yaml`
 
 ### If "diff":
 Compare current codebase against the previous audit to show what changed:

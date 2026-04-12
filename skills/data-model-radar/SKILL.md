@@ -426,6 +426,7 @@ Rules:
 - **Dead fields:** Model properties that are never read in any view, ViewModel, or manager. Set during creation but never displayed or used in calculations.
 - **Phantom fields:** Values shown in the UI that are computed on-the-fly and never stored. If the computation inputs change, the displayed value changes retroactively (e.g., donation FMV recalculated from condition).
 - **Write-only fields:** Set by the user but never read back (data goes in but nothing comes out).
+- **Form-only fields:** Editable in a form/sheet and correctly serialized, but never displayed in any read-only detail view. The user enters data that vanishes from view after saving. Data is preserved (not lost), but the user must re-enter edit mode to see it. This is a UX degradation, not data loss, but frequently reported as "my data disappeared." To detect: when grepping for a field's consumers, classify each hit as `form` (read to populate edit state), `detail` (read for display in a read-only view), `serialization` (backup/CSV/CloudKit), or `compute` (consumed by a computed property). A field with `form` + `serialization` consumers but zero `detail` consumers is a form-only field.
 - **Read-only fields:** Displayed but never settable by the user (may be intentional for computed fields, but worth flagging if the user might want to override).
 
 **Method (Deep — required for High-risk models):**
@@ -807,6 +808,13 @@ for_ui_path_radar:
     - view: "<view that might reference this field>"
       finding: "<e.g., field exists but no UI reads it>"
       group_hint: "<optional batching suggestion>"
+  # Form-only fields: user enters data that vanishes from detail view
+  form_only_fields:
+    - model: "<model name>"
+      field: "<field name>"
+      form_view: "<form that edits this field>"
+      detail_view: "<expected detail view that should display it>"
+      group_hint: "form_to_detail_gap"
 
 for_ui_enhancer_radar:
   # Semantic ambiguity affects how fields should be displayed

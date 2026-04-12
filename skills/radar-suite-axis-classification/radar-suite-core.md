@@ -285,6 +285,11 @@ Before returning from any phase, every skill performs this cleanup:
 1. **Lint the directory:** List files in `.radar-suite/` and `.radar-suite/archive/`. Any file matching `RESUME_PHASE_*.md`, `RESUME_*.md` (except the single canonical `NEXT_STEPS.md`), or `*-v[0-9]*.md` is a stale handoff. Move it to `.radar-suite/archive/superseded/` or delete if the archive already has an identical copy.
 2. **Verify Class 1 files are in-place rewrites:** if the skill accidentally wrote `ledger-v2.yaml` or similar, that's a bug — the write should have been to `ledger.yaml`.
 3. **Verify Class 3 snapshots are singular:** at most one `*-capstone-audit.md` at the top level; older ones in `archive/superseded/`.
+4. **Ledger housekeeping check:** Count findings in `ledger.yaml` with `status: resolved` or `status: archived`. If the count exceeds 15, emit a one-line prompt:
+   ```
+   Ledger housekeeping: [N] resolved findings could be archived to .radar-suite/archive/ledger-resolved-YYYY-MM-DD.yaml. Run `/radar-suite archive` to clean up.
+   ```
+   Do NOT auto-archive. The user decides when. Archiving moves resolved/archived findings to `.radar-suite/archive/ledger-resolved-YYYY-MM-DD.yaml` and removes them from the active `ledger.yaml`, preserving only the session history summary and `next_id` counter.
 
 This cleanup takes 2-3 tool calls and prevents directory bloat across long audits.
 
