@@ -12,7 +12,24 @@ Built during the development of [Stuffolio](https://stuffolio.app), an iOS/macOS
 
 One install gives you a complete audit pipeline — from data model integrity to visual quality to release readiness.
 
-## What's New in v2.0 (2026-04-10)
+## What's New in v2.1 (2026-04-11)
+
+**3-tier depth model.** You now choose how deep to audit:
+
+| Tier | Command | What It Does | Time |
+|------|---------|-------------|------|
+| **1 (Quick)** | `/radar-suite data-model` | Single skill, own rating table, no pipeline | 20-60 min |
+| **2 (Targeted)** | `/radar-suite --skills dmr,tbr` | 2-3 skills with cross-skill handoffs | 1-2 hours |
+| **2 (Auto)** | `/radar-suite --changed` | Auto-select skills from git diff | varies |
+| **3 (Full)** | `/radar-suite --full` | All 6 skills + capstone + UX enhancements | 2.5-4 hours |
+
+Tier 1 is the new default. The full pipeline is now opt-in via `--full`, not the implicit behavior.
+
+**6 pipeline UX enhancements** for Tier 3: progress banners at every skill transition, per-skill mini rating tables (marked "PRELIMINARY"), audit-only mode statement, duration estimates, pre-capstone summary, and `short_title` on every finding ID (e.g., `RS-002 (cascade delete crash)` instead of bare `RS-002`).
+
+**Skill abbreviations** for `--skills`: `dmr` (data-model), `tbr` (time-bomb), `rtr` (roundtrip), `upr` (ui-path), `uer` (ui-enhancer).
+
+## What Shipped in v2.0 (2026-04-10)
 
 **Every finding now cites a real pattern in your own codebase.** Not generic advice — a specific file and line number you can open, read, and copy. The schema gate rejects findings without citations, so "consider adding error handling" never reaches you; "follow the pattern at `CloudSyncManager.swift:104-112`" does.
 
@@ -51,15 +68,17 @@ Radar Suite is deliberately thorough. It reads whole files to catch handlers the
 
 **What this means for you:** a full `/radar-suite full` run on a medium Swift project (200-600 files) will consume a substantial chunk of your Claude Code session. Users on Pro tier should expect to use a noticeable fraction of their weekly allocation on a single full run. Users on Max tier are fine.
 
-**If you're on a lower tier or value your session budget, use one of these strategies instead:**
+**Choose the right tier for your budget and task:**
 
-1. **Start with a narrowed audit.** Run one skill at a time on one feature directory. `/ui-path-radar Sources/Features/Login` gives you a feel for the output without committing to a full-codebase sweep. Decide whether to go deeper based on what comes back.
+1. **Tier 1 (default): Single skill.** Run one skill at a time. `/radar-suite data-model` or `/radar-suite ui-path` gives you focused output without committing to a pipeline. Best during development or after a focused refactor.
 
-2. **Use `/radar-suite audit --changed`.** This scopes the audit to files changed since your last session (typically 15-30 minutes vs 2-4 hours for a full run). Best after committing a feature, before opening a PR.
+2. **Tier 2: Targeted pipeline.** Run 2-3 related skills. `/radar-suite --changed` auto-selects skills from your git diff (typically 1-2 hours). `/radar-suite --skills dmr,tbr` for manual selection. Best before opening a PR.
 
-3. **Defer fixes to after capstone.** The default "fix recommended after each skill" mode triggers build verification cycles that are expensive. Switching to "fix all after capstone" runs all the scans first, then fixes in one batch — fewer build invocations, less total cost.
+3. **Tier 3: Full pipeline.** `/radar-suite --full` runs all 6 skills with pipeline UX enhancements. Reserve for pre-release audits or quarterly health checks. Half-day commitment.
 
-4. **Skip the full audit on first install.** Run capstone alone first (`/capstone-radar`) to see the high-level grade and which domains need attention. Then run only the radars capstone flagged. This is the cheapest way to learn what Radar Suite is good at without paying for a full sweep.
+4. **Capstone first.** Run `/capstone-radar` alone to see the high-level grade and which domains need attention. Then run only the radars capstone flagged via Tier 2.
+
+5. **Defer fixes to after capstone.** Switching to "fix all after capstone" runs all the scans first, then fixes in one batch -- fewer build invocations, less total cost.
 
 **Why the cost is what it is:** the alternative — cheaper audits that skip the whole-file scans and pattern citations — is exactly the pre-v2.0 behavior that produced the false positives the axis framework was built to catch. You're paying for verification checks that prevent findings like "your empty-state handler is missing" from reaching you when the handler exists 500 lines down in the same file. Spending 10 minutes of session time to avoid spending 30 minutes of human time disproving a false positive is the trade Radar Suite is built around.
 

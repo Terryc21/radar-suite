@@ -1,7 +1,7 @@
 ---
 name: capstone-radar
 description: 'Unified A-F grading and ship/no-ship decisions for the 5-skill radar family. Aggregates companion handoffs, owns 5 grep-reliable domains, tracks velocity, celebrates improvements. Triggers: "capstone radar", "can I ship", "grade codebase", "/capstone-radar".'
-version: 2.0.0  # unified plugin version as of 2026-04-10 (was 3.3.0 per-skill)
+version: 2.1.0  # 3-tier depth model (was 2.0.0)
 author: Terry Nyberg
 license: MIT
 inherits: radar-suite-core.md
@@ -142,7 +142,41 @@ Store the experience level as `USER_EXPERIENCE` and apply to ALL output for the 
 
 ## Shared Patterns
 
-See `radar-suite-core.md` for: Table Format, Plain Language Communication, Work Receipts, Contradiction Detection, Finding Classification, Audit Methodology, Context Exhaustion, Progress Banner, Issue Rating Tables, Handoff YAML schema, Known-Intentional Suppression, Pattern Reintroduction Detection, Experience-Level Output Rules, Implementation Sort Algorithm.
+See `radar-suite-core.md` for: Tier System, Pipeline UX Enhancements, Table Format, Plain Language Communication, Work Receipts, Contradiction Detection, Finding Classification, Audit Methodology, Context Exhaustion, Progress Banner, Issue Rating Tables, Handoff YAML schema, Known-Intentional Suppression, Pattern Reintroduction Detection, Experience-Level Output Rules, Implementation Sort Algorithm, short_title requirement.
+
+## Tier Awareness (MANDATORY -- read before any scanning)
+
+Read `.radar-suite/session-prefs.yaml` for the `tier` field. Capstone behavior adapts based on the active tier:
+
+### Tier 3 (Full Pipeline)
+
+All 5 companion skills are expected. If a handoff is missing, treat it as an error (not "not audited"):
+
+```
+ERROR: data-model-radar handoff missing. Full pipeline requires all 5 companions.
+Options: [Re-run data-model-radar / Continue without it (grade will be partial)]
+```
+
+Before starting own scans, emit the **Pre-Capstone Summary** (see `radar-suite-core.md` Pipeline UX Enhancements #5):
+- Read all 5 handoff files
+- Emit the consolidated findings table (skill, count, critical/high/medium/low breakdown)
+- Show top findings by urgency with `RS-NNN (short_title)`
+- Ask: "Review summary before capstone grading? [Enter to continue / Review details]"
+
+### Tier 2 (Targeted Pipeline)
+
+Read `tier_skills` from session prefs to know which skills were in the subset. Only expect handoffs for those skills. For skills not in the subset:
+- Mark as "not in scope" (not "not audited")
+- Grade is scoped to audited domains only
+- Emit: "Partial audit: [N] of 5 skills ran. Grade reflects audited domains only. Missing coverage: [list of excluded skills]."
+
+Weight redistribution: redistribute missing domain weights proportionally to audited domains (same as existing missing-handoff logic).
+
+### Tier 1 / No Tier / Standalone
+
+Existing behavior. Missing handoffs show "Not audited -- run [skill-name] for coverage."
+
+---
 
 ## Pre-Scan Startup (MANDATORY — before Step 1)
 
@@ -186,9 +220,9 @@ If previous reports exist, parse ALL `GRADES_YAML` HTML comment blocks for veloc
 
 ---
 
-## Step 3: Companion Handoff Consumption
+## Step 3: Companion Handoff Consumption (Tier-Aware)
 
-Read the unified ledger and handoff files from all 5 companion skills:
+Read the unified ledger and handoff files. **Which files to read depends on the active tier** (see Tier Awareness above). In Tier 2, read only handoffs for skills listed in `tier_skills`. In Tier 3, read all 5. In Tier 1/standalone, read whatever exists.
 
 ```
 Read .radar-suite/ledger.yaml (if exists) — unified cross-skill finding store
@@ -214,7 +248,12 @@ For each handoff found:
 - Per HIGH blocker: **-8**
 - Floor at 0
 
-**Missing handoffs:** Domain shows "Not audited — run [skill-name] for coverage". Weight redistributed proportionally to audited domains.
+**Missing handoffs (tier-dependent messaging):**
+- **Tier 3:** "ERROR: [skill] handoff missing. Full pipeline requires all 5 companions." (see Tier Awareness)
+- **Tier 2:** If skill was in `tier_skills`, treat as error. If not, mark "Not in scope" (expected absence).
+- **Tier 1 / standalone:** "Not audited -- run [skill-name] for coverage."
+
+In all cases, weight is redistributed proportionally to audited domains.
 
 Print companion status:
 ```

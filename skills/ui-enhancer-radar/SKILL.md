@@ -1,7 +1,7 @@
 ---
 name: ui-enhancer-radar
 description: 'Systematic iOS/SwiftUI UI audit with design intent interview, 11-domain analysis (including Color Audit with adaptive Color Profile), element compaction, cross-view consistency checks, layout reorganization, design-aware push-back, App Store guardrails, and incremental apply with revert safety. 17 subcommands. Run /ui-enhancer-radar help for all commands. Triggers: "enhance this UI", "ui enhancer radar", "improve this view", "screen review", "ux audit".'
-version: 2.0.0  # unified plugin version as of 2026-04-10 (was 3.4.0 per-skill)
+version: 2.1.0  # 3-tier depth model (was 2.0.0)
 author: Terry Nyberg
 license: MIT
 allowed-tools: [Read, Grep, Glob, Bash, Write, Edit, AskUserQuestion]
@@ -127,7 +127,7 @@ Store the experience level as `USER_EXPERIENCE` and apply to ALL output for the 
 
 ## Shared Patterns
 
-See `radar-suite-core.md` for: Table Format, Plain Language Communication, Work Receipts, Contradiction Detection, Finding Classification, Audit Methodology, Context Exhaustion, Progress Banner, Issue Rating Tables, Handoff YAML schema, Known-Intentional Suppression, Pattern Reintroduction Detection, Experience-Level Output Rules, Implementation Sort Algorithm.
+See `radar-suite-core.md` for: Tier System, Pipeline UX Enhancements, Table Format, Plain Language Communication, Work Receipts, Contradiction Detection, Finding Classification, Audit Methodology, Context Exhaustion, Progress Banner, Issue Rating Tables, Handoff YAML schema, Known-Intentional Suppression, Pattern Reintroduction Detection, Experience-Level Output Rules, Implementation Sort Algorithm, short_title requirement.
 
 ## Pre-Scan Startup (MANDATORY — before any domain scan)
 
@@ -2229,6 +2229,24 @@ Phase time estimates:
 | 9 | Summary | ~2 min |
 
 Then immediately prompt for the next phase. **After a commit**, reprint the banner and auto-prompt. Never leave a blank prompt.
+
+---
+
+### Pipeline Mode Behavior (Tier 2/3)
+
+When running inside a Tier 2 or Tier 3 pipeline (detected via `tier` field in `.radar-suite/session-prefs.yaml`):
+
+1. **On skill start:** Emit the pipeline-level progress banner (see `radar-suite-core.md` Pipeline UX Enhancements #1). If this is the first skill in the pipeline OR `experience_level` is Beginner/Intermediate, also emit the audit-only statement.
+2. **On skill completion:** Emit a per-skill mini rating table marked "PRELIMINARY" (see Pipeline UX Enhancements #2). Then emit the pipeline-level progress banner showing this skill as complete.
+3. **Within-skill phase banners** (above) are still emitted normally in addition to the pipeline-level banners.
+
+### short_title Requirement (v2.1)
+
+Every finding MUST include a `short_title` field (max 8 words). This is the human-scannable label used in pipeline banners, pre-capstone summaries, and ledger output.
+
+Example: `short_title: "Low contrast on dark mode card"`
+
+All finding ID references in output (tables, banners, summaries) use the format: `RS-NNN (short_title)`.
 
 ---
 

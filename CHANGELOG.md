@@ -6,6 +6,43 @@ Format: [skill-name vX.Y.Z] for legacy per-skill entries, [plugin vX.Y.Z] for un
 
 ---
 
+## 2026-04-11 — [plugin v2.1.0] 3-tier depth model
+
+### What shipped
+
+**3-tier invocation model.** Users now choose audit depth at invocation time:
+
+- **Tier 1 (Quick):** Single skill via direct command. Own rating table, no pipeline. The new default (reverses the implicit full-pipeline default from v2.0).
+- **Tier 2 (Targeted):** 2-3 skills via `--skills dmr,tbr,rtr` (manual) or `--changed` (auto-select from git diff). Cross-skill handoffs within the subset. No capstone unless all 5 ran.
+- **Tier 3 (Full):** All 6 skills + capstone via `--full`. Current v2.0 behavior plus 6 UX enhancements.
+
+**Auto-selection heuristic (`--changed`).** Maps git diff file patterns to skills (e.g., `Sources/Models/*.swift` triggers data-model-radar). If 4+ skills are triggered, suggests upgrading to Tier 3.
+
+**6 pipeline UX enhancements** (Tier 3 only):
+1. Pipeline-level progress banner at every skill transition
+2. Per-skill mini rating tables marked "PRELIMINARY"
+3. Audit-only mode statement at start and transitions
+4. Per-phase duration estimates in pipeline banners
+5. Pre-capstone summary (consolidated findings table before capstone grades)
+6. Finding IDs always include `short_title` in parentheses
+
+**`short_title` field** added to finding schema (max 8 words, required on all findings). Legacy findings without `short_title` fall back to first 8 words of `description`.
+
+**Skill abbreviations:** `dmr` (data-model), `tbr` (time-bomb), `rtr` (roundtrip), `upr` (ui-path), `uer` (ui-enhancer).
+
+**Capstone tier awareness:** Capstone adapts messaging based on active tier. Tier 3 treats missing handoffs as errors. Tier 2 marks excluded skills as "not in scope" and scopes the grade to audited domains.
+
+### Files changed
+
+- `radar-suite-core.md` (+ 7 skill directory copies): Tier System, Auto-Selection Heuristic, Pipeline UX Enhancements, `short_title` field in finding schema
+- `skills/radar-suite/SKILL.md`: Tier routing (`--skills`, `--changed`, `--full`, `--scope`), restructured interactive menu, Tier 2 routing logic, auto-selection logic
+- `skills/capstone-radar/SKILL.md`: Tier Awareness section, pre-capstone summary emission, tier-aware handoff consumption
+- `skills/{data-model,time-bomb,roundtrip,ui-path,ui-enhancer}-radar/SKILL.md`: Pipeline mode behavior, `short_title` requirement, updated shared patterns references
+- `README.md`: v2.1 What's New, tier-aware Session Strategy
+- All SKILL.md frontmatter bumped to `version: 2.1.0`
+
+---
+
 ## 2026-04-10 (later in the day) — [plugin v2.0.0] Axis classification framework SHIPPED + plugin distribution SHIPPED
 
 This is the v2.0 unified-plugin release. Two major changes ship together.

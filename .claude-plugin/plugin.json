@@ -1,6 +1,6 @@
 {
   "name": "radar-suite",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Six-skill audit suite for iOS/Swift codebases: data models, UI paths, data round-trips, time bombs, visual quality, and capstone grading. As of v2.0 every finding is classified on a 3-axis framework (real bug / scatter / dead code) with mandatory coaching citations to patterns in the audited codebase.",
   "author": {
     "name": "Terry Nyberg"

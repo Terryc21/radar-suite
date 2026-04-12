@@ -1,7 +1,7 @@
 ---
 name: ui-path-radar
 description: 'UI path tracer for SwiftUI/UIKit apps. 5-layer audit with 30 issue categories: discover entry points, trace flows, detect dead ends and broken promises, evaluate UX impact, verify data wiring. Supports targeted trace, diff against previous audits, and handoff to planning skills. Triggers: "trace UI paths", "find dead ends", "/ui-path-radar".'
-version: 2.0.0  # unified plugin version as of 2026-04-10 (was 4.0.0 per-skill)
+version: 2.1.0  # 3-tier depth model (was 2.0.0)
 author: Terry Nyberg
 license: MIT
 allowed-tools: [Read, Grep, Glob, Bash, Edit, Write, AskUserQuestion]
@@ -311,7 +311,7 @@ Store the experience level as `USER_EXPERIENCE` and apply to ALL output for the 
 
 ## Shared Patterns
 
-See `radar-suite-core.md` for: Table Format, Plain Language Communication, Work Receipts, Contradiction Detection, Finding Classification, Audit Methodology, Context Exhaustion, Progress Banner, Issue Rating Tables, Handoff YAML schema, Known-Intentional Suppression, Pattern Reintroduction Detection, Experience-Level Output Rules, Implementation Sort Algorithm.
+See `radar-suite-core.md` for: Tier System, Pipeline UX Enhancements, Table Format, Plain Language Communication, Work Receipts, Contradiction Detection, Finding Classification, Audit Methodology, Context Exhaustion, Progress Banner, Issue Rating Tables, Handoff YAML schema, Known-Intentional Suppression, Pattern Reintroduction Detection, Experience-Level Output Rules, Implementation Sort Algorithm, short_title requirement.
 
 ## Pre-Scan Startup (MANDATORY — before any layer scan)
 
@@ -1406,6 +1406,24 @@ Then immediately ask: "Ready for Wave [N+1]?" with options:
 - **Proceed (Recommended)** — Start the next wave
 - **Commit first** — Commit current changes before continuing
 - **Stop here** — End for now, resume later
+
+---
+
+### Pipeline Mode Behavior (Tier 2/3)
+
+When running inside a Tier 2 or Tier 3 pipeline (detected via `tier` field in `.radar-suite/session-prefs.yaml`):
+
+1. **On skill start:** Emit the pipeline-level progress banner (see `radar-suite-core.md` Pipeline UX Enhancements #1). If this is the first skill in the pipeline OR `experience_level` is Beginner/Intermediate, also emit the audit-only statement.
+2. **On skill completion:** Emit a per-skill mini rating table marked "PRELIMINARY" (see Pipeline UX Enhancements #2). Then emit the pipeline-level progress banner showing this skill as complete.
+3. **Within-skill wave banners** (above) are still emitted normally in addition to the pipeline-level banners.
+
+### short_title Requirement (v2.1)
+
+Every finding MUST include a `short_title` field (max 8 words). This is the human-scannable label used in pipeline banners, pre-capstone summaries, and ledger output.
+
+Example: `short_title: "Delete button missing on edit sheet"`
+
+All finding ID references in output (tables, banners, summaries) use the format: `RS-NNN (short_title)`.
 
 ---
 

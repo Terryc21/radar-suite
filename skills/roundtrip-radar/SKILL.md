@@ -1,7 +1,7 @@
 ---
 name: roundtrip-radar
 description: 'Per-journey code audit tracing data through complete user flows for bugs, data safety, performance, and round-trip completeness. Discovers workflows, audits each end-to-end, rolls up cross-cutting issues, and supports natural-language flow tracing. Triggers: "roundtrip audit", "trace user journey", "/roundtrip-radar".'
-version: 2.0.0  # unified plugin version as of 2026-04-10 (was 1.6.0 per-skill)
+version: 2.1.0  # 3-tier depth model (was 2.0.0)
 author: Terry Nyberg
 license: MIT
 inherits: radar-suite-core.md
@@ -125,7 +125,7 @@ If the user types "adjust", re-ask only the question(s) they want to change. Use
 
 ## Shared Patterns
 
-See `radar-suite-core.md` for: Table Format, Plain Language Communication, Work Receipts, Contradiction Detection, Finding Classification, Audit Methodology, Context Exhaustion, Progress Banner, Issue Rating Tables, Handoff YAML schema, Known-Intentional Suppression, Pattern Reintroduction Detection, Experience-Level Output Rules, Implementation Sort Algorithm.
+See `radar-suite-core.md` for: Tier System, Pipeline UX Enhancements, Table Format, Plain Language Communication, Work Receipts, Contradiction Detection, Finding Classification, Audit Methodology, Context Exhaustion, Progress Banner, Issue Rating Tables, Handoff YAML schema, Known-Intentional Suppression, Pattern Reintroduction Detection, Experience-Level Output Rules, Implementation Sort Algorithm, short_title requirement.
 
 ## Axis Classification Protocol (MANDATORY — before emitting any finding)
 
@@ -744,6 +744,22 @@ After committing all fixes for a workflow, follow this exact sequence:
 3. If user proceeds, show the one-line settings reminder (see Skill Introduction) then start the audit. Do NOT re-ask the 4 setup questions.
 
 **Never leave the user with a blank prompt between workflows.**
+
+### Pipeline Mode Behavior (Tier 2/3)
+
+When running inside a Tier 2 or Tier 3 pipeline (detected via `tier` field in `.radar-suite/session-prefs.yaml`):
+
+1. **On skill start:** Emit the pipeline-level progress banner (see `radar-suite-core.md` Pipeline UX Enhancements #1). If this is the first skill in the pipeline OR `experience_level` is Beginner/Intermediate, also emit the audit-only statement.
+2. **On skill completion:** Emit a per-skill mini rating table marked "PRELIMINARY" (see Pipeline UX Enhancements #2). Then emit the pipeline-level progress banner showing this skill as complete.
+3. **Within-skill workflow banners** (above) are still emitted normally in addition to the pipeline-level banners.
+
+### short_title Requirement (v2.1)
+
+Every finding MUST include a `short_title` field (max 8 words). This is the human-scannable label used in pipeline banners, pre-capstone summaries, and ledger output.
+
+Example: `short_title: "Backup drops attachment external storage"`
+
+All finding ID references in output (tables, banners, summaries) use the format: `RS-NNN (short_title)`.
 
 ---
 

@@ -1,7 +1,7 @@
 ---
 name: time-bomb-radar
 description: 'Finds deferred operations that crash on aged data -- code that passes every test but breaks weeks or months after release. Covers cascade deletes, cache expiry, trial paths, background accumulation, date-threshold transitions, and scheduled side effects. Triggers: "time bomb", "time-bomb", "/time-bomb-radar", "aged data", "deferred deletion".'
-version: 2.0.0  # unified plugin version as of 2026-04-10 (was 1.1.0 per-skill)
+version: 2.1.0  # 3-tier depth model (was 2.0.0)
 author: Terry Nyberg
 license: MIT
 allowed-tools: [Read, Grep, Glob, Bash, AskUserQuestion]
@@ -559,6 +559,26 @@ TIME BOMB RADAR: Pattern [N]/6 complete
 ```
 
 Then `AskUserQuestion` before proceeding to the next pattern.
+
+### Pipeline Mode Behavior (Tier 2/3)
+
+When running inside a Tier 2 or Tier 3 pipeline (detected via `tier` field in `.radar-suite/session-prefs.yaml`):
+
+1. **On skill start:** Emit the pipeline-level progress banner (see `radar-suite-core.md` Pipeline UX Enhancements #1). If this is the first skill in the pipeline OR `experience_level` is Beginner/Intermediate, also emit the audit-only statement.
+2. **On skill completion:** Emit a per-skill mini rating table marked "PRELIMINARY" (see Pipeline UX Enhancements #2). Then emit the pipeline-level progress banner showing this skill as complete.
+3. **Within-skill pattern banners** (above) are still emitted normally in addition to the pipeline-level banners.
+
+### short_title Requirement (v2.1)
+
+Every finding MUST include a `short_title` field (max 8 words). This is the human-scannable label used in pipeline banners, pre-capstone summaries, and ledger output.
+
+Example: `short_title: "30-day cascade delete crash"`
+
+All finding ID references in output (tables, banners, summaries) use the format: `RS-NNN (short_title)`.
+
+### Shared Patterns
+
+See `radar-suite-core.md` for: Tier System, Pipeline UX Enhancements, Table Format, Progress Banner, Issue Rating Tables, Handoff YAML schema, Experience-Level Output Rules, short_title requirement.
 
 ---
 

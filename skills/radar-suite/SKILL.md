@@ -1,7 +1,7 @@
 ---
 name: radar-suite
 description: 'Unified entry point for the 5-skill radar family. Routes to individual skills or runs full audit sequence. Triggers: "radar suite", "full audit", "run all radars", "/radar-suite".'
-version: 2.0.0  # unified plugin version as of 2026-04-10 (was 3.0.0 per-skill)
+version: 2.1.0  # 3-tier depth model (was 2.0.0)
 author: Terry Nyberg
 license: MIT
 inherits: radar-suite-core.md
@@ -13,13 +13,25 @@ inherits: radar-suite-core.md
 
 ## Quick Commands
 
+### Tier Selection (see `radar-suite-core.md` Tier System for full spec)
+
+| Command | Tier | Description |
+|---------|------|-------------|
+| `/radar-suite` | 1 | Interactive menu (default: single skill) |
+| `/radar-suite [skill]` | 1 | Run specific skill (data-model, time-bomb, roundtrip, ui-path, ui-enhancer, capstone) |
+| `/radar-suite --skills dmr,tbr` | 2 | Targeted: run 2-3 skills with cross-skill handoffs |
+| `/radar-suite --changed` | 2 | Targeted: auto-select skills from git diff |
+| `/radar-suite --changed --since YYYY-MM-DD` | 2 | Targeted: auto-select from changes since date |
+| `/radar-suite --scope [path]` | 2 | Targeted: restrict audit to a directory subtree |
+| `/radar-suite --full` | 3 | Full pipeline: all 6 skills + capstone + UX enhancements |
+| `/radar-suite full` | 3 | Alias for `--full` (backward compatible) |
+
+### Management Commands
+
 | Command | Description |
 |---------|-------------|
-| `/radar-suite` | Interactive menu — choose skill or full audit |
-| `/radar-suite full` | Run all 5 skills in sequence |
 | `/radar-suite status` | Show audit progress across all skills |
 | `/radar-suite resume` | Resume from last checkpoint |
-| `/radar-suite [skill]` | Run specific skill (data-model, time-bomb, roundtrip, ui-path, ui-enhancer, capstone) |
 | `/radar-suite ledger` | View unified finding ledger with optional filters |
 | `/radar-suite ledger --open` | Show open findings only |
 | `/radar-suite ledger --deferred` | Show deferred findings only |
@@ -32,8 +44,6 @@ inherits: radar-suite-core.md
 | `/radar-suite link RS-NNN --root-cause-of RS-NNN [RS-NNN...]` | Link findings as root cause/symptom |
 | `/radar-suite link RS-NNN --duplicate-of RS-NNN` | Mark finding as duplicate |
 | `/radar-suite link RS-NNN --supersedes RS-NNN` | Mark finding as superseding another |
-| `/radar-suite audit --changed` | Partial re-audit of files changed since last session |
-| `/radar-suite audit --changed --since YYYY-MM-DD` | Partial re-audit since specific date |
 
 ## Available Skills
 
@@ -99,17 +109,32 @@ On invocation without arguments, present:
 ```
 Radar Suite — What would you like to audit?
 
-1. **Full audit** — Run all 6 skills in recommended order (~2.5-4 hours)
-2. **Data models** — Check @Model layer for gaps and inconsistencies
-3. **Time bombs** — Find deferred operations that crash on aged data
-4. **User workflows** — Trace data through complete user journeys
-5. **Navigation paths** — Find dead ends and broken navigation
-6. **UI polish** — Visual audit of specific views
-7. **Release readiness** — Aggregate grades and ship/no-ship decision
-8. **Resume** — Continue from last checkpoint
-9. **Status** — Show current audit progress
-10. **Ledger** — View all findings across skills with filters
+SINGLE SKILL (Tier 1 — quick, focused)
+  1. Data models     — @Model layer gaps and inconsistencies (~30-60 min)
+  2. Time bombs      — Deferred operations that crash on aged data (~15-25 min)
+  3. User workflows  — Data through complete user journeys (~20-40 min)
+  4. Navigation paths — Dead ends and broken navigation (~15-30 min)
+  5. UI polish       — Visual audit of specific views (~20-45 min)
+
+TARGETED (Tier 2 — 2-3 skills with cross-skill handoffs)
+  6. Auto-select from changes — skills chosen by git diff
+  7. Pick skills              — choose 2-3 skills manually
+
+FULL PIPELINE (Tier 3 — all skills + capstone)
+  8. Full audit — all 6 skills in sequence (~2.5-4 hours)
+
+OTHER
+  9. Release readiness — Capstone only (aggregate existing findings)
+  10. Resume / Status / Ledger
 ```
+
+**Menu routing:**
+- Options 1-5: Set `tier: 1` in session prefs, invoke the single skill directly.
+- Option 6: Run `--changed` auto-selection logic (see below).
+- Option 7: Ask user to pick 2-3 skills using abbreviations (dmr, tbr, rtr, upr, uer). Set `tier: 2`.
+- Option 8: Set `tier: 3`, run Full Audit Sequence.
+- Option 9: Invoke capstone-radar standalone (Tier 1).
+- Option 10: Sub-menu for resume, status, and ledger commands.
 
 ---
 
@@ -286,19 +311,65 @@ Options:
 
 ---
 
-## Full Audit Sequence
+## Tier 2: Targeted Pipeline Routing
 
-When running full audit, execute skills in this order:
+### Manual Selection (`--skills`)
 
-1. **data-model-radar** — Foundation layer, feeds model/relationship info to others
-2. **time-bomb-radar** — Uses data-model findings to check deferred operations on aged data
-3. **roundtrip-radar** — Uses data-model + time-bomb findings to focus on high-risk workflows
-4. **ui-path-radar** — Navigation audit, independent of data layer
-5. **ui-enhancer-radar** — Visual audit, runs on specific views
-6. **capstone-radar** — Aggregates all findings, produces final grade
-7. **Post-capstone fix session** — Fix deferred findings from all skills (see Fix Timing above)
+When `--skills` is provided:
 
-**Between skills:** Write handoff YAML, show progress, present fixes per fix timing preference, ask to continue or pause.
+1. Parse comma-separated abbreviations using the table in `radar-suite-core.md` (dmr, tbr, rtr, upr, uer).
+2. Validate: must be 2-5 skills. If 1, redirect to Tier 1 with a note. If all 5, auto-upgrade to Tier 3.
+3. Set `tier: 2` and `tier_skills: [abbreviations]` in `.radar-suite/session-prefs.yaml`.
+4. Execute in standard pipeline order (dmr, tbr, rtr, upr, uer) regardless of argument order.
+5. Write handoff YAMLs between skills. Each skill reads handoffs from prior skills in the subset.
+6. Emit pipeline-level progress banner between skills (see `radar-suite-core.md` Pipeline UX Enhancements).
+7. On each skill completion, emit a per-skill mini rating table marked "PRELIMINARY".
+8. Skip capstone. A partial capstone is misleading; the user can run capstone standalone later.
+
+### Auto-Selection (`--changed`)
+
+1. Run `git diff --name-only` against the base branch (default: `main`). If `--since YYYY-MM-DD` is provided, use `git diff --name-only HEAD@{YYYY-MM-DD}` instead.
+2. Apply the auto-selection heuristic table from `radar-suite-core.md` to map changed file patterns to skill abbreviations.
+3. Deduplicate the resulting skill list.
+4. Route based on count:
+   - **0 skills:** "No radar-relevant changes detected. Run a specific skill or full audit?"
+   - **1 skill:** Run as Tier 1. Inform user: "Only [skill] is relevant to your changes."
+   - **2-3 skills:** Run as Tier 2 (follow Manual Selection steps 3-8 above).
+   - **4+ skills:** Suggest Tier 3: "4+ skills triggered by your changes. Run full audit? [Yes / No, run these N skills]"
+5. Show the user which skills were selected and why before starting: "Changes in [file list] triggered: [skill list]."
+
+### Scope Restriction (`--scope`)
+
+When `--scope [path]` is provided, restrict all skill scans to files within the specified directory subtree. This narrows the audit without changing tier behavior. Can be combined with `--skills` or `--changed`.
+
+---
+
+## Full Audit Sequence (Tier 3)
+
+Triggered by `/radar-suite --full`, `/radar-suite full`, or menu option 8. Sets `tier: 3` in session prefs.
+
+Execute skills in this order:
+
+1. **data-model-radar** -- Foundation layer, feeds model/relationship info to others
+2. **time-bomb-radar** -- Uses data-model findings to check deferred operations on aged data
+3. **roundtrip-radar** -- Uses data-model + time-bomb findings to focus on high-risk workflows
+4. **ui-path-radar** -- Navigation audit, independent of data layer
+5. **ui-enhancer-radar** -- Visual audit, runs on specific views
+6. **capstone-radar** -- Aggregates all findings, produces final grade
+7. **Post-capstone fix session** -- Fix deferred findings from all skills (see Fix Timing above)
+
+### Tier 3 Pipeline UX (MANDATORY)
+
+Apply all 6 pipeline UX enhancements from `radar-suite-core.md`:
+
+1. **Pipeline-level progress banner** at every skill transition (start and completion).
+2. **Per-skill mini rating tables** on each skill completion, marked "PRELIMINARY".
+3. **Audit-only statement** at pipeline start and each transition (Senior/Expert: first time only).
+4. **Per-phase duration estimates** in the pipeline banner.
+5. **Pre-capstone summary** emitted by capstone before its own scans (consolidated findings table from all 5 companions).
+6. **Finding IDs always include short_title** in parentheses (e.g., `RS-002 (cascade delete crash)`).
+
+**Between skills:** Write handoff YAML, emit pipeline-level progress banner, present fixes per fix timing preference, ask to continue or pause.
 
 **On pause:** Save checkpoint so user can resume later.
 

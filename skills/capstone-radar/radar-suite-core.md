@@ -117,6 +117,92 @@ Using: Experienced, Full tables, Auto-fix. Last session: data-model-radar (2 day
 
 ---
 
+## Tier System
+
+Every radar-suite invocation operates at one of three depth tiers. The tier determines how many skills run, whether cross-skill handoffs occur, and what output format is used.
+
+### Tier 1: Quick Scan (default)
+
+- Single skill via direct command (e.g., `/skill data-model-radar` or `/radar-suite data-model`)
+- Each skill emits its own 8-column rating table immediately
+- No handoff YAML consumed or written. No pipeline. No capstone.
+- Fast (20-30 min per skill), interactive, user stays in control
+- **When to use:** Working on a specific area. Post-refactor sanity check. Quick feedback during development.
+- **This is the default tier.** No extra flags needed.
+
+### Tier 2: Targeted Pipeline (2-3 skills)
+
+- Run a skill subset, chosen manually or auto-selected from git diff
+- Manual: `/radar-suite --skills dmr,tbr,rtr` or `/radar-suite --scope backup`
+- Auto: `/radar-suite --changed` selects skills based on which files changed vs base branch
+- Each skill still emits its own rating table (marked "PRELIMINARY" since capstone may adjust)
+- Cross-skill handoffs within the subset only
+- Capstone runs ONLY if all 5 companion skills ran (partial capstone is misleading)
+- **When to use:** Pre-PR review. Focused audit after a feature lands. 1-2 hours.
+
+### Tier 3: Full Pipeline (all 6 skills + capstone)
+
+- All 5 companion skills + capstone in recommended order
+- Invoked via `/radar-suite --full` or the interactive menu "Full audit" option
+- Applies the 6 pipeline UX enhancements (see Pipeline UX Enhancements below)
+- Cross-skill handoffs cascade through the full sequence
+- **When to use:** Pre-release audit. Quarterly health check. First audit on a new codebase. Half-day commitment.
+
+### Tier Persistence
+
+Store the active tier in `.radar-suite/session-prefs.yaml`:
+
+```yaml
+tier: 1  # 1|2|3
+tier_skills: []  # populated for Tier 2 with skill abbreviations
+```
+
+### Tier Routing Rules
+
+- If `--skills` lists all 5 companions (`dmr,tbr,rtr,upr,uer`), auto-upgrade to Tier 3 and run capstone.
+- If `--changed` triggers only 1 skill, run as Tier 1 (inform user).
+- If `--changed` triggers 4+ skills, suggest upgrading to Tier 3 with a confirmation prompt.
+- `full` is an alias for `--full` (backward compatibility).
+
+### Skill Abbreviation Table
+
+| Abbreviation | Skill |
+|---|---|
+| `dmr` | data-model-radar |
+| `tbr` | time-bomb-radar |
+| `rtr` | roundtrip-radar |
+| `upr` | ui-path-radar |
+| `uer` | ui-enhancer-radar |
+
+---
+
+## Auto-Selection Heuristic (`--changed`)
+
+When `--changed` is used, radar-suite runs `git diff --name-only` against the base branch (or `--since YYYY-MM-DD` for date-based selection) and maps changed file patterns to skills:
+
+| Changed file pattern | Skills triggered |
+|---|---|
+| `Sources/Models/*.swift` | data-model-radar |
+| `Sources/Managers/BackupManager.swift` | roundtrip-radar, time-bomb-radar |
+| `Sources/Managers/*CacheManager.swift` | time-bomb-radar |
+| `Sources/Views/**/*.swift` | ui-path-radar, ui-enhancer-radar |
+| Any file containing `@Attribute(.externalStorage)` | time-bomb-radar |
+| Any file containing `context.delete` | time-bomb-radar |
+| `Sources/Managers/CSV*.swift` | data-model-radar |
+
+**Routing after auto-selection:**
+
+| Skills triggered | Action |
+|---|---|
+| 0 | "No radar-relevant changes detected. Run a specific skill or full audit." |
+| 1 | Run as Tier 1 (inform user: "Only [skill] is relevant to your changes.") |
+| 2-3 | Run as Tier 2 |
+| 4+ | Suggest Tier 3: "4+ skills triggered. Run full audit? [Yes / No, run these 4]" |
+
+Deduplicate and execute in standard pipeline order: dmr, tbr, rtr, upr, uer.
+
+---
+
 ## Checkpoint & Resume
 
 After completing each major phase/domain, write checkpoint to `.radar-suite/checkpoint.yaml`:
@@ -514,6 +600,99 @@ Always follow with `AskUserQuestion`. Never leave blank prompt.
 
 ---
 
+## Pipeline UX Enhancements (Tier 2 and Tier 3)
+
+These enhancements apply when running multiple skills in sequence. They address the situational-awareness problems observed during the first full pipeline run.
+
+### 1. Pipeline-Level Progress Banner
+
+Emitted at every skill transition (start and completion) in Tier 2/3. Distinct from the within-skill phase banners above.
+
+**Beginner/Intermediate format:**
+```
+===============================================
+  RADAR SUITE -- Skill [N] of [M]: [skill-name]
+  Completed: [list of completed skills]
+  Running:   [current skill]
+  Remaining: [list of remaining skills]
+  Pipeline:  [N] total findings | Est. [time] remaining
+===============================================
+```
+
+**Senior/Expert format (one-liner):**
+```
+--- [skill-name] ([N]/[M]) | [N] findings | ~[time] left ---
+```
+
+### 2. Per-Skill Mini Rating Table
+
+When a skill completes inside a pipeline, it emits its standard 8-column rating table with a "PRELIMINARY" header. This table is kept in the output (not replaced by capstone). It gives users an anchor for evaluating urgency without waiting hours for the capstone report.
+
+**Header format:**
+```
+[SKILL NAME] -- Preliminary Rating Table (subject to capstone adjustment)
+```
+
+### 3. Audit-Only Statement
+
+Emitted at the start of a pipeline and at each skill transition:
+
+```
+Audit-only mode: no code changes will be made unless you approve them.
+```
+
+**Experience-level adaptation:** Senior/Expert sees this only on the first skill. Beginner/Intermediate sees it at every transition.
+
+### 4. Per-Phase Duration Estimates
+
+Each skill declares its estimated duration in the pipeline-level progress banner. Use the estimates from the orchestrator's Available Skills table:
+
+| Skill | Est. Time |
+|---|---|
+| data-model-radar | 30-60 min |
+| time-bomb-radar | 15-25 min |
+| roundtrip-radar | 20-40 min |
+| ui-path-radar | 15-30 min |
+| ui-enhancer-radar | 20-45 min |
+| capstone-radar | 15-30 min |
+
+### 5. Pre-Capstone Summary
+
+Emitted by capstone-radar before starting its own scans in Tier 3. Gives users the full picture and a decision point.
+
+```
+===============================================
+  PRE-CAPSTONE SUMMARY -- All [N] skills complete
+===============================================
+
+| Skill | Findings | Critical | High | Medium | Low |
+|---|---|---|---|---|---|
+| data-model-radar | 5 | 1 | 2 | 1 | 1 |
+| time-bomb-radar | 2 | 0 | 1 | 1 | 0 |
+| ... | | | | | |
+| TOTAL | [N] | [N] | [N] | [N] | [N] |
+
+Top findings by urgency:
+  RS-002 (cascade delete crash) -- CRITICAL
+  RS-014 (force unwrap in backup) -- HIGH
+  RS-019 (spacing in settings) -- LOW
+  ...
+
+Review before capstone grading? [Enter to continue / Review details]
+```
+
+### 6. Finding IDs Always Include Short Title
+
+Every reference to a finding ID in any output (banners, tables, summaries, ledger display) MUST include the `short_title` in parentheses:
+
+```
+RS-002 (cascade delete crash)
+```
+
+**Fallback:** If `short_title` is absent (legacy findings), use the first 8 words of `description`.
+
+---
+
 ## Issue Rating Table Format
 
 **8 columns required (no exceptions):**
@@ -622,6 +801,7 @@ suspects:
 # Findings with enhanced fields
 findings:
   - id: [unique-hash]
+    short_title: [max 8 words, human-scannable label]  # REQUIRED as of v2.1
     description: [plain language]
     confidence: verified|probable|possible
     urgency: critical|high|medium|low  # axis_1 uses 4-tier; axis_2/3 use hygiene scale (urgent|rolling|backlog)
