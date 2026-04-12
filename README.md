@@ -283,6 +283,10 @@ Every skill follows three scanning principles to minimize false negatives:
 
 AI audit tools can sound confident while being shallow. The radar skills include structural constraints that make deep work easier than shortcuts, and make shallow work visible when it happens. See [FIDELITY.md](FIDELITY.md) for the full philosophy and roadmap.
 
+## Development Notes
+
+[MISSED-IT-BY-THAT-MUCH.md](MISSED-IT-BY-THAT-MUCH.md) — How 6 audit skills all passed the codebase while 38 fields vanished after save. What cross-skill handoffs look like in practice.
+
 ## See Also
 
 - [Workflow Audit](https://github.com/Terryc21/workflow-audit) -- 5-layer behavioral audit of SwiftUI user journeys
