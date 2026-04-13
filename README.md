@@ -108,6 +108,48 @@ Radar Suite is deliberately thorough. It reads whole files to catch handlers the
 
 **If a full audit kills your session:** [file an issue](https://github.com/Terryc21/radar-suite/issues) with the project size (Swift file count, total LOC) and which skill was running when the session cratered. I'll update this section with data from real runs.
 
+## Scoping Audits to Specific Areas
+
+You don't have to audit your entire project every time. The `--scope` flag restricts all skill scans to a directory subtree, letting you audit just the code that matters right now.
+
+```
+/radar-suite --scope Sources/Features/StuffScout/
+/radar-suite --skills dmr,rtr,upr,uer --scope Sources/Features/Auth/
+```
+
+### When to Scope
+
+| Scenario | Command | What It Does |
+|----------|---------|-------------|
+| **New feature** | `--scope Sources/Features/Checkout/` | Audit only the feature you just built |
+| **Post-refactor** | `--scope Sources/Managers/` | Verify the layer you just restructured |
+| **Pre-PR review** | `--changed --scope Sources/` | Auto-select skills, but only for changed source files |
+| **Single model deep-dive** | `--scope Sources/Models/ --skills dmr` | Focus data-model-radar on your model layer |
+| **UI polish pass** | `--scope Sources/Views/Dashboard/ --skills upr,uer` | Navigation + visual audit of one screen family |
+| **Integration boundary** | `--scope Sources/Networking/` | Audit your API layer for round-trip and time-bomb issues |
+
+### Real Example
+
+During Stuffolio development, the Stuff Scout feature got a confidence gate, story-first refinement, and before/after history in one session. Rather than re-auditing the full 600-file codebase, a scoped Tier 2 audit targeted just the 30 StuffScout files:
+
+```
+/radar-suite --skills dmr,rtr,upr,uer --scope Sources/Features/StuffScout/
+```
+
+This found 8 issues in ~30 minutes that a full audit would have taken 2+ hours to surface: a persistence gap where refinement history was silently dropped on save, a macOS platform gap where the Save button was missing, and a state management bug where the UI didn't reset after refinement. All fixed in the same session.
+
+### Scoping Strategies for Common Project Structures
+
+**Feature-based architecture** (`Sources/Features/[Feature]/`): Scope to one feature at a time. Run data-model + roundtrip to verify the feature's data flows, then ui-path + ui-enhancer for its screens.
+
+**Layer-based architecture** (`Sources/Models/`, `Sources/Services/`, `Sources/Views/`): Scope to one layer. data-model-radar for `Models/`, roundtrip-radar for `Services/`, ui-path + ui-enhancer for `Views/`.
+
+**Module-based architecture** (SPM packages): Scope to a single package directory. Particularly useful when a package has its own models and views.
+
+**Shared components** (`Sources/Components/`, `Sources/Utilities/`): Scope here after refactoring shared code to catch callers that may have broken.
+
+Scoping combines with `--changed` and `--skills` for precise control. The narrower the scope, the faster the audit and the more relevant the findings.
+
 ## Install
 
 **Recommended: Claude Code plugin**
