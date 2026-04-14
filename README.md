@@ -12,67 +12,6 @@ Built during the development of [Stuffolio](https://stuffolio.app), an iOS/macOS
 
 One install gives you a complete audit pipeline -- from data model integrity to visual quality to release readiness. Actively maintained and updated weekly as new patterns emerge from real shipping work. Star the repo to stay current.
 
-## What's New in v2.2.1 (2026-04-14)
-
-**ui-path-radar v2.2.0** with orphan feature detection:
-
-- **Automated Check 4 rewritten** from a 4-line stub to a 3-tier detection system: enumerate all routing enum cases, cross-reference against visible UI triggers (excluding command palette), classify each feature as orphan / command-palette-only / deeply buried / adequately surfaced.
-- **Two new issue categories:** `command_palette_only` (HIGH) flags features reachable only via Go To / QuickFind with no visible UI entry point. `deeply_buried_feature` (HIGH) flags user-facing features requiring 4+ taps from the nearest tab bar item.
-- **Origin:** a Stuffolio session found 6 features only accessible via Go To and 10+ features buried 3+ taps deep in Tools subcategories. The existing skill traced paths forward from entry points but couldn't detect features with zero UI entry points.
-
-## What's New in v2.2 (2026-04-12)
-
-**data-model-radar v2.2.0** with 7 improvements driven by real audit findings:
-
-**Two new domains:**
-- **Domain 1.5: Computed Property Correctness** checks business logic in computed properties for nil propagation bugs, wrong fallback defaults, currency unit mismatches, and stale threshold assumptions.
-- **Domain 7.5: Near-Duplicate Model Detection** flags models sharing 70%+ fields that should be consolidated via a shared protocol.
-
-**Reliability fixes that prevent false findings:**
-- **Full-tree discovery** scans all of `Sources/`, not just `Sources/Models/`. Models under `Sources/Features/` (like ScoutBookmark) are no longer missed.
-- **Field existence gate** requires grep verification that a field actually exists before reporting it dead. Prevents hallucinated field names from reaching you.
-- **Extension discovery** reads `Model+Extension.swift` files before declaring fields unused. A field consumed only in an extension is not dead.
-- **Intentional exclusion framework** classifies serialization gaps as intentional (format mismatch, internal metadata, scope boundary) or real. Intentional exclusions don't lower the domain grade.
-
-**Consistent grading:**
-- **Scoring rubric** with A-F criteria, per-domain deduction rules, evidence requirements, and weighted overall grade (Domain 2 Serialization = 25%, Domain 3 Relationships = 15%, Domain 6 Migration = 15%).
-
-**Cross-suite improvements (all skills):**
-- **9-column rating table** adds Status column (Open/Fixed/Deferred/Skipped) on re-display. Omitted on first display when all findings are Open.
-- **Rating Table Gate** requires the table before every approval/continue/commit prompt. The most common display failure mode is now structurally prevented.
-- **"No tables" opt-out** in session setup for users who prefer text-only findings.
-- **Auto-generated execution rules memory** written on first invocation, survives context compression in long sessions.
-- **Rules Summary** block at top of core.md with the 6 most commonly violated rules.
-
-## What's New in v2.1 (2026-04-11)
-
-**3-tier depth model.** You now choose how deep to audit:
-
-| Tier | Command | What It Does | Time |
-|------|---------|-------------|------|
-| **1 (Quick)** | `/radar-suite data-model` | Single skill, own rating table, no pipeline | 20-60 min |
-| **2 (Targeted)** | `/radar-suite --skills dmr,tbr` | 2-3 skills with cross-skill handoffs | 1-2 hours |
-| **2 (Auto)** | `/radar-suite --changed` | Auto-select skills from git diff | varies |
-| **3 (Full)** | `/radar-suite --full` | All 6 skills + capstone + UX enhancements | 2.5-4 hours |
-
-Tier 1 is the new default. The full pipeline is now opt-in via `--full`, not the implicit behavior.
-
-**6 pipeline UX enhancements** for Tier 3: progress banners at every skill transition, per-skill mini rating tables (marked "PRELIMINARY"), audit-only mode statement, duration estimates, pre-capstone summary, and `short_title` on every finding ID (e.g., `RS-002 (cascade delete crash)` instead of bare `RS-002`).
-
-**Skill abbreviations** for `--skills`: `dmr` (data-model), `tbr` (time-bomb), `rtr` (roundtrip), `upr` (ui-path), `uer` (ui-enhancer).
-
-## What Shipped in v2.0 (2026-04-10)
-
-**Every finding now cites a real pattern in your own codebase.** Not generic advice — a specific file and line number you can open, read, and copy. The schema gate rejects findings without citations, so "consider adding error handling" never reaches you; "follow the pattern at `CloudSyncManager.swift:104-112`" does.
-
-The 3-axis classification framework (bug / scatter / dead) keeps hygiene out of your ship grade so you can focus on what actually blocks release. axis_1 findings count toward the A-F grade; axis_2 and axis_3 findings live in a separate Hygiene Backlog and do not.
-
-The verification checklist caught 4 false positives across the first two audit runs that would have reached users under the pre-v2.0 radars — documented in the 2026-04-10 dry-run and capstone reports. Silent catches are the framework's biggest win.
-
-v2.0 also ships as a Claude Code plugin via `/plugin install`, replacing the hand-maintained `install.sh` distribution path (which still works as a fallback — see the Install section below).
-
-> **Note on the version number reset.** The skills were previously versioned individually (per-skill v3.1, v3.0, v2.4, etc.). v2.0 is the first unified plugin version. Older per-skill version history is preserved in [CHANGELOG.md](CHANGELOG.md).
-
 ## How is Radar Suite different from other code auditing skills?
 
 Most code auditing skills are pattern matchers. They look at code in isolation — this file, this function, this line — and compare it against known-good patterns. *"You used `@StateObject` where `@State` works." "This `try?` swallows an error."* They're fast, precise, and context-free. They don't need to know what your app does.
@@ -388,6 +327,67 @@ If your project path has no spaces, none of this applies and you won't see any D
 
 Dippy is [MIT licensed](https://github.com/ldayton/Dippy/blob/main/LICENSE).
 
+## Release History
+
+### What's New in v2.2.1 (2026-04-14)
+
+**ui-path-radar v2.2.0** with orphan feature detection:
+
+- **Automated Check 4 rewritten** from a 4-line stub to a 3-tier detection system: enumerate all routing enum cases, cross-reference against visible UI triggers (excluding command palette), classify each feature as orphan / command-palette-only / deeply buried / adequately surfaced.
+- **Two new issue categories:** `command_palette_only` (HIGH) flags features reachable only via Go To / QuickFind with no visible UI entry point. `deeply_buried_feature` (HIGH) flags user-facing features requiring 4+ taps from the nearest tab bar item.
+- **Origin:** a Stuffolio session found 6 features only accessible via Go To and 10+ features buried 3+ taps deep in Tools subcategories. The existing skill traced paths forward from entry points but couldn't detect features with zero UI entry points.
+
+### What's New in v2.2 (2026-04-12)
+
+**data-model-radar v2.2.0** with 7 improvements driven by real audit findings:
+
+**Two new domains:**
+- **Domain 1.5: Computed Property Correctness** checks business logic in computed properties for nil propagation bugs, wrong fallback defaults, currency unit mismatches, and stale threshold assumptions.
+- **Domain 7.5: Near-Duplicate Model Detection** flags models sharing 70%+ fields that should be consolidated via a shared protocol.
+
+**Reliability fixes that prevent false findings:**
+- **Full-tree discovery** scans all of `Sources/`, not just `Sources/Models/`. Models under `Sources/Features/` (like ScoutBookmark) are no longer missed.
+- **Field existence gate** requires grep verification that a field actually exists before reporting it dead. Prevents hallucinated field names from reaching you.
+- **Extension discovery** reads `Model+Extension.swift` files before declaring fields unused. A field consumed only in an extension is not dead.
+- **Intentional exclusion framework** classifies serialization gaps as intentional (format mismatch, internal metadata, scope boundary) or real. Intentional exclusions don't lower the domain grade.
+
+**Consistent grading:**
+- **Scoring rubric** with A-F criteria, per-domain deduction rules, evidence requirements, and weighted overall grade (Domain 2 Serialization = 25%, Domain 3 Relationships = 15%, Domain 6 Migration = 15%).
+
+**Cross-suite improvements (all skills):**
+- **9-column rating table** adds Status column (Open/Fixed/Deferred/Skipped) on re-display. Omitted on first display when all findings are Open.
+- **Rating Table Gate** requires the table before every approval/continue/commit prompt. The most common display failure mode is now structurally prevented.
+- **"No tables" opt-out** in session setup for users who prefer text-only findings.
+- **Auto-generated execution rules memory** written on first invocation, survives context compression in long sessions.
+- **Rules Summary** block at top of core.md with the 6 most commonly violated rules.
+
+### What's New in v2.1 (2026-04-11)
+
+**3-tier depth model.** You now choose how deep to audit:
+
+| Tier | Command | What It Does | Time |
+|------|---------|-------------|------|
+| **1 (Quick)** | `/radar-suite data-model` | Single skill, own rating table, no pipeline | 20-60 min |
+| **2 (Targeted)** | `/radar-suite --skills dmr,tbr` | 2-3 skills with cross-skill handoffs | 1-2 hours |
+| **2 (Auto)** | `/radar-suite --changed` | Auto-select skills from git diff | varies |
+| **3 (Full)** | `/radar-suite --full` | All 6 skills + capstone + UX enhancements | 2.5-4 hours |
+
+Tier 1 is the new default. The full pipeline is now opt-in via `--full`, not the implicit behavior.
+
+**6 pipeline UX enhancements** for Tier 3: progress banners at every skill transition, per-skill mini rating tables (marked "PRELIMINARY"), audit-only mode statement, duration estimates, pre-capstone summary, and `short_title` on every finding ID (e.g., `RS-002 (cascade delete crash)` instead of bare `RS-002`).
+
+**Skill abbreviations** for `--skills`: `dmr` (data-model), `tbr` (time-bomb), `rtr` (roundtrip), `upr` (ui-path), `uer` (ui-enhancer).
+
+### What Shipped in v2.0 (2026-04-10)
+
+**Every finding now cites a real pattern in your own codebase.** Not generic advice -- a specific file and line number you can open, read, and copy. The schema gate rejects findings without citations, so "consider adding error handling" never reaches you; "follow the pattern at `CloudSyncManager.swift:104-112`" does.
+
+The 3-axis classification framework (bug / scatter / dead) keeps hygiene out of your ship grade so you can focus on what actually blocks release. axis_1 findings count toward the A-F grade; axis_2 and axis_3 findings live in a separate Hygiene Backlog and do not.
+
+v2.0 ships as a Claude Code plugin via `/plugin install`, replacing the hand-maintained `install.sh` distribution path (which still works as a fallback).
+
+> **Note on the version number reset.** The skills were previously versioned individually (per-skill v3.1, v3.0, v2.4, etc.). v2.0 is the first unified plugin version. Older per-skill version history is preserved in [CHANGELOG.md](CHANGELOG.md).
+
 ## License
 
-MIT — see [LICENSE](LICENSE)
+MIT -- see [LICENSE](LICENSE)
