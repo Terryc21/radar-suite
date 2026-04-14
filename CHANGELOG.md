@@ -6,6 +6,24 @@ Format: [skill-name vX.Y.Z] for legacy per-skill entries, [plugin vX.Y.Z] for un
 
 ---
 
+## 2026-04-14 — [ui-path-radar v2.2.0] Orphan feature detection
+
+### What shipped
+
+**Orphan feature detection in Automated Check 4.** Expanded from a 4-line stub to a 3-tier detection system:
+
+- **Tier 1:** Enumerate all feature destinations from routing enums (sheet types, navigation sections, command palette items)
+- **Tier 2:** Cross-reference each feature against visible UI triggers (excluding command palette)
+- **Tier 3:** Classify as orphan (no entry point), command-palette-only, deeply buried (4+ taps), or adequately surfaced
+
+**Two new issue categories:**
+- `command_palette_only` (HIGH) -- feature reachable only via Go To/QuickFind, no visible UI entry point
+- `deeply_buried_feature` (HIGH) -- user-facing feature requires 4+ taps from nearest tab bar item
+
+**Origin:** Stuffolio session found 6 features only accessible via Go To and 10+ features buried 3+ taps deep. Current skill traced paths forward from entry points but couldn't detect features with zero UI entry points.
+
+---
+
 ## 2026-04-11 — [plugin v2.1.0] 3-tier depth model
 
 ### What shipped

@@ -1,7 +1,7 @@
 ---
 name: ui-path-radar
 description: 'UI path tracer for SwiftUI/UIKit apps. 5-layer audit with 30 issue categories: discover entry points, trace flows, detect dead ends and broken promises, evaluate UX impact, verify data wiring. Supports targeted trace, diff against previous audits, and handoff to planning skills. Triggers: "trace UI paths", "find dead ends", "/ui-path-radar".'
-version: 2.1.0  # 3-tier depth model (was 2.0.0)
+version: 2.2.0  # orphan feature detection (was 2.1.0)
 author: Terry Nyberg
 license: MIT
 allowed-tools: [Read, Grep, Glob, Bash, Edit, Write, AskUserQuestion]
@@ -87,6 +87,8 @@ Each category maps to a **default axis** (see `skills/radar-suite-axis-classific
 | Invisible Selection | 🟢 MEDIUM | axis_1_bug | Item is selected/active but visual indicator missing or too subtle |
 | Inconsistent Pattern | ⚪ LOW | axis_2_scatter | Same feature accessed differently |
 | Orphaned Code | ⚪ LOW | axis_3_dead_code (if unreachable) or axis_3_smelly (if reachable but unjustified) | Feature exists but no entry point |
+| Command-Palette-Only Feature | 🟡 HIGH | axis_1_bug | Feature reachable only via command palette (QuickFind/Go To), no visible UI entry point |
+| Deeply Buried Feature | 🟡 HIGH | axis_1_bug | User-facing feature requires 4+ taps from nearest tab bar item |
 | Double-Nested Navigation | ⚪ LOW | axis_2_scatter | NavigationStack inside NavigationStack causing doubled nav bars |
 
 ### Axis Classification Protocol (MANDATORY — before emitting any finding)
@@ -629,21 +631,56 @@ grep -B5 "EditItemSheetWrapper" Sources/ --include="*.swift" \
 
 ---
 
-### Automated Check 4: Entry Point Coverage
+### Automated Check 4: Entry Point Coverage (Orphan Feature Detection)
 
-**What it detects:** Features that exist in the app but have no trigger/entry point — the user cannot reach them.
+**What it detects:** Features defined in routing enums (sheet types, navigation sections, command palette items) that lack a visible UI entry point outside the command palette. Users who don't use the command palette will never discover these features.
 
-**How to detect:**
+**Three-tier detection:**
+
+**Tier 1: Enumerate all feature destinations**
 ```bash
-# Step 1: Find all sheet/navigation triggers
-grep -r "activeSheet = \." Sources/
-grep -r "selectedSection = \." Sources/
+# Find all sheet/routing enum cases (adapt patterns to the project)
+grep -n "case " Sources/ --include="*.swift" -r | grep -i "Sheet\|SheetType\|Section\|Destination"
 
-# Step 2: Compare against feature list (views, sheet enum cases)
-# Any features/views without triggers?
+# Find all command palette / QuickFind items
+grep -rn "QuickFindItem\|QuickFindSheet" Sources/ --include="*.swift" | grep "case "
 ```
 
-**Severity:** 🟡 HIGH if feature is user-facing, ⚪ LOW if internal/utility
+For each case found, record it in a feature inventory table:
+| Feature | Enum | Has Primary UI Entry? | Has Command Palette Entry? | Tap Depth |
+
+**Tier 2: Cross-reference against visible UI triggers**
+```bash
+# Find all places each enum case is triggered from visible UI
+# (buttons, navigation links, list rows — NOT command palette)
+grep -rn "activeSheet = \.featureName" Sources/ --include="*.swift" | grep -v "QuickFind\|CommandPalette"
+grep -rn "selectedSection = \.featureName" Sources/ --include="*.swift"
+
+# Count tap depth: how many taps from a tab bar item to reach each trigger?
+# Tab bar = 0, view on tab = 1, button on that view = 2, sheet from button = 3, etc.
+```
+
+**Tier 3: Classify each feature**
+
+| Classification | Criteria | Severity |
+|---|---|---|
+| **Orphan** | No UI trigger at all (only in code, never presented) | 🔴 CRITICAL |
+| **Command-palette-only** | Trigger exists only in QuickFind/Go To/Spotlight | 🟡 HIGH |
+| **Deeply buried** | Primary UI trigger exists but requires 4+ taps | 🟡 HIGH |
+| **Adequately surfaced** | Reachable in 1-3 taps from a tab | No finding |
+
+**What to flag:**
+- Features with zero visible UI entry points (command-palette-only or orphan)
+- Features requiring 4+ taps when they serve a primary user need (not a power-user utility)
+- Features whose only entry point is a gesture (swipe, long-press) with no visual hint
+
+**Safe patterns (do NOT flag):**
+- Power-user/maintenance utilities (photo optimizer, data cleanup) at 3+ taps — these are correctly placed as secondary tools
+- Features intentionally gated behind settings (e.g., Legacy Wishes behind `legacyWishesEnabled`)
+- Debug/developer-only features
+- Command palette entries that mirror an existing primary UI entry point (aliases)
+
+**Severity:** 🔴 CRITICAL if feature is user-facing with no entry point, 🟡 HIGH if command-palette-only or 4+ taps for a primary feature, ⚪ LOW if internal/utility
 
 ---
 
@@ -1544,7 +1581,7 @@ file_timestamps:
 issues:
   - id: <sequential number>
     finding: "<description>"
-    category: <dead_end|wrong_destination|mock_data|incomplete_navigation|missing_activation|unwired_data|platform_gap|promise_scope_mismatch|buried_primary_action|dismiss_trap|two_step_flow|missing_feedback|gesture_only_action|loading_state_trap|context_dropping|notification_nav_fragility|sheet_presentation_asymmetry|stale_navigation_context|navigation_container_mismatch|empty_state_missing|error_recovery_missing|inconsistent_pattern|orphaned_code|double_nested_navigation>
+    category: <dead_end|wrong_destination|mock_data|incomplete_navigation|missing_activation|unwired_data|platform_gap|promise_scope_mismatch|buried_primary_action|dismiss_trap|two_step_flow|missing_feedback|gesture_only_action|loading_state_trap|context_dropping|notification_nav_fragility|sheet_presentation_asymmetry|stale_navigation_context|navigation_container_mismatch|empty_state_missing|error_recovery_missing|inconsistent_pattern|orphaned_code|command_palette_only|deeply_buried_feature|double_nested_navigation>
     urgency: <critical|high|medium|low>
     risk_fix: <critical|high|medium|low>
     risk_no_fix: <critical|high|medium|low>
@@ -1637,6 +1674,8 @@ checks_performed:
     - invisible_selection
     - inconsistent_pattern
     - orphaned_code
+    - command_palette_only
+    - deeply_buried_feature
     - double_nested_nav
   persona_evaluation: false
   confidence_scoring: true
