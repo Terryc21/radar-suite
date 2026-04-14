@@ -10,7 +10,15 @@
 
 Built during the development of [Stuffolio](https://stuffolio.app), an iOS/macOS app that tracks the things you own across their full life cycle — warranty, repair, and legacy. The audit skills came out of shipping real features like Legacy Wishes and Stuff Scout on a 600-file codebase.
 
-One install gives you a complete audit pipeline — from data model integrity to visual quality to release readiness.
+One install gives you a complete audit pipeline -- from data model integrity to visual quality to release readiness. Actively maintained and updated weekly as new patterns emerge from real shipping work. Star the repo to stay current.
+
+## What's New in v2.2.1 (2026-04-14)
+
+**ui-path-radar v2.2.0** with orphan feature detection:
+
+- **Automated Check 4 rewritten** from a 4-line stub to a 3-tier detection system: enumerate all routing enum cases, cross-reference against visible UI triggers (excluding command palette), classify each feature as orphan / command-palette-only / deeply buried / adequately surfaced.
+- **Two new issue categories:** `command_palette_only` (HIGH) flags features reachable only via Go To / QuickFind with no visible UI entry point. `deeply_buried_feature` (HIGH) flags user-facing features requiring 4+ taps from the nearest tab bar item.
+- **Origin:** a Stuffolio session found 6 features only accessible via Go To and 10+ features buried 3+ taps deep in Tools subcategories. The existing skill traced paths forward from entry points but couldn't detect features with zero UI entry points.
 
 ## What's New in v2.2 (2026-04-12)
 
@@ -81,7 +89,7 @@ Most auditors are the building code. Radar Suite is the home inspector.
 | **radar-suite-axis-classification** | Foundation skill. Invoked automatically by every other radar before findings are emitted. Provides the 3-axis framework, verification checklist (reachability trace, whole-file scan, branch enumeration, pattern citation lookup), coaching schema, and schema gate that rejects findings without file:line citations. |
 | **data-model-radar** | Your data definitions across 9 domains: field completeness, computed property correctness, serialization coverage (with intentional exclusion framework), relationship integrity, semantic clarity, field usage mapping (with extension discovery and hallucination guards), migration safety, cross-model consistency, and near-duplicate model detection. Risk-ranked model inventory shows which models to audit first. |
 | **time-bomb-radar** | Deferred operations -- will your app crash 30 days after release? Cascade deletes, cache expiry, trial paths, background tasks, date transitions, scheduled side effects |
-| **ui-path-radar** | Navigation flows -- can users reach every feature? Are there dead ends or broken links? Every one of the 30 issue categories has a default axis with reclassification rules. |
+| **ui-path-radar** | Navigation flows -- can users reach every feature? Are there dead ends or broken links? Orphan feature detection enumerates all routing enum cases and flags features with no visible UI entry point or only reachable via command palette. 32 issue categories, each with a default axis and reclassification rules. |
 | **roundtrip-radar** | Data round-trips — does data survive backup→restore, export→import, create→edit→save? Every finding cites the full UI→manager→model→persistence→UI path in its verification log. Detects collection narrowing (arrays silently lose elements) and bridge parity gaps (multiple consumers of the same model read different field subsets). |
 | **ui-enhancer-radar** | Visual quality — requires you to view each screen before changes, walks through recommendations collaboratively, then finds similar patterns across views |
 | **capstone-radar** | Two-section report: "Fix Before Shipping" (axis_1 findings, A-F grade), "Hygiene Backlog" (axis_2/3, no grade impact). Aggregates findings from all other skills with axis-split rendering and audit coverage reporting. |
