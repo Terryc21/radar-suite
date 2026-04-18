@@ -1,7 +1,7 @@
 ---
 name: time-bomb-radar
 description: 'Finds deferred operations that crash on aged data -- code that passes every test but breaks weeks or months after release. Covers cascade deletes, cache expiry, trial paths, background accumulation, date-threshold transitions, and scheduled side effects. Triggers: "time bomb", "time-bomb", "/time-bomb-radar", "aged data", "deferred deletion".'
-version: 2.1.0  # 3-tier depth model (was 2.0.0)
+version: 2.2.0  # +Pattern 7 cascade delete with live child references (was 2.1.0)
 author: Terry Nyberg
 license: MIT
 allowed-tools: [Read, Grep, Glob, Bash, AskUserQuestion]
@@ -23,7 +23,7 @@ Time bombs are deferred operations that pass every test, every code review, ever
 
 | Command | What it does |
 |---------|-------------|
-| `/time-bomb-radar` | Full audit across all 6 patterns |
+| `/time-bomb-radar` | Full audit across all 7 patterns |
 | `/time-bomb-radar deferred-deletes` | Pattern 1 only -- cascade deletes on aged data |
 | `/time-bomb-radar cache-expiry` | Pattern 2 only -- cache purge with model relationships |
 | `/time-bomb-radar trial-expiry` | Pattern 3 only -- subscription/trial expiry paths |
@@ -88,7 +88,7 @@ To catch a time bomb manually, you'd need to: create data, archive it, set your 
 Present to the user based on experience level:
 
 - **New to this skill**: "I'll search your codebase for operations that fire after a time delay -- deletions, cache purges, trial expirations, background tasks, and date-based state changes. For each one, I'll check whether it can crash on data that's been sitting idle for weeks or months with incomplete cloud sync. The question I ask for every hit: if this runs 90 days after the data was created, with bad network, what breaks?"
-- **Experienced**: "Time bomb audit across 6 patterns: deferred cascade deletes, cache expiry with model relationships, trial/subscription expiry paths, background task accumulation, date-threshold state transitions, and scheduled side effects from aged data. Outputs rated findings with grep evidence."
+- **Experienced**: "Time bomb audit across 7 patterns: deferred cascade deletes, cache expiry with model relationships, trial/subscription expiry paths, background task accumulation, date-threshold state transitions, scheduled side effects from aged data, and cascade delete with live child references. Outputs rated findings with grep evidence."
 
 **User impact explanations:** Can be toggled at any time with `--explain` / `--no-explain`. When enabled, each finding gets a 3-line companion explanation (what's wrong, fix, user experience before/after). See the shared rating system doc for format and rules. Store as `EXPLAIN_FINDINGS` (default: false).
 
@@ -496,6 +496,51 @@ let trigger = UNCalendarNotificationTrigger(
 
 ---
 
+## Pattern 7: Cascade delete with live child references
+
+**The general problem:** A parent `@Model` object has a `.cascade` delete rule on a relationship. A view or closure elsewhere holds a direct reference to a child object independently of the parent. When the parent is deleted, SwiftData cascade-deletes the child, but the view/closure still holds and accesses the now-deleted child. Accessing properties of a deleted `@Model` crashes at runtime.
+
+This is distinct from Pattern 1 (deferred deletion) because the delete is immediate, not time-delayed. The "bomb" is spatial, not temporal: it depends on which views are active when the delete happens, not on how much time has passed. But it belongs in time-bomb-radar because it shares the same diagnostic shape: an action (delete) whose consequences are invisible at the call site and only manifest when a distant piece of code touches the affected object later.
+
+**Severity:** Usually BOMB (crash) if the child is accessed after deletion. Safe if the view observes the parent and dismisses when the parent is deleted.
+
+### How to find them (Swift)
+
+```
+Grep pattern="\.cascade|deleteRule.*cascade" glob="**/*.swift" output_mode="files_with_matches"
+```
+
+For each cascade relationship, identify the child type. Then check if any view holds a direct reference to the child type independent of navigating through the parent:
+
+```
+Grep pattern="@Query.*ChildType|@Bindable.*ChildType|let.*: ChildType|var.*: ChildType" glob="**/*.swift" output_mode="files_with_matches"
+```
+
+### What to verify for each hit
+
+1. **Independent child reference:** Does any view hold the child directly (via `@Query`, `@Bindable`, `let`/`var` parameter, or `@State`) rather than accessing it through `parent.children`?
+2. **Active view during delete:** Can the user trigger a parent delete while a view holding the child is still presented? (e.g., detail sheet for child is open, user deletes parent from a list in the background)
+3. **Observation of parent lifecycle:** Does the child-holding view observe the parent and dismiss or guard when the parent is deleted?
+4. **Navigation stack cleanup:** If the child view is on a navigation stack, does deleting the parent pop the stack back?
+
+### Classification
+
+| Behavior | Rating |
+|---|---|
+| View holds child independently, no guard on parent deletion | BOMB (crash on access) |
+| View holds child independently, but parent delete pops navigation/dismisses sheet | Safe |
+| View accesses child only through parent reference (`parent.children`) | Safe (parent nil-check guards access) |
+| Child has `.nullify` or `.deny` delete rule (not `.cascade`) | Not applicable to this pattern |
+
+### Swift-specific detail
+
+SwiftData cascade deletes happen synchronously when the parent is deleted in a context. If a SwiftUI view holds an `@Bindable` reference to the child, the view body may re-evaluate after the delete and access properties on a deleted object. The fix is either:
+- Dismiss the child view before or upon parent deletion
+- Use `@Query` filtered by parent ID (query returns empty when parent is deleted, view shows empty state)
+- Access children only through the parent's relationship property
+
+---
+
 ## Findings format
 
 For every hit, produce a rated finding:
@@ -505,6 +550,7 @@ For every hit, produce a rated finding:
 | 1 | Deferred delete | SafeDeletionManager.swift:89 | 30 days after archive | BOMB | Cascade to PhotoAttachment with .externalStorage |
 | 2 | Cache expiry | OCRCacheManager.swift:235 | 90 days after cache creation | Risky | Object-level purge, no .externalStorage but has relationships |
 | 3 | Trial expiry | AITrialManager.swift:44 | Trial end date | Safe | Gate check at view level with fallback |
+| 4 | Cascade delete | Item.swift:405 | Parent delete while child sheet open | BOMB | Child view holds @Bindable ref, no dismiss guard |
 
 ### Rating each finding
 

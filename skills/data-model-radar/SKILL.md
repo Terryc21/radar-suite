@@ -1,7 +1,7 @@
 ---
 name: data-model-radar
 description: 'Audits SwiftData/Core Data model layer for field completeness, serialization gaps, relationship integrity, semantic ambiguity, dead fields, and migration safety. Finds model-layer bugs that manifest as workflow bugs. Triggers: "audit models", "model radar", "/data-model-radar".'
-version: 2.2.0  # +Domain 1.5/7.5, scoring rubric, discovery/exclusion fixes (was 2.1.0)
+version: 2.3.0  # +Domain 3a/3b cross-context mutation and stale object checks (was 2.2.0)
 author: Terry Nyberg
 license: MIT
 allowed-tools: [Read, Grep, Glob, Bash, Edit, Write, AskUserQuestion]
@@ -412,6 +412,56 @@ Rules:
 2. For each, verify: deleteRule, inverse, optional vs required
 3. Build a relationship graph and check for orphan paths
 
+#### 3a: Cross-Context Mutation `mixed`
+
+**The problem:** A manager or service class creates its own `ModelContext` (via `makeContext()`, `ModelContext(container)`, or similar), then receives `@Model` objects as parameters and mutates them or sets relationships on them. SwiftData forbids relating or mutating objects across different contexts. This crashes at runtime with "attempting to relate model with model context to destination model from destination's model context."
+
+**Why static audits miss it:** Every line of code is valid Swift. The bug is the *relationship* between where the object was created (caller's context) and where the mutation happens (method's own context). No single file is wrong in isolation.
+
+**How to find them:**
+
+```
+Grep pattern="ModelContext\(|makeContext\(\)" glob="**/*.swift" output_mode="files_with_matches"
+```
+
+For each file that creates its own context, check every method that:
+1. Receives `@Model` parameters (any `@Model` type as a function argument)
+2. Mutates those parameters (sets properties, assigns relationships) OR deletes them
+3. Saves via the method's own context, not the caller's
+
+**False positive filter:** Methods that re-fetch the passed-in object by `persistentModelID` before mutation are safe. Example:
+```swift
+let localObject = context.model(for: passedObject.persistentModelID) as? MyModel
+```
+
+**Classification:**
+
+| Behavior | Rating |
+|---|---|
+| Receives @Model param, creates own context, mutates param directly | BOMB (crash) |
+| Receives @Model param, creates own context, re-fetches by ID before mutation | Safe |
+| Receives @Model param, uses caller's context (passed as parameter) | Safe |
+| Creates own context, only reads/queries (no mutation of passed-in objects) | Safe |
+
+#### 3b: Stale Object After Cross-Context Save `mixed`
+
+**The problem:** A manager method saves changes in its own `ModelContext`, but the caller passed in an `@Model` object and expects it to reflect the saved changes. The caller's copy belongs to a different context and won't see the update. The UI shows stale data until the user navigates away and back. Not a crash, but frequently reported as "my data disappeared" or "save didn't work."
+
+**How to find them:**
+
+Same grep as 3a. For each method that creates its own context and receives `@Model` parameters, check if:
+1. The method modifies data related to the passed-in object (even if it doesn't mutate the object directly)
+2. The method returns success or the updated object, implying the caller can trust the passed-in reference
+3. The caller's context never learns about the save
+
+**Classification:**
+
+| Behavior | Rating |
+|---|---|
+| Saves in own context, caller assumes passed-in object is updated | Risky (stale UI) |
+| Saves in own context, caller re-fetches after call returns | Safe |
+| Uses caller's context for save | Safe |
+
 ### Domain 4: Semantic Clarity `enumerate-required`
 
 **What to check:**
@@ -591,7 +641,7 @@ Every domain produces a letter grade. Use this rubric so grades are consistent a
 - Quick-depth audits cap at B+ (unverified targets may hide gaps).
 
 **Domain 3 (Relationship Integrity):**
-- Start at A. Deduct: missing inverse = -10, wrong delete rule = -15, orphan risk = -5, undocumented cascade to externalStorage = -20.
+- Start at A. Deduct: missing inverse = -10, wrong delete rule = -15, orphan risk = -5, undocumented cascade to externalStorage = -20, cross-context mutation (3a) = -20 (crash), stale object after cross-context save (3b) = -10 (silent bug).
 
 **Domain 4 (Semantic Clarity):**
 - Start at A. Deduct: nil-vs-zero ambiguity with no distinguishing flag = -5, string field that should be enum = -3, boolean with ambiguous false = -2.
@@ -890,6 +940,8 @@ After writing the handoff YAML, also write findings to `.radar-suite/ledger.yaml
 **Impact category mapping for data-model-radar findings:**
 - Domain 2 serialization gaps → `data-loss`
 - Domain 3 cascade/orphan risk → `crash` (if cascade to external storage) or `data-loss`
+- Domain 3a cross-context mutation → `crash`
+- Domain 3b stale object after cross-context save → `ux-degraded`
 - Domain 5 dead fields → `hygiene`
 - Domain 6 migration gaps → `crash` (if breaking) or `data-loss`
 - Domain 1/4/7 → classify per finding (usually `hygiene` or `ux-degraded`)

@@ -26,8 +26,8 @@ Most auditors are the building code. Radar Suite is the home inspector.
 |-------|---------------|
 | **radar-suite** | Unified entry point — routes to any skill or runs full audit sequence |
 | **radar-suite-axis-classification** | Foundation skill. Invoked automatically by every other radar before findings are emitted. Provides the 3-axis framework, verification checklist (reachability trace, whole-file scan, branch enumeration, pattern citation lookup), coaching schema, and schema gate that rejects findings without file:line citations. |
-| **data-model-radar** | Your data definitions across 9 domains: field completeness, computed property correctness, serialization coverage (with intentional exclusion framework), relationship integrity, semantic clarity, field usage mapping (with extension discovery and hallucination guards), migration safety, cross-model consistency, and near-duplicate model detection. Risk-ranked model inventory shows which models to audit first. |
-| **time-bomb-radar** | Deferred operations -- will your app crash 30 days after release? Cascade deletes, cache expiry, trial paths, background tasks, date transitions, scheduled side effects |
+| **data-model-radar** | Your data definitions across 9 domains: field completeness, computed property correctness, serialization coverage (with intentional exclusion framework), relationship integrity (including cross-context mutation and stale object detection), semantic clarity, field usage mapping (with extension discovery and hallucination guards), migration safety, cross-model consistency, and near-duplicate model detection. Risk-ranked model inventory shows which models to audit first. |
+| **time-bomb-radar** | Deferred operations -- will your app crash 30 days after release? Cascade deletes, cache expiry, trial paths, background tasks, date transitions, scheduled side effects, cascade delete with live child references |
 | **ui-path-radar** | Navigation flows -- can users reach every feature? Are there dead ends or broken links? Orphan feature detection enumerates all routing enum cases and flags features with no visible UI entry point or only reachable via command palette. 32 issue categories, each with a default axis and reclassification rules. |
 | **roundtrip-radar** | Data round-trips — does data survive backup→restore, export→import, create→edit→save? Every finding cites the full UI→manager→model→persistence→UI path in its verification log. Detects collection narrowing (arrays silently lose elements) and bridge parity gaps (multiple consumers of the same model read different field subsets). |
 | **ui-enhancer-radar** | Visual quality — requires you to view each screen before changes, walks through recommendations collaboratively, then finds similar patterns across views |
@@ -328,6 +328,18 @@ If your project path has no spaces, none of this applies and you won't see any D
 Dippy is [MIT licensed](https://github.com/ldayton/Dippy/blob/main/LICENSE).
 
 ## Release History
+
+### What's New in v2.3.0 (2026-04-18)
+
+**data-model-radar v2.3.0** with cross-context object safety checks:
+
+- **Domain 3a: Cross-Context Mutation** detects methods that create their own `ModelContext` and mutate `@Model` objects passed in from callers. SwiftData crashes at runtime when objects from different contexts are related. Every line of code is valid Swift; the bug is the *relationship* between two individually correct files. No grep pattern can find it because there is no searchable code signature. The heuristic checks for `makeContext()` / `ModelContext(container)` combined with parameter mutation, with a false-positive filter for methods that re-fetch by `persistentModelID` before mutating.
+- **Domain 3b: Stale Object After Cross-Context Save** detects the silent variant of the same pattern. A manager saves in its own context, but the caller's copy of the passed-in object never sees the update. UI shows stale data until the user navigates away and back. Not a crash, but frequently reported as "save didn't work."
+- **Origin:** a Stuffolio Legacy Wishes crash where `assignItem()` created its own `ModelContext` and set `item.legacyAssignment = assignment` on an Item from the view's context. Every audit skill (radar-suite and Axiom) passed the code because each file was correct in isolation. The bug only existed at the boundary between two files.
+
+**time-bomb-radar v2.2.0** with cascade delete child reference detection:
+
+- **Pattern 7: Cascade Delete With Live Child References** detects `.cascade` delete rules where a view holds a direct reference to a child object independently of the parent. When the parent is deleted, the child is cascade-deleted, but the view still holds and accesses the deleted child. Distinct from Pattern 1 (deferred deletion) because the delete is immediate; the "bomb" is spatial (which views are active), not temporal (how much time has passed).
 
 ### What's New in v2.2.1 (2026-04-14)
 

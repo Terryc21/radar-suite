@@ -6,6 +6,28 @@ Format: [skill-name vX.Y.Z] for legacy per-skill entries, [plugin vX.Y.Z] for un
 
 ---
 
+## 2026-04-18 — [data-model-radar v2.3.0, time-bomb-radar v2.2.0] Cross-context object safety
+
+### What shipped
+
+**data-model-radar v2.3.0: Two new checks under Domain 3 (Relationship Integrity).**
+
+- **Domain 3a: Cross-Context Mutation.** Detects methods that create their own `ModelContext` (via `makeContext()`, `ModelContext(container)`) and mutate `@Model` objects passed in as parameters. SwiftData crashes at runtime when objects from different contexts are related. The heuristic: method creates own context + receives @Model param + mutates param without re-fetching by `persistentModelID`. Methods that re-fetch first are filtered as safe.
+
+- **Domain 3b: Stale Object After Cross-Context Save.** Silent variant of 3a. Manager saves in its own context, but the caller's copy of the passed-in object never reflects the change. UI shows stale data until user navigates away and back.
+
+- **Scoring impact:** 3a = -20 (crash), 3b = -10 (silent bug). Impact categories: 3a = `crash`, 3b = `ux-degraded`.
+
+**time-bomb-radar v2.2.0: Pattern 7 added.**
+
+- **Pattern 7: Cascade Delete With Live Child References.** Detects `.cascade` delete rules where a view holds a direct reference to the child independently of the parent. When parent is deleted, child is cascade-deleted, but the view still accesses the deleted child. BOMB if no dismiss guard; Safe if view observes parent lifecycle.
+
+- Distinct from Pattern 1 (deferred deletion): delete is immediate, the "bomb" is spatial (which views are active), not temporal.
+
+**Origin:** Stuffolio Legacy Wishes crash. `LegacyWishesManager.assignItem()` created its own `ModelContext` and set a relationship on an Item from the view's context. Every audit skill passed the code because each file was correct in isolation. The bug existed only at the boundary between two files. No searchable code signature; grep-based and LLM-driven audits both missed it. Found via runtime crash log.
+
+---
+
 ## 2026-04-14 — [ui-path-radar v2.2.0] Orphan feature detection
 
 ### What shipped
