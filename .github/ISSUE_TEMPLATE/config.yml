@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Ask a question
+    url: https://github.com/Terryc21/radar-suite/discussions
+    about: Start a Discussion thread for questions, ideas, or general feedback.
+  - name: Related project (workflow-audit)
+    url: https://github.com/Terryc21/workflow-audit
+    about: For SwiftUI workflow audits specifically, see workflow-audit.

@@ -1,0 +1,56 @@
+name: Feature request
+description: Suggest a new audit category, detection pattern, or improvement
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Suggestions grounded in real bugs the audit missed are the most actionable. If you can link to a specific case, please include it.
+
+  - type: dropdown
+    id: skill
+    attributes:
+      label: Which skill should this belong to?
+      options:
+        - data-model-radar
+        - time-bomb-radar
+        - roundtrip-radar
+        - ui-path-radar
+        - ui-enhancer-radar
+        - capstone-radar
+        - Cross-cutting (affects multiple skills or core conventions)
+        - New skill proposal
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What is the audit missing, misclassifying, or failing to detect?
+    validations:
+      required: true
+
+  - type: textarea
+    id: example
+    attributes:
+      label: A concrete example
+      description: A real code sample, audit output, or scenario that illustrates the gap.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed
+    attributes:
+      label: Proposed approach
+      description: Grep pattern, semantic rule, decision criteria, or just a description. Skip if you're not sure.
+    validations:
+      required: false
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope and tradeoffs
+      description: What false positives or edge cases might this introduce?
+    validations:
+      required: false

@@ -1,0 +1,80 @@
+name: Bug report
+description: A skill produced a wrong finding, missed something, or crashed
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. A code snippet that triggers the issue is the most valuable single thing you can include.
+
+  - type: dropdown
+    id: skill
+    attributes:
+      label: Which skill?
+      options:
+        - data-model-radar
+        - time-bomb-radar
+        - roundtrip-radar
+        - ui-path-radar
+        - ui-enhancer-radar
+        - capstone-radar
+        - Cross-cutting (multiple skills or core conventions)
+        - Not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: Describe the unexpected behavior.
+      placeholder: data-model-radar flagged Item.priceInCents as unused, but it is read by InventoryView.swift:87.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: The command you ran and, if possible, a minimal code sample that triggers the issue.
+      placeholder: |
+        Ran `/radar-suite data-model-radar` on a project with:
+        ```swift
+        @Model final class Item {
+            var priceInCents: Int?
+        }
+        ```
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Plugin version
+      placeholder: v2.1.0
+    validations:
+      required: false
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Xcode, Swift, macOS version, approximate codebase size.
+    validations:
+      required: false
+
+  - type: textarea
+    id: handoff
+    attributes:
+      label: Handoff YAML or output
+      description: If relevant, paste the handoff YAML entry or the skill's output for the bad finding.
+      render: yaml
+    validations:
+      required: false
