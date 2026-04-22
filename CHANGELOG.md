@@ -6,6 +6,30 @@ Format: [skill-name vX.Y.Z] for legacy per-skill entries, [plugin vX.Y.Z] for un
 
 ---
 
+## 2026-04-22 — [ui-enhancer-radar v3.4.0] Domain 13: Button hit region (three-factor)
+
+### What shipped
+
+**ui-enhancer-radar v3.4.0: Domain 13 added — Button Hit Region, three-factor interaction audit.**
+
+- Detects the iPad hit-region collapse bug: a `Button { } label: { }` with `.buttonStyle(.plain)` + a manually drawn trailing `chevron.right` + Form/List context collapses the tappable area to the chevron alone on iPad. Rest of the row looks tappable but is functionally dead. Invisible on iPhone (iPhone rows have no accessory semantics).
+- Three-factor detection: no single factor is wrong in isolation — `.plain` button style is legal, manual chevrons are legal, Buttons inside Forms are legal. The *interaction* breaks on iPad. Requires holding the label closure, the modifier chain, and the structural list context simultaneously.
+- Offers two fixes per finding: (A, preferred per HIG) remove the decorative chevron since card modifiers already read as tappable and chevrons are for NavigationLinks, not Buttons; (B) keep the chevron, add `.contentShape(Rectangle())` on the label's outer HStack.
+- Severity default: HIGH. Elevates to CRITICAL for critical-path buttons (add-item, save, export, payment), systemic cases (5+ sites in a single view hierarchy), or accessibility failures.
+- New subcommand: `/ui-enhancer-radar hit-region` for single-domain runs.
+- Exclusions: NavigationLink, DisclosureGroup, toolbar items, non-plain button styles, macOS-only views, animated rotation chevrons.
+- Pattern sweep follow-up: after a first fix, grep for the same shape across the codebase. This bug is rarely isolated when a project uses shared card modifiers.
+
+**Origin:** Stuffolio session 2026-04-22. User reported that Export Backup File and Import Backup File cards on `BackupDataSheet.swift` were only tappable on the trailing chevron on iPad Pro 13" M5. Both sites had the exact three-factor shape: Button with `.buttonStyle(.plain)` + `.actionCard()` / `.destructiveCard()`, HStack label ending with `Image(systemName: "chevron.right")`, placed inside a Section inside SheetContainer's Form. Stufflio commit `2863e05` applied Fix A + B together (removed chevron AND added `.contentShape(Rectangle())` — belt-and-suspenders). Existing Domain 9 "Sheet pattern" check missed it because it inspects the sheet's use of `SheetContainer` (correct), not the inner Button hit region. Domain 13 closes that gap.
+
+**Files:**
+- New: `skills/ui-enhancer-radar/references/domain-13-button-hit-region.md` — full heuristic, exclusions, finding format, project-convention loader, both fix options, acceptance criteria
+- Modified: `skills/ui-enhancer-radar/SKILL.md` — new Domain 13 section, new `hit-region` subcommand, updated description (12-domain → 13-domain)
+- Modified: `skills/ui-enhancer-radar/VERSION` — 3.3.0 → 3.4.0
+- Modified: `README.md` — ui-enhancer-radar row notes button hit region audit
+
+---
+
 ## 2026-04-22 — [ui-enhancer-radar v3.3.0] Domain 12: iPad sheet sizing (caller-side)
 
 ### What shipped

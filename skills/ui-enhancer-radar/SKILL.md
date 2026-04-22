@@ -1,6 +1,6 @@
 ---
 name: ui-enhancer-radar
-description: 'Systematic iOS/SwiftUI UI audit with design intent interview, 12-domain analysis (including Color Audit with adaptive Color Profile and iPad Sheet Sizing caller-side audit), element compaction, cross-view consistency checks, layout reorganization, design-aware push-back, App Store guardrails, and incremental apply with revert safety. 18 subcommands. Run /ui-enhancer-radar help for all commands. Triggers: "enhance this UI", "ui enhancer radar", "improve this view", "screen review", "ux audit", "ipad sheet truncation".'
+description: 'Systematic iOS/SwiftUI UI audit with design intent interview, 13-domain analysis (including Color Audit with adaptive Color Profile, iPad Sheet Sizing caller-side audit, and Button Hit Region three-factor interaction audit), element compaction, cross-view consistency checks, layout reorganization, design-aware push-back, App Store guardrails, and incremental apply with revert safety. 19 subcommands. Run /ui-enhancer-radar help for all commands. Triggers: "enhance this UI", "ui enhancer radar", "improve this view", "screen review", "ux audit", "ipad sheet truncation", "button not tappable on iPad".'
 version: 2.1.0  # 3-tier depth model (was 2.0.0)
 author: Terry Nyberg
 license: MIT
@@ -13,7 +13,7 @@ metadata:
 
 # UI Enhancer Radar
 
-> **Quick Ref:** Screenshot + code analysis of any iOS/SwiftUI view. Design intent interview (sacred elements, aggressiveness), 12-domain analysis with layout reorganization, Color Audit (adaptive Color Profile), and iPad Sheet Sizing caller-side audit, element compaction (compact vs remove vs keep), cross-view consistency checks, design-aware refinement with push-back and App Store guardrails, incremental apply with revert safety (git or file backup), visual verification guidance, and files-changed summary.
+> **Quick Ref:** Screenshot + code analysis of any iOS/SwiftUI view. Design intent interview (sacred elements, aggressiveness), 13-domain analysis with layout reorganization, Color Audit (adaptive Color Profile), iPad Sheet Sizing caller-side audit, and Button Hit Region three-factor audit, element compaction (compact vs remove vs keep), cross-view consistency checks, design-aware refinement with push-back and App Store guardrails, incremental apply with revert safety (git or file backup), visual verification guidance, and files-changed summary.
 
 <ui-enhancer-radar>
 
@@ -37,6 +37,7 @@ You are performing a systematic UI enhancement on a specific iOS/SwiftUI view, a
 | `/ui-enhancer-radar design-system` | Design system compliance only |
 | `/ui-enhancer-radar color` | Color audit only (inventory, flatness, consistency) |
 | `/ui-enhancer-radar ipad-sheets` | iPad sheet sizing audit only (caller-side `.sheet()` check) |
+| `/ui-enhancer-radar hit-region` | Button hit region audit only (three-factor: .plain + Form/List + trailing chevron) |
 | `/ui-enhancer-radar compare` | Compare before/after screenshots for progress |
 | `/ui-enhancer-radar revert` | Undo all changes back to last checkpoint |
 | `/ui-enhancer-radar batch [path]` | Audit all views in a directory, rank by severity |
@@ -57,7 +58,7 @@ You are performing a systematic UI enhancement on a specific iOS/SwiftUI view, a
 UI Enhancer — Available Commands
 
 FULL AUDIT
-  /ui-enhancer-radar              Full 12-domain audit with interview
+  /ui-enhancer-radar              Full 13-domain audit with interview
 
 SINGLE DOMAIN (skip interview, run one domain)
   /ui-enhancer-radar space        Space efficiency analysis
@@ -71,6 +72,7 @@ SINGLE DOMAIN (skip interview, run one domain)
   /ui-enhancer-radar design-system  Design system compliance
   /ui-enhancer-radar color        Color audit (inventory, flatness, consistency)
   /ui-enhancer-radar ipad-sheets  iPad sheet sizing audit (caller-side `.sheet()` check)
+  /ui-enhancer-radar hit-region   Button hit region audit (.plain + chevron + Form/List)
 
 UTILITIES
   /ui-enhancer-radar compare      Compare before/after screenshots
@@ -111,13 +113,13 @@ On first invocation, ask the user two questions in a single `AskUserQuestion` ca
 
 **Experience-adapted explanations for UI Enhancer:**
 
-- **Beginner**: "UI Enhancer is like having a professional designer review every screen in your app. It checks 12 different things — spacing, colors, accessibility, layout efficiency, iPad sheet sizing, and more — then suggests specific improvements. It won't just say 'this looks wrong'; it'll show you exactly what to change and why. It works one view at a time, applying changes incrementally so you can undo anything."
+- **Beginner**: "UI Enhancer is like having a professional designer review every screen in your app. It checks 13 different things — spacing, colors, accessibility, layout efficiency, iPad sheet sizing, button hit regions, and more — then suggests specific improvements. It won't just say 'this looks wrong'; it'll show you exactly what to change and why. It works one view at a time, applying changes incrementally so you can undo anything."
 
-- **Intermediate**: "UI Enhancer performs a 12-domain analysis of SwiftUI views: layout, spacing, color accessibility, typography, element compaction, cross-view consistency, iPad sheet sizing, and more. It interviews you about design intent first, then audits against Apple HIG and your app's design system. Changes are applied incrementally with revert safety."
+- **Intermediate**: "UI Enhancer performs a 13-domain analysis of SwiftUI views: layout, spacing, color accessibility, typography, element compaction, cross-view consistency, iPad sheet sizing, button hit regions, and more. It interviews you about design intent first, then audits against Apple HIG and your app's design system. Changes are applied incrementally with revert safety."
 
-- **Experienced**: "12-domain SwiftUI UI audit with design intent interview, adaptive color profiles, element compaction, cross-view consistency checks, iPad sheet sizing caller-side audit, layout reorganization, App Store guardrails, and incremental apply with revert safety. 18 subcommands."
+- **Experienced**: "13-domain SwiftUI UI audit with design intent interview, adaptive color profiles, element compaction, cross-view consistency checks, iPad sheet sizing caller-side audit, button hit region three-factor audit, layout reorganization, App Store guardrails, and incremental apply with revert safety. 19 subcommands."
 
-- **Senior/Expert**: "12-domain view audit: layout, color, typography, spacing, compaction, consistency, accessibility, iPad sheet sizing. Interview → analyze → apply incrementally."
+- **Senior/Expert**: "13-domain view audit: layout, color, typography, spacing, compaction, consistency, accessibility, iPad sheet sizing, button hit region. Interview → analyze → apply incrementally."
 
 Store the experience level as `USER_EXPERIENCE` and apply to ALL output for the session.
 
@@ -1224,6 +1226,50 @@ The View Profile is a persistent file that grows with each audit, enabling cross
 **Exclusions (skip without flagging):** Photos/document pickers, scanners, share sheets, confirmation dialogs, splash screens, chooser views, single-action confirmations. Full list in the reference file.
 
 **Do NOT delegate Domain 12 to Explore subagents.** Run the grep + Read passes directly. Enumeration is the point; a subagent can silently drop findings.
+
+---
+
+### Domain 13: Button Hit Region `enumerate-required`
+
+**Goal:** For every `Button { } label: { }` call site, detect the three-factor interaction bug where `.buttonStyle(.plain)` + a manually drawn trailing `chevron.right` + Form/List context collapses the iPad hit region to the chevron alone. The rest of the row becomes visually tappable but functionally dead — users tap and nothing happens.
+
+**Why this is three-factor:** no single factor is wrong. `.buttonStyle(.plain)` is legal. Manual chevrons are legal. Buttons inside Forms are legal. The *interaction* of the three — on iPad specifically — is what breaks. Single-file pattern matchers can't detect interactions.
+
+**Reference:** `references/domain-13-button-hit-region.md` — full heuristic, exclusions, both fix options, acceptance criteria.
+
+**Detection steps:**
+
+1. Enumerate every `Button { } label: { }` in `Sources/` (skip `Button("Text", action:)` form — no custom label, no bug)
+2. Check label closure for manually drawn trailing chevron: `Image(systemName: "chevron.right")` or `"chevron.forward"` (ignore DisclosureGroup custom implementations)
+3. Check Button's modifier chain for `.buttonStyle(.plain)` or `.buttonStyle(.borderless)` — other styles don't have this bug
+4. Check for Form/List context: structural walk for `Form { ... }` / `List { ... }` ancestor, OR modifier indicators on the Button or its parent Section (`.listRowBackground`, `.listRowInsets`, `.listRowSeparator`)
+5. Check label closure for `.contentShape(Rectangle())` or `.contentShape(.rect)` — if present, author explicitly fixed the hit region; skip
+6. When all four trigger and no content-shape escape, flag
+
+**Recommended fixes (offer both):**
+
+- **Fix A (preferred per HIG):** remove the decorative chevron. Card modifiers (`.actionCard()`, `.destructiveCard()`, colored row backgrounds) already read as tappable. HIG says chevrons are for NavigationLinks, not Buttons.
+- **Fix B:** keep the chevron, add `.contentShape(Rectangle())` on the label's outer HStack. Preserves visual treatment but guarantees hit region.
+
+**Severity:** 🟡 HIGH default (user-visible interaction failure — button looks broken). Elevates to 🔴 CRITICAL for buttons on critical paths (add-item, save, export, payment), systemic cases (5+ sites in same view hierarchy), or accessibility failures confirmed via VoiceOver.
+
+**Exclusions:**
+- `NavigationLink { } label:` — chevrons here are system-managed
+- `DisclosureGroup` — chevron is a control, intentional
+- `.buttonStyle(.bordered)`, `.borderedProminent`, or any system style other than `.plain` / `.borderless`
+- Toolbar item Buttons
+- macOS-only views (`#if os(macOS)` wrapping the whole body)
+- Animated expand/collapse chevrons (`.rotationEffect(.degrees(isExpanded ? 90 : 0))`)
+
+**Output row format:**
+
+| File:line | Button action | Label synopsis | Button style | Context | Fix A (preferred) | Fix B |
+|---|---|---|---|---|---|---|
+| `Sources/Features/Settings/Views/BackupDataSheet.swift:193` | `createBackup()` | icon + 2-line text + chevron | `.plain` | Section in Form via SheetContainer | Remove chevron | Add `.contentShape(Rectangle())` |
+
+**Pattern sweep follow-up:** this bug is rarely isolated. After a first fix, grep the full codebase for the same shape (same card modifier + same chevron + same button style). Offer batch application to consistent patterns.
+
+**Do NOT delegate Domain 13 to Explore subagents.** Three-factor reasoning requires holding the full label closure, the modifier chain, and the Form/List context simultaneously. A subagent can lose one of the three factors and produce either false positives or false negatives.
 
 ---
 
