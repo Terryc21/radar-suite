@@ -6,6 +6,30 @@ Format: [skill-name vX.Y.Z] for legacy per-skill entries, [plugin vX.Y.Z] for un
 
 ---
 
+## 2026-04-22 — [ui-enhancer-radar v3.3.0] Domain 12: iPad sheet sizing (caller-side)
+
+### What shipped
+
+**ui-enhancer-radar v3.3.0: Domain 12 added — iPad Sheet Sizing, caller-side audit.**
+
+- Enumerates every `.sheet(isPresented:)` / `.sheet(item:)` in `Sources/` and verifies that tall presented content (Form / List / ScrollView, or `NavigationStack` wrapping one) has a sizing mechanism: a house-style container, `.presentationSizing(.page)`, `.presentationDetents([.large])`, or a project convenience modifier (e.g., `.iPadPageSheet()`).
+- When no mechanism is present and content is tall, flags the call site. Defect is invisible at compile time and on iPhone, only manifests on iPad as the sheet collapsing to a floating ~540×620pt form sheet that truncates content.
+- Cross-file reasoning — needs the caller's closure AND the presented view's body AND the project's convention. Single-file grep can't detect it; Domain 9's "Sheet pattern" check runs on the callee only.
+- Project-convention awareness: learns house container + modifier names from `.radar-suite/conventions.yaml` or from grepping CLAUDE.md / `Sources/Views/Components/`. Falls back to Apple-API-only checks when no project convention exists — works on any SwiftUI app.
+- Severity default: MEDIUM. Elevates to HIGH for iPad-facing apps, systemic cases (5+ sites), or critical flows (add-item, settings root, legal/compliance).
+- New subcommand: `/ui-enhancer-radar ipad-sheets` for single-domain runs.
+- Exclusions cover photos/document pickers, scanners, share sheets, confirmation dialogs, splash screens, chooser views. Borderline cases (`NavigationStack { VStack { Header; mainContent } }` with a scrollable child inside `mainContent`) flagged as medium-confidence, not batched with high-confidence fixes.
+
+**Origin:** Stuffolio session on 2026-04-22. Full audit found 25 iPad-truncating sheets across 9 files — `OptInPreferencesView`, `PrivacySettingsView`, `RMAFormView`, `SocialMediaLinkFormView`, `ExportOptionsView`, `InventoryPreferencesView`, and more. Fix was mechanical (append `.iPadPageSheet()` inside each sheet closure, wrapped in `#if os(iOS)` since the convenience modifier is iOS-only). Commit `e030599` in the Stufflio repo. Neither ui-enhancer-radar, ui-path-radar, nor roundtrip-radar found this class of defect before because each reasons about a single view or a single flow, not about caller→callee presentation metrics. Domain 12 closes that blind spot.
+
+**Files:**
+- New: `skills/ui-enhancer-radar/references/domain-12-ipad-sheet-sizing.md` — full heuristic, exclusions list, finding format, project-convention loader, acceptance criteria
+- Modified: `skills/ui-enhancer-radar/SKILL.md` — new Domain 12 section, new `ipad-sheets` subcommand, updated description (11-domain → 12-domain)
+- Modified: `skills/ui-enhancer-radar/VERSION` — 3.2.0 → 3.3.0
+- Modified: `README.md` — ui-enhancer-radar row notes iPad sheet sizing
+
+---
+
 ## 2026-04-18 — [data-model-radar v2.3.0, time-bomb-radar v2.2.0] Cross-context object safety
 
 ### What shipped

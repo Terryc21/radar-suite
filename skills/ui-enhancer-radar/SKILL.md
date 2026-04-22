@@ -1,6 +1,6 @@
 ---
 name: ui-enhancer-radar
-description: 'Systematic iOS/SwiftUI UI audit with design intent interview, 11-domain analysis (including Color Audit with adaptive Color Profile), element compaction, cross-view consistency checks, layout reorganization, design-aware push-back, App Store guardrails, and incremental apply with revert safety. 17 subcommands. Run /ui-enhancer-radar help for all commands. Triggers: "enhance this UI", "ui enhancer radar", "improve this view", "screen review", "ux audit".'
+description: 'Systematic iOS/SwiftUI UI audit with design intent interview, 12-domain analysis (including Color Audit with adaptive Color Profile and iPad Sheet Sizing caller-side audit), element compaction, cross-view consistency checks, layout reorganization, design-aware push-back, App Store guardrails, and incremental apply with revert safety. 18 subcommands. Run /ui-enhancer-radar help for all commands. Triggers: "enhance this UI", "ui enhancer radar", "improve this view", "screen review", "ux audit", "ipad sheet truncation".'
 version: 2.1.0  # 3-tier depth model (was 2.0.0)
 author: Terry Nyberg
 license: MIT
@@ -13,7 +13,7 @@ metadata:
 
 # UI Enhancer Radar
 
-> **Quick Ref:** Screenshot + code analysis of any iOS/SwiftUI view. Design intent interview (sacred elements, aggressiveness), 11-domain analysis with layout reorganization and Color Audit (adaptive Color Profile), element compaction (compact vs remove vs keep), cross-view consistency checks, design-aware refinement with push-back and App Store guardrails, incremental apply with revert safety (git or file backup), visual verification guidance, and files-changed summary.
+> **Quick Ref:** Screenshot + code analysis of any iOS/SwiftUI view. Design intent interview (sacred elements, aggressiveness), 12-domain analysis with layout reorganization, Color Audit (adaptive Color Profile), and iPad Sheet Sizing caller-side audit, element compaction (compact vs remove vs keep), cross-view consistency checks, design-aware refinement with push-back and App Store guardrails, incremental apply with revert safety (git or file backup), visual verification guidance, and files-changed summary.
 
 <ui-enhancer-radar>
 
@@ -36,6 +36,7 @@ You are performing a systematic UI enhancement on a specific iOS/SwiftUI view, a
 | `/ui-enhancer-radar performance` | Performance impact analysis only |
 | `/ui-enhancer-radar design-system` | Design system compliance only |
 | `/ui-enhancer-radar color` | Color audit only (inventory, flatness, consistency) |
+| `/ui-enhancer-radar ipad-sheets` | iPad sheet sizing audit only (caller-side `.sheet()` check) |
 | `/ui-enhancer-radar compare` | Compare before/after screenshots for progress |
 | `/ui-enhancer-radar revert` | Undo all changes back to last checkpoint |
 | `/ui-enhancer-radar batch [path]` | Audit all views in a directory, rank by severity |
@@ -56,7 +57,7 @@ You are performing a systematic UI enhancement on a specific iOS/SwiftUI view, a
 UI Enhancer — Available Commands
 
 FULL AUDIT
-  /ui-enhancer-radar              Full 11-domain audit with interview
+  /ui-enhancer-radar              Full 12-domain audit with interview
 
 SINGLE DOMAIN (skip interview, run one domain)
   /ui-enhancer-radar space        Space efficiency analysis
@@ -69,6 +70,7 @@ SINGLE DOMAIN (skip interview, run one domain)
   /ui-enhancer-radar performance  Performance impact analysis
   /ui-enhancer-radar design-system  Design system compliance
   /ui-enhancer-radar color        Color audit (inventory, flatness, consistency)
+  /ui-enhancer-radar ipad-sheets  iPad sheet sizing audit (caller-side `.sheet()` check)
 
 UTILITIES
   /ui-enhancer-radar compare      Compare before/after screenshots
@@ -109,13 +111,13 @@ On first invocation, ask the user two questions in a single `AskUserQuestion` ca
 
 **Experience-adapted explanations for UI Enhancer:**
 
-- **Beginner**: "UI Enhancer is like having a professional designer review every screen in your app. It checks 11 different things — spacing, colors, accessibility, layout efficiency, and more — then suggests specific improvements. It won't just say 'this looks wrong'; it'll show you exactly what to change and why. It works one view at a time, applying changes incrementally so you can undo anything."
+- **Beginner**: "UI Enhancer is like having a professional designer review every screen in your app. It checks 12 different things — spacing, colors, accessibility, layout efficiency, iPad sheet sizing, and more — then suggests specific improvements. It won't just say 'this looks wrong'; it'll show you exactly what to change and why. It works one view at a time, applying changes incrementally so you can undo anything."
 
-- **Intermediate**: "UI Enhancer performs an 11-domain analysis of SwiftUI views: layout, spacing, color accessibility, typography, element compaction, cross-view consistency, and more. It interviews you about design intent first, then audits against Apple HIG and your app's design system. Changes are applied incrementally with revert safety."
+- **Intermediate**: "UI Enhancer performs a 12-domain analysis of SwiftUI views: layout, spacing, color accessibility, typography, element compaction, cross-view consistency, iPad sheet sizing, and more. It interviews you about design intent first, then audits against Apple HIG and your app's design system. Changes are applied incrementally with revert safety."
 
-- **Experienced**: "11-domain SwiftUI UI audit with design intent interview, adaptive color profiles, element compaction, cross-view consistency checks, layout reorganization, App Store guardrails, and incremental apply with revert safety. 17 subcommands."
+- **Experienced**: "12-domain SwiftUI UI audit with design intent interview, adaptive color profiles, element compaction, cross-view consistency checks, iPad sheet sizing caller-side audit, layout reorganization, App Store guardrails, and incremental apply with revert safety. 18 subcommands."
 
-- **Senior/Expert**: "11-domain view audit: layout, color, typography, spacing, compaction, consistency, accessibility. Interview → analyze → apply incrementally."
+- **Senior/Expert**: "12-domain view audit: layout, color, typography, spacing, compaction, consistency, accessibility, iPad sheet sizing. Interview → analyze → apply incrementally."
 
 Store the experience level as `USER_EXPERIENCE` and apply to ALL output for the session.
 
@@ -1181,6 +1183,47 @@ The View Profile is a persistent file that grows with each audit, enabling cross
 **Refinement History** records what was tried during the refinement loop (Phase 7f) — both kept and reverted changes. This serves two purposes:
 1. If the user returns and says "I liked the spacing we tried last time," the history shows what values were used
 2. It reveals patterns — if the user consistently asks for tighter spacing, future audits should start with tighter recommendations
+
+---
+
+### Domain 12: iPad Sheet Sizing `enumerate-required`
+
+**Goal:** For every `.sheet(isPresented:)` and `.sheet(item:)` call in the codebase, verify that tall presented content (Form / List / ScrollView) has been given an iPad sizing mechanism. Catches the caller-side blind spot that Domain 9's "Sheet pattern" check leaves — a sheet can use no house-style container AND no Apple sizing API, and still compile, pass all other domains, and quietly truncate to a floating ~540×620pt form sheet on iPad.
+
+**Why this is cross-file:** the defect is a relationship between the caller (a `.sheet { ... }` closure somewhere) and the callee (the presented view's `body`). Neither file is wrong in isolation. Single-file grep cannot detect it; the domain needs to enumerate call sites, classify presented-view bodies, and check for any of four sizing mechanisms.
+
+**Reference:** `references/domain-12-ipad-sheet-sizing.md` — full heuristic, exclusions list, finding format, acceptance criteria.
+
+**Recognized sizing mechanisms (any one of these satisfies the check):**
+
+1. House-style container (`SheetContainer` or project equivalent) that applies sizing internally
+2. `.presentationSizing(.page)` on the sheet closure (iOS 18+)
+3. `.presentationDetents([.large])` on the sheet closure (iOS 17 fallback)
+4. Project convenience modifier (e.g., `.iPadPageSheet()`) that wraps one of the above
+
+**Detection steps:**
+
+1. Enumerate every `.sheet(isPresented:|item:)` call: `grep -rn --include="*.swift" -E "\.sheet\(isPresented:|\.sheet\(item:" Sources/`
+2. For each, identify the presented view's type (top-level expression in the closure)
+3. Read that view's `body` — skip if it starts with a recognized sizing container; skip if exclusions match (pickers, scanners, share sheets — see reference)
+4. Check if the sheet closure has any sizing modifier (`.presentationSizing`, `.presentationDetents`, project modifier)
+5. If the body is tall (Form / List / ScrollView at the top, or `NavigationStack` wrapping one of those) AND no sizing mechanism is present → flag
+
+**Project-convention awareness:** learns house-style container + modifier names from `.radar-suite/conventions.yaml` if present, or from grepping CLAUDE.md / `Sources/Views/Components/` for a `View` extension that applies `presentationSizing(.page)` or `presentationDetents([.large])`. Falls back to Apple-API-only checks if no convention is found.
+
+**Severity default:** 🟢 MEDIUM (user-visible iPad UX regression, not a crash). Elevates to 🟡 HIGH when any of: app is actively iPad-facing, 5+ sites share the issue (systemic), or the presented view is a critical flow (add-item, settings root, legal/compliance sheet).
+
+**Borderline cases** (`NavigationStack { VStack { Header; mainContent } }` where `mainContent` is a conditional tree) are flagged as medium-confidence with a one-line synopsis of the tallest branch — not batched into the high-confidence fix set by default.
+
+**Output row format** (per finding):
+
+| File:line | State binding | Presented view (body shape) | Why flagged | Confidence | Suggested fix |
+|---|---|---|---|---|---|
+| `Sources/Views/Lists/RMAListView.swift:210` | `$showingAddRMA` | `RMAFormView` (`NavigationStack { Form }`) | Tall content, no sizing container, no sizing modifier | High | Append `.iPadPageSheet()` (project convention) or `.presentationSizing(.page)` (Apple default) inside the sheet closure |
+
+**Exclusions (skip without flagging):** Photos/document pickers, scanners, share sheets, confirmation dialogs, splash screens, chooser views, single-action confirmations. Full list in the reference file.
+
+**Do NOT delegate Domain 12 to Explore subagents.** Run the grep + Read passes directly. Enumeration is the point; a subagent can silently drop findings.
 
 ---
 
