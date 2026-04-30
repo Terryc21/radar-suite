@@ -403,4 +403,4 @@ v2.0 ships as a Claude Code plugin via `/plugin install`, replacing the hand-mai
 
 ## License
 
-MIT -- see [LICENSE](LICENSE)
+Apache-2.0. See [LICENSE](LICENSE).
