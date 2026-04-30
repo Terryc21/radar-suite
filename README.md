@@ -51,7 +51,9 @@ Radar Suite is deliberately thorough. It reads whole files to catch handlers the
 
 5. **Defer fixes to after capstone.** Switching to "fix all after capstone" runs all the scans first, then fixes in one batch -- fewer build invocations, less total cost.
 
-**Why the cost is what it is:** the alternative — cheaper audits that skip the whole-file scans and pattern citations — is exactly the pre-v2.0 behavior that produced the false positives the axis framework was built to catch. You're paying for verification checks that prevent findings like "your empty-state handler is missing" from reaching you when the handler exists 500 lines down in the same file. Spending 10 minutes of session time to avoid spending 30 minutes of human time disproving a false positive is the trade Radar Suite is built around.
+**Why the cost is what it is:** you're paying for verification checks that prevent findings like "your empty-state handler is missing" from reaching you when the handler exists 500 lines down in the same file. Spending 10 minutes of session time to avoid spending 30 minutes of human time disproving a false positive is the trade Radar Suite is built around.
+
+**It gets faster as you keep using it.** Once you fix a finding, the ledger remembers it — subsequent runs won't re-surface fixed issues, and they verify the fix is still in place via reintroduction detection. The `known-intentional.yaml` file also accumulates patterns you've confirmed are intentional, suppressing those false positives on every future run. If you want a clean slate — say after a major refactor — pass `--fresh` (or pick "Yes, archive and start fresh" when prompted at startup) to archive prior state and rebuild from scratch. Your old ledger is moved to `.radar-suite/archive/`, never deleted.
 
 **If a full audit kills your session:** [file an issue](https://github.com/Terryc21/radar-suite/issues) with the project size (Swift file count, total LOC) and which skill was running when the session cratered. I'll update this section with data from real runs.
 
@@ -398,8 +400,6 @@ Tier 1 is the new default. The full pipeline is now opt-in via `--full`, not the
 The 3-axis classification framework (bug / scatter / dead) keeps hygiene out of your ship grade so you can focus on what actually blocks release. axis_1 findings count toward the A-F grade; axis_2 and axis_3 findings live in a separate Hygiene Backlog and do not.
 
 v2.0 ships as a Claude Code plugin via `/plugin install`, replacing the hand-maintained `install.sh` distribution path (which still works as a fallback).
-
-> **Note on the version number reset.** The skills were previously versioned individually (per-skill v3.1, v3.0, v2.4, etc.). v2.0 is the first unified plugin version. Older per-skill version history is preserved in [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 

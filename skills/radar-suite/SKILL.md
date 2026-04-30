@@ -26,6 +26,13 @@ inherits: radar-suite-core.md
 | `/radar-suite --full` | 3 | Full pipeline: all 6 skills + capstone + UX enhancements |
 | `/radar-suite full` | 3 | Alias for `--full` (backward compatible) |
 
+### State Flags (combine with any command above)
+
+| Flag | Description |
+|---------|-------------|
+| `--fresh` | Archive prior `ledger.yaml` and `known-intentional.yaml` before this run; treat the codebase as never-before-audited. See "Fresh Scan Check" section. |
+| `--no-fresh` | Skip the fresh-scan prompt; always continue with existing state. Useful for scripted/CI runs. |
+
 ### Management Commands
 
 | Command | Description |
@@ -95,12 +102,13 @@ Store answers in `.radar-suite/session-prefs.yaml` as `experience_level`, `table
 The invocation flow is strictly:
 1. **Session Setup** (this section) -- configure or confirm preferences
 2. **Write Execution Rules Memory** -- write/update the auto-generated memory (see below)
-3. **Stale-Deferred Check** -- check for overdue findings
-4. **Fix Timing** -- ask when fixes should be applied (fresh audits only)
-5. **Interactive Menu** -- choose what to audit
-6. **Skill execution** -- run the selected skill(s)
+3. **Fresh Scan Check** -- offer to archive prior state and start clean
+4. **Stale-Deferred Check** -- check for overdue findings
+5. **Fix Timing** -- ask when fixes should be applied (fresh audits only)
+6. **Interactive Menu** -- choose what to audit
+7. **Skill execution** -- run the selected skill(s)
 
-Never skip steps 1-4. Never start exploration or scanning before completing them.
+Never skip steps 1-5. Never start exploration or scanning before completing them.
 
 ### Write Execution Rules Memory (MANDATORY -- after session setup)
 
@@ -210,6 +218,97 @@ This ensures **no finding is silently dropped**. Every deferred item either gets
 ### Persist Fix Timing Choice
 
 Save the user's choice in `.radar-suite/session-prefs.yaml` as `fix_timing: recommended | all_per_skill | all_after_capstone`. Each individual skill reads this to know whether to enter fix mode after scanning.
+
+---
+
+## Fresh Scan Check (MANDATORY -- runs before Stale-Deferred Check)
+
+After session setup completes and the execution rules memory is written, but before the Stale-Deferred Check reads `.radar-suite/ledger.yaml`, offer the user the option to archive prior radar-suite state and run from a clean slate.
+
+### When to ask
+
+**Skip the question entirely if:**
+- `.radar-suite/ledger.yaml` does not exist (this is already a fresh project — nothing to archive)
+- The invocation includes the `--fresh` flag (decision already made; go straight to archiving)
+- The invocation includes the `--no-fresh` flag (explicit opt-out)
+
+**Otherwise, ask** via a single AskUserQuestion:
+
+```
+Question (header: "Fresh scan"): "Run from a clean slate? Your current ledger has [N] open findings, [M] deferred, [K] fixed, plus [P] entries in known-intentional.yaml."
+
+Options:
+- "No, keep existing state (Recommended)" — continue normally; prior findings, accepted risks, and known-intentional suppressions remain in effect
+- "Yes, archive and start fresh" — move ledger.yaml + known-intentional.yaml to .radar-suite/archive/, then run as if this were a brand-new project
+- "Show me what's in the ledger first" — display a summary, then re-ask
+```
+
+Populate the counts by reading the existing `ledger.yaml` and `known-intentional.yaml` if they exist. If a count is zero, omit that fragment from the question text.
+
+### What "Yes, archive and start fresh" does
+
+When the user opts in, perform these operations atomically before any other step proceeds:
+
+1. **Compute timestamp:** `STAMP=$(date +%Y-%m-%d-%H%M%S)`
+2. **Ensure archive directory exists:** `mkdir -p .radar-suite/archive/`
+3. **Move (do not copy, do not delete) the affected files:**
+   - `.radar-suite/ledger.yaml` → `.radar-suite/archive/ledger-pre-fresh-${STAMP}.yaml`
+   - `.radar-suite/known-intentional.yaml` → `.radar-suite/archive/known-intentional-pre-fresh-${STAMP}.yaml`
+4. **Do NOT touch:**
+   - `.radar-suite/session-prefs.yaml` — user's preferences are not audit data and stay in effect
+   - `.radar-suite/checkpoint.yaml` — separate concern (resume vs. fresh are different operations)
+   - `.radar-suite/{skill}-handoff.yaml` — within-run pipeline files, not cross-run state. Will be overwritten naturally.
+   - `.radar-suite/archive/*` — the archive itself stays untouched
+5. **Confirm to the user** with a one-line banner:
+   ```
+   ✓ Archived prior state to .radar-suite/archive/ledger-pre-fresh-2026-04-30-061500.yaml and known-intentional-pre-fresh-2026-04-30-061500.yaml. Starting fresh.
+   ```
+6. **Continue to Stale-Deferred Check.** It will now find an empty ledger and skip naturally (no overdue findings to surface).
+
+### What "Show me what's in the ledger first" does
+
+Render a compact summary:
+
+```
+Current radar-suite state:
+  Open findings:        [N]   ← will be re-derived from scratch on a fresh scan
+  Deferred findings:    [M]   ← will need to be re-deferred manually
+  Fixed findings:       [K]   ← reintroduction detection will be lost; fingerprints reset
+  Accepted risks:       [A]   ← will need to be re-accepted
+  Known-intentional:    [P]   ← will need to be re-confirmed; expect more false positives initially
+
+Archive location on archive: .radar-suite/archive/ledger-pre-fresh-YYYY-MM-DD-HHMMSS.yaml
+```
+
+Then re-ask the original question (without the "Show me" option this time, to prevent loops).
+
+### CLI flags
+
+Both flags work on any invocation, regardless of which command follows:
+
+| Flag | Effect |
+|---|---|
+| `/radar-suite --fresh [...]` | Skip the question. Always archive and start fresh. Useful for power users and scripted runs. |
+| `/radar-suite --no-fresh [...]` | Skip the question. Always keep existing state. Useful when you want to make sure no archive happens (e.g., in a git pre-commit hook). |
+
+If both flags are passed, `--no-fresh` wins. Log a one-line warning.
+
+### What this does NOT do
+
+- It does **not** delete data. `archive/` is permanent unless the user manually clears it.
+- It does **not** affect other Claude Code state (auto-memory, session checkpoint, conversation history).
+- It does **not** propagate retroactively. Findings already in the current conversation context but not yet written to the ledger are not affected.
+
+### Restore path
+
+If a user changes their mind after a fresh scan, they can restore the prior state by hand:
+
+```bash
+mv .radar-suite/archive/ledger-pre-fresh-YYYY-MM-DD-HHMMSS.yaml .radar-suite/ledger.yaml
+mv .radar-suite/archive/known-intentional-pre-fresh-YYYY-MM-DD-HHMMSS.yaml .radar-suite/known-intentional.yaml
+```
+
+This is intentionally a manual operation — automating "undo a fresh scan" inside radar-suite would create a confusing two-history-streams problem. The archive is the source of truth; mv is the API.
 
 ---
 
