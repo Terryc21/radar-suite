@@ -1,12 +1,12 @@
 # Radar Suite
 
-![Visitors](https://komarev.com/ghpvc/?username=Terryc21&repo=radar-suite&label=visitors&color=blue) ![GitHub stars](https://img.shields.io/github/stars/Terryc21/radar-suite?style=flat) ![GitHub forks](https://img.shields.io/github/forks/Terryc21/radar-suite?style=flat)
+**8 audit skills for Claude Code that find bugs in your Swift/SwiftUI app before your users do. Every finding cites a real file:line pattern in your own codebase — not generic advice. 9-column rating tables with Status tracking at every decision point. Heavy audits; see [Session Strategy](#session-strategy-read-this-before-your-first-run) before your first run.**
+
+If Radar Suite catches a real bug for you, a [coffee](https://buymeacoffee.com/stuffolio) is appreciated. Issue reports about what worked or didn't are even more useful.
 
 <a href="https://buymeacoffee.com/stuffolio">
   <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" width="150">
 </a>
-
-**8 audit skills for Claude Code that find bugs in your Swift/SwiftUI app before your users do. Every finding cites a real file:line pattern in your own codebase — not generic advice. 9-column rating tables with Status tracking at every decision point. Heavy audits; see [Session Strategy](#session-strategy-read-this-before-your-first-run) before your first run.**
 
 Built during the development of [Stuffolio](https://stuffolio.app), an iOS/macOS app that tracks the things you own across their full life cycle — warranty, repair, and legacy. The audit skills came out of shipping real features like Legacy Wishes and Stuff Scout on a 600-file codebase.
 
