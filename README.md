@@ -10,7 +10,7 @@ If Radar Suite catches a real bug for you, a [coffee](https://buymeacoffee.com/s
 
 Built during the development of [Stuffolio](https://stuffolio.app), an iOS/macOS app that tracks the things you own across their full life cycle — warranty, repair, and legacy. The audit skills came out of shipping real features like Legacy Wishes and Stuff Scout on a 600-file codebase.
 
-One install gives you a complete audit pipeline -- from data model integrity to visual quality to release readiness. Actively maintained and updated weekly as new patterns emerge from real shipping work. Star the repo to stay current.
+One install gives you a complete audit pipeline -- from data model integrity to visual quality to release readiness. Actively maintained as new patterns emerge from real shipping work. Star the repo to stay current; check [CHANGELOG.md](CHANGELOG.md) for release cadence.
 
 ## How is Radar Suite different from other code auditing skills?
 
@@ -45,15 +45,16 @@ Radar Suite is deliberately thorough. It reads whole files to catch handlers the
 
 2. **Tier 2: Targeted pipeline.** Run 2-3 related skills. `/radar-suite --changed` auto-selects skills from your git diff (typically 1-2 hours). `/radar-suite --skills dmr,tbr` for manual selection. Best before opening a PR.
 
-3. **Tier 3: Full pipeline.** `/radar-suite --full` runs all 6 skills with pipeline UX enhancements. Reserve for pre-release audits or quarterly health checks. Half-day commitment.
+3. **Tier 3: Full pipeline.** `/radar-suite --full` runs all 6 audit skills (the 6 you invoke directly; the orchestrator and the axis-classification foundation skill don't need direct invocation) with pipeline UX enhancements. Reserve for pre-release audits or quarterly health checks. Half-day commitment.
 
-4. **Capstone first.** Run `/capstone-radar` alone to see the high-level grade and which domains need attention. Then run only the radars capstone flagged via Tier 2.
+**Two strategies that lower cost regardless of tier:**
 
-5. **Defer fixes to after capstone.** Switching to "fix all after capstone" runs all the scans first, then fixes in one batch -- fewer build invocations, less total cost.
+- **Capstone first.** Run `/capstone-radar` alone to see the high-level grade and which domains need attention. Then run only the radars capstone flagged via Tier 1 or Tier 2.
+- **Defer fixes to after capstone.** Switching to "fix all after capstone" runs all the scans first, then fixes in one batch — fewer build invocations, less total cost.
 
 **Why the cost is what it is:** you're paying for verification checks that prevent findings like "your empty-state handler is missing" from reaching you when the handler exists 500 lines down in the same file. Spending 10 minutes of session time to avoid spending 30 minutes of human time disproving a false positive is the trade Radar Suite is built around.
 
-**It gets faster as you keep using it.** Once you fix a finding, the ledger remembers it — subsequent runs won't re-surface fixed issues, and they verify the fix is still in place via reintroduction detection. The `known-intentional.yaml` file also accumulates patterns you've confirmed are intentional, suppressing those false positives on every future run. If you want a clean slate — say after a major refactor — pass `--fresh` (or pick "Yes, archive and start fresh" when prompted at startup) to archive prior state and rebuild from scratch. Your old ledger is moved to `.radar-suite/archive/`, never deleted.
+**It gets faster as you keep using it.** Once you fix a finding, the ledger remembers it — subsequent runs won't re-surface fixed issues, and they verify the fix is still in place via reintroduction detection. The `known-intentional.yaml` file also accumulates patterns you've confirmed are intentional, suppressing those false positives on every future run. (Accepted findings do resurface after 180 days for re-evaluation, by design — see "Finding Management" below.) If you want a clean slate — say after a major refactor — pass `--fresh` (or pick "Yes, archive and start fresh" when prompted at startup) to archive prior state and rebuild from scratch. Your old ledger is moved to `.radar-suite/archive/`, never deleted.
 
 **If a full audit kills your session:** [file an issue](https://github.com/Terryc21/radar-suite/issues) with the project size (Swift file count, total LOC) and which skill was running when the session cratered. I'll update this section with data from real runs.
 
@@ -165,16 +166,16 @@ The root cause: `install.sh` was a hand-maintained shell script with a hardcoded
 
 ## Updates
 
-Each skill checks for updates on startup. If a newer version is available, you'll see a one-line notice — it never blocks your audit.
+**Plugin install (recommended):** Claude Code's `/plugin update` mechanism handles the upgrade. Each skill also checks for updates on startup at runtime — if a newer version is available, you'll see a one-line notice that never blocks your audit.
 
-To update manually:
+**Clone-and-install fallback:** if you used `install.sh`, update with:
 
 ```bash
 cd radar-suite
 git pull
 ```
 
-If you installed via `install.sh` (symlinks), the update takes effect immediately. If you copied the files, re-run `./install.sh` after pulling.
+If you installed via `install.sh` (symlinks), the update takes effect immediately. If you copied the files instead, re-run `./install.sh` after pulling.
 
 Each skill has a `VERSION` file and a `version:` field in its SKILL.md frontmatter. [GitHub Releases](https://github.com/Terryc21/radar-suite/releases) include changelogs for each version.
 
@@ -293,11 +294,12 @@ The skills were originally published as separate repos. Those repos now redirect
 - [Claude Code](https://claude.com/claude-code) CLI
 - A Swift/SwiftUI project (iOS, macOS, iPadOS, tvOS, or visionOS)
 
-## Optional: Dippy (recommended for paths with spaces)
+## Tips
 
-If your project lives on a path with spaces (e.g., `/Volumes/My Drive/Projects/...`), Claude Code triggers a security warning — "Command contains backslash-escaped whitespace that could alter command parsing" — on routine commands like `grep`, `git log`, and `ls`. Each warning requires manual permission approval, which interrupts audit flow repeatedly.
+<details>
+<summary><strong>Optional: Dippy</strong> — recommended only if your project path contains spaces</summary>
 
-There is no Claude Code setting to suppress this warning. It's a hardcoded security check.
+If your project lives on a path with spaces (e.g., `/Volumes/My Drive/Projects/...`), Claude Code triggers a security warning — "Command contains backslash-escaped whitespace that could alter command parsing" — on routine commands like `grep`, `git log`, and `ls`. Each warning requires manual permission approval, which interrupts audit flow repeatedly. There is no Claude Code setting to suppress this warning; it's a hardcoded security check.
 
 [Dippy](https://github.com/ldayton/Dippy) solves this by acting as a PreToolUse hook that auto-approves safe, read-only commands while blocking destructive operations (force push, `rm -rf`, `git reset --hard`). It uses a custom bash parser with 14,000+ tests to understand what each command actually does — it's not a blanket auto-approve.
 
@@ -328,7 +330,9 @@ Radar Suite includes Dippy integration at two levels:
 
 If your project path has no spaces, none of this applies and you won't see any Dippy-related messages.
 
-Dippy is [MIT licensed](https://github.com/ldayton/Dippy/blob/main/LICENSE).
+Dippy is MIT licensed; Radar Suite is Apache-2.0. The license boundary is at the integration point: Radar Suite's Dippy support code is Apache-2.0, Dippy itself remains MIT.
+
+</details>
 
 ## Release History
 
@@ -385,7 +389,7 @@ Dippy is [MIT licensed](https://github.com/ldayton/Dippy/blob/main/LICENSE).
 | **1 (Quick)** | `/radar-suite data-model` | Single skill, own rating table, no pipeline | 20-60 min |
 | **2 (Targeted)** | `/radar-suite --skills dmr,tbr` | 2-3 skills with cross-skill handoffs | 1-2 hours |
 | **2 (Auto)** | `/radar-suite --changed` | Auto-select skills from git diff | varies |
-| **3 (Full)** | `/radar-suite --full` | All 6 skills + capstone + UX enhancements | 2.5-4 hours |
+| **3 (Full)** | `/radar-suite --full` | All 6 audit skills + capstone + UX enhancements | 2.5-4 hours |
 
 Tier 1 is the new default. The full pipeline is now opt-in via `--full`, not the implicit behavior.
 
