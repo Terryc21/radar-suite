@@ -1,8 +1,8 @@
 # Radar Suite
 
-**A bundle of audit skills for Claude Code that find bugs in your iOS or macOS Swift app before your users do.**
+**Six audit skills for Claude Code that find bugs in iOS/macOS Swift codebases by tracing behavior, not by matching patterns. Each finding cites a real file:line in your code, rated on a 9-column severity table. Plus a capstone skill that aggregates findings into a ship-or-don't-ship grade.**
 
-Built while shipping [Stuffolio](https://stuffolio.app), an iOS/macOS app I work on every day. Free, open source, no paid tier, no referral links.
+Built while shipping [Stuffolio](https://stuffolio.app), an iOS/macOS app I work on every day, on a 600-file Swift codebase. Free, open source, no paid tier, no referral links.
 
 <a href="https://buymeacoffee.com/stuffolio"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" width="120"></a>
 
@@ -10,32 +10,39 @@ If Radar Suite catches a real bug for you, a [coffee](https://buymeacoffee.com/s
 
 ---
 
-## What is this, and why might I want it?
+## Why behavioral, not pattern-based
 
-If you're newer to Claude Code and unsure what an "audit skill" does, here's the short version.
+Most code-quality skills compare your code against a rule catalog: force unwraps, missing `@MainActor`, `try?` swallowing errors, deprecated APIs. Fast, precise, context-free. They catch a real class of bugs but miss anything that doesn't compress into a single-file pattern.
 
-A **skill** is a markdown file Claude Code knows how to run. When you type `/radar-suite ui-path`, Claude follows the instructions in that skill: read these files, look for these patterns, write a report. You don't have to memorize anything. The skill tells Claude what to do; you read the report.
+Radar Suite traces behavior. It starts from what the user sees (a screen, a flow, a backup round-trip) and follows the data through views, view models, managers, and persistence to verify the loop actually closes. A file can pass every pattern check and still contain a bug only visible in the trace.
 
-An **audit** is just a thorough look at your codebase for a specific kind of problem. Radar Suite has six audit skills, each focused on a different kind of bug:
+Concrete: a SwiftData `@Model` with a non-optional inverse relationship will pass every pattern audit. A backup-restore-edit-save cycle that loses one of those relationships will not. The first scan finds nothing; the second flags the silent loss with a citation to the line where the inverse keypath is declared and the line where the restore reads it back without the inverse.
 
-| Skill | What it looks for |
+Useful framing: pattern-based skills are the building inspector confirming each bolt is torqued to spec. Radar Suite is the home inspector who turns on the shower and checks where the water actually goes. Different layer, different bugs. A thorough audit uses both.
+
+---
+
+## What's in the bundle
+
+Seven skills total. Six audit skills covering distinct domains, plus a router that orchestrates them.
+
+| Skill | Domain |
 |---|---|
-| **data-model-radar** | Mistakes in how your `@Model` or Core Data classes are defined. Missing fields, broken relationships, things that won't migrate cleanly. |
-| **time-bomb-radar** | Code that works today but breaks later. Cache that expires wrong. Trial timers. Date math that fails after midnight on the 31st. |
-| **ui-path-radar** | Screens users can't reach. Buttons that don't navigate anywhere. Features that exist in code but aren't wired into a menu. |
-| **roundtrip-radar** | Data that gets quietly lost on the way through your app. Backup loses a field. Export drops attachments. Edit forgets a relationship. |
-| **ui-enhancer-radar** | Visual stuff. Color contrast, spacing, sheet sizing on iPad, tap targets that are smaller than they look. |
-| **capstone-radar** | Runs after the others and writes a single ship-or-don't-ship report grouped by what blocks release. |
+| `data-model-radar` | SwiftData / Core Data definitions across nine domains: field completeness, computed property correctness, serialization coverage with intentional-exclusion framework, relationship integrity (including cross-context mutation and stale-object detection), semantic clarity, field usage mapping, migration safety, cross-model consistency, near-duplicate model detection. Risk-ranks the model inventory so you know which to audit first. |
+| `time-bomb-radar` | Code that compiles and ships fine but breaks later on aged data. Cascade deletes with live child references, cache expiry that fires wrong, trial paths, background tasks, date-transition edge cases, scheduled side effects. The class of bug that doesn't fail in tests because tests run on fresh data. |
+| `ui-path-radar` | Navigation correctness. Enumerates every routing case, traces reachability, flags orphan features (in code but not in any menu), dead ends, broken back links. 32 issue categories. |
+| `roundtrip-radar` | Data integrity through complete user journeys. Backup→restore, export→import, create→edit→save. Catches collection narrowing (arrays silently lose elements), bridge parity gaps (multiple consumers of the same model read different field subsets), and silent loss anywhere in the loop. Each finding cites the full UI→manager→model→persistence→UI path. |
+| `ui-enhancer-radar` | Visual quality. 13 domains including iPad sheet sizing (audits caller-side `.sheet(...)` for missing `.presentationSizing(.page)` / `.presentationDetents([.large])` / project convenience modifiers), Button hit region (three-factor detector for `.buttonStyle(.plain)` + trailing chevron + Form/List context — the combination that collapses tap targets on iPad), color contrast, spacing, typography. |
+| `capstone-radar` | Aggregates findings from the others into a two-section report: "Fix Before Shipping" (release-blocking; A-F grade) and "Hygiene Backlog" (everything else; doesn't affect grade). Tracks velocity over time and celebrates fixes between runs. |
+| `radar-suite` | Router. Invokes individual skills, runs targeted pipelines (`--changed` selects skills from your git diff), or runs the full sweep (`--full`). |
 
-There's also a seventh skill, `radar-suite`, that runs whichever of the six you ask for (or all of them).
-
-You don't have to use all of these. Most people start with one.
+Every audit skill is invoked by `axis-classification`, a foundation skill that runs before findings are emitted. It enforces the verification checklist (reachability trace, whole-file scan, branch enumeration, pattern citation lookup), the schema gate (rejects findings without file:line citations), and the 3-axis classification framework. You don't invoke it directly; it runs implicitly. Documented in [README-v2-detailed.md](README-v2-detailed.md) for readers who want the spec.
 
 ---
 
 ## Install
 
-Two commands in Claude Code. Run them **one at a time** and wait for the first to finish before pasting the second.
+Two commands in Claude Code, run one at a time:
 
 ```
 /plugin marketplace add Terryc21/radar-suite
@@ -45,89 +52,107 @@ Two commands in Claude Code. Run them **one at a time** and wait for the first t
 /plugin install radar-suite@radar-suite
 ```
 
-That's it. The seven skills are now available everywhere you use Claude Code.
+> **Why not paste both at once?** Claude Code's slash-command dispatcher treats the second `/plugin` as text inside the first command. Run them one at a time.
 
-> **Why one at a time?** If you paste both lines at once, Claude Code treats the second `/plugin` as text inside the first command and tries to clone a repo named `Terryc21/radar-suite /plugin install radar-suite`. The error message ("SSH authentication failed") is misleading. Running them one at a time avoids it.
-
-If for some reason the plugin path doesn't work, the long-form documentation has a fallback that uses `git clone` and an `install.sh` script: [Install fallback (git clone)](README-v2-detailed.md#install).
+The plugin manifest at `.claude-plugin/plugin.json` is the single source of truth for which skills ship; `.claude-plugin/verify-manifest.sh` detects drift between manifest and disk. If you cloned this repo and ran `./install.sh` between 2026-03-24 and 2026-04-10, your install was silently incomplete — re-run `install.sh` or switch to the plugin path. Details in [README-v2-detailed.md](README-v2-detailed.md#installed-between-2026-03-24-and-2026-04-10-re-run-installsh-or-switch-to-the-plugin).
 
 ---
 
-## Your first run (start here)
+## Cost-aware run strategy
 
-If you've never run an audit on your project before, **don't start with the full pipeline**. Audits read a lot of files and can use a noticeable chunk of your weekly Claude Code allocation.
+Radar Suite is deliberately thorough. It reads whole files to catch handlers that grep missed, walks call sites to verify reachability, and cites real patterns from your codebase rather than generic advice. That thoroughness costs tokens — meaningfully more than a single-file linting skill. A full `/radar-suite --full` on a medium Swift project (200-600 files) consumes a substantial chunk of a Claude Code session. Pro tier users should expect a noticeable fraction of weekly allocation; Max tier users are fine.
 
-Start with one skill on one part of your code. Try this:
+Three tiers, in order of token cost:
 
+**1. Single skill** (default for development).
 ```
 /radar-suite data-model
+/radar-suite ui-path
 ```
+One skill, one focused pass, one report. Best during active development or after a localized refactor. Run as often as you want.
 
-Claude will look at your data model files, find issues, and write you a report with each finding rated by severity. Read the report. Decide which findings to fix and which to defer. That's a normal first run.
-
-Once you've done one skill and seen what the output looks like, you'll have a feel for what the others do.
-
-When you're ready to run a couple together, you can do this:
-
+**2. Targeted pipeline** (default for PRs).
 ```
 /radar-suite --changed
 ```
+Auto-selects skills from your git diff. If you only changed view code, runs `ui-path-radar` and `ui-enhancer-radar`; if you touched models, runs `data-model-radar` and `roundtrip-radar`. Typically 1-2 hours.
 
-That picks the skills relevant to your most recent git diff. Useful before opening a PR.
+```
+/radar-suite --skills dmr,tbr
+```
+Manual skill selection by short code. Useful when `--changed` doesn't pick up everything (e.g., adding a new feature flag that wasn't yet referenced in any diff).
 
-The full pipeline (`/radar-suite --full`) is what you run before a release, not what you start with. It's a half-day commitment in tokens. Save it for when you have a specific reason to do a deep sweep.
+**3. Full pipeline** (reserve for releases).
+```
+/radar-suite --full
+```
+All six audit skills plus the capstone aggregator. Half-day commitment. Reserve for pre-release audits or quarterly health checks. Not what you start with.
 
-More detail on session strategy and scoping (only read this when you need to): [Session Strategy and Scoping](README-v2-detailed.md#session-strategy-read-this-before-your-first-run).
+Two strategies that lower cost regardless of tier:
 
----
+- **Scope to a directory.** Pass a path argument: `/radar-suite ui-path --scope Sources/Features/Auth/`. The skill reads only files under that path.
+- **Resume from a previous run.** Audits checkpoint after each phase. If a session ends mid-audit, the next invocation resumes from the last checkpoint rather than restarting.
 
-## What the output looks like
-
-Every audit produces a markdown report saved to `.agents/research/` in your project. Each finding has:
-
-- A short description of the problem
-- The exact file and line where it lives
-- A 9-column rating table (severity, urgency, risk of fixing, risk of not fixing, ROI, blast radius, fix effort, status)
-- A suggested fix when one is obvious
-
-Because the report cites real file:line references in your own codebase, you can verify each finding yourself. If you don't agree with one, mark it Skipped and move on. The skill doesn't change your code; you do.
-
----
-
-## Why this is different from a regular code linter
-
-Most code-checking tools look at one file at a time and compare what they see to a known list of patterns. They're fast and they catch real bugs, but only the kinds of bugs that fit a pattern.
-
-Radar Suite traces behavior. It starts from what the user sees (a button, a screen, a flow) and follows the data through your views, view models, managers, and persistence layer to check whether the round trip actually works. A file can pass every pattern check and still contain a bug that only appears when you trace the full path.
-
-A useful analogy: most auditors are the building code (every nail spec'd, every wire gauge correct). Radar Suite is the home inspector who turns on the shower and checks where the water actually goes.
+Detailed scoping strategies for monorepos and modular codebases: [README-v2-detailed.md](README-v2-detailed.md#scoping-audits-to-specific-areas).
 
 ---
 
-## Honest about what it catches and misses
+## Output format
 
-I keep a [fidelity log](https://github.com/Terryc21/radar-suite/blob/main/MISSED-IT-BY-THAT-MUCH.md) of cases where Radar Suite missed a real bug or flagged something that wasn't a problem. The skills aren't perfect. Reading the log will give you a realistic sense of what to expect.
+Every audit writes a markdown report to `.agents/research/YYYY-MM-DD-<skill>-<slug>.md` in your project. Every finding has:
+
+- A short description of the issue
+- File and line citations for every claim (the schema gate rejects findings without them)
+- A 9-column rating table: severity, urgency, risk-of-fix, risk-of-no-fix, ROI, blast radius, fix effort, status, axis classification
+- A suggested fix when one is mechanical
+
+The 3-axis classification ranks findings as:
+
+- **Axis 1** — release-blocking. Wrong behavior, data loss risk, crash. The capstone uses Axis-1 count to compute the ship grade.
+- **Axis 2** — quality issues that should be fixed but don't block. Performance, code clarity, maintenance burden.
+- **Axis 3** — hygiene. Style, dead code, opportunities for cleanup.
+
+You decide what to fix; the skill writes the report and stays out of your code. Optional guided fix flow exists for the cases where the suggested fix is unambiguous — you approve each one before it lands.
+
+---
+
+## Honest fidelity log
+
+I keep [MISSED-IT-BY-THAT-MUCH.md](https://github.com/Terryc21/radar-suite/blob/main/MISSED-IT-BY-THAT-MUCH.md) — a public log of cases where Radar Suite missed a real bug or flagged something that wasn't a problem. The entries are specific (this commit, this file, this finding) and unflattering. Reading it gives you a calibrated sense of false-positive and false-negative rates rather than a marketing pitch about accuracy.
+
+Most pattern-based audit skills don't keep this kind of log because doing so requires admitting their detection patterns aren't complete. Radar Suite's domains are explicitly tagged `grep-sufficient`, `enumerate-required`, or `mixed`, which forces the question of which findings could have been missed and why.
+
+---
+
+## What it can't catch
+
+Behavioral audits have real limits:
+
+- **Bugs in the relationship between two correct files.** Cross-context SwiftData mutations, race conditions, distributed-state coordination — each individual file passes, the bug is in the handoff. The audit reads files; it can't reason about timing.
+- **Business-logic correctness.** The skill verifies a button exists, that it's reachable, that its tap handler runs. It can't verify the handler does the right thing.
+- **Novel bug classes.** A clean audit means zero matches for the patterns the skills know to look for. New bug shapes that haven't been added to any radar's domain list won't be caught until the next release.
+- **Issues that only appear at runtime.** Memory pressure under specific conditions, threading issues that only manifest under load, OS-version-specific bugs. Static analysis has structural limits.
+
+Treat findings as leads to investigate, not items to fix blindly. Verify critical findings before committing.
 
 ---
 
 ## Updates
 
-The skills change often. After running for a while, ask Claude Code:
-
 ```
 /plugin update radar-suite
 ```
 
-Or check [CHANGELOG.md](CHANGELOG.md) to see what shipped recently.
+Or check [CHANGELOG.md](CHANGELOG.md). I update these often enough that re-checking before a major audit is worthwhile.
 
 ---
 
 ## Other Claude Code skills I've built
 
-- [code-smarter](https://github.com/Terryc21/code-smarter) — turns a file from your project into an annotated tutorial with vocabulary, quizzes, and gap analysis. Works for any language.
-- [prompter](https://github.com/Terryc21/prompter) — rewrites your Claude Code prompt for clarity and fixes typos before acting.
-- [bug-echo](https://github.com/Terryc21/bug-echo) — after you fix a bug, scans the codebase for similar patterns elsewhere.
-- [workflow-audit](https://github.com/Terryc21/workflow-audit) — 5-layer behavioral audit of SwiftUI user flows.
+- [code-smarter](https://github.com/Terryc21/code-smarter) — turns a file from your project into an annotated tutorial with vocabulary tracking, pre/post tests, and prerequisite gap analysis. Works for any language.
+- [prompter](https://github.com/Terryc21/prompter) — rewrites your Claude Code prompt for clarity (resolves ambiguous references, tightens vague verbs, restructures stacked questions) before acting.
+- [bug-echo](https://github.com/Terryc21/bug-echo) — after you fix a bug, infers the anti-pattern from your diff, validates against the pre-fix file, and scans for sibling instances.
+- [workflow-audit](https://github.com/Terryc21/workflow-audit) — 5-layer audit of SwiftUI user flows. Pairs naturally with `ui-path-radar`; the radar enumerates routes while workflow-audit traces what a user trying to do something would experience step by step.
 
 All free, all Apache 2.0, all built while shipping Stuffolio.
 
@@ -135,8 +160,8 @@ All free, all Apache 2.0, all built while shipping Stuffolio.
 
 ## Requirements
 
-- Claude Code (any tier; Pro works, Max is comfier for full audits)
-- A Swift codebase to audit (iOS, macOS, or Catalyst)
+- Claude Code (any tier; Pro works, Max is comfier for `--full` runs)
+- A Swift codebase (iOS, macOS, or Catalyst)
 
 That's the entire requirements list.
 
@@ -144,15 +169,10 @@ That's the entire requirements list.
 
 ## Deeper documentation
 
-If you want to go beyond the basics, the long-form documentation is in [README-v2-detailed.md](README-v2-detailed.md). It covers:
+Two longer docs:
 
-- The 3-axis classification system that tells each skill how to rate findings
-- The schema gate that rejects findings without file:line citations
-- Per-project scoping strategies for monorepos and modular codebases
-- Run-order recommendations
-- Release history and what changed in v2.0 / v2.1 / v2.2 / v2.3
-
-You don't need any of that to start. Run one skill, read the report, see if you like it.
+- [README-v2-detailed.md](README-v2-detailed.md) — the full reference: 3-axis classification spec, schema gate behavior, scoping strategies for monorepos, run-order recommendations, release history per skill (v2.0 → v2.3), and the design philosophy behind each radar's domain selection.
+- [README-newer-dev.md](README-newer-dev.md) — gentler walk-through aimed at readers new to Claude Code skills and audit tooling. Skips the technical depth above in favor of a "what is a skill, here's a small first run" framing.
 
 ---
 
