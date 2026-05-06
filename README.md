@@ -281,7 +281,8 @@ AI audit tools can sound confident while being shallow. The radar skills include
 
 ## Other Claude Code skills I have built
 
-- [code-smarter](https://github.com/Terryc21/code-smarter) -- prompter rewrites your prompt for clarity before Claude acts; tutorial-creator generates annotated code-reading lessons from your own codebase
+- [code-smarter](https://github.com/Terryc21/code-smarter) -- generates annotated code-reading lessons from your own codebase, with vocabulary tracking and gap analysis
+- [prompter](https://github.com/Terryc21/prompter) -- rewrites your prompt for clarity before Claude acts. (Originally bundled with code-smarter; split into its own repo for independent discovery.)
 - [bug-echo](https://github.com/Terryc21/bug-echo) -- after you fix a bug, finds and rates other instances of the same pattern, then presents options to fix them
 - [workflow-audit](https://github.com/Terryc21/workflow-audit) -- 5-layer audit of SwiftUI user workflows; finds dead ends, broken promises, and missing data wiring
 
