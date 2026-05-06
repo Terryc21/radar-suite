@@ -1,411 +1,165 @@
 # Radar Suite
 
-**8 audit skills for Claude Code that find bugs in your Swift/SwiftUI app before your users do. Every finding cites a real file:line pattern in your own codebase — not generic advice. 9-column rating tables with Status tracking at every decision point. Heavy audits; see [Session Strategy](#session-strategy-read-this-before-your-first-run) before your first run.**
+**A bundle of audit skills for Claude Code that find bugs in your iOS or macOS Swift app before your users do.**
+
+Built while shipping [Stuffolio](https://stuffolio.app), an iOS/macOS app I work on every day. Free, open source, no paid tier, no referral links.
+
+<a href="https://buymeacoffee.com/stuffolio"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" width="120"></a>
 
 If Radar Suite catches a real bug for you, a [coffee](https://buymeacoffee.com/stuffolio) is appreciated. Issue reports about what worked or didn't are even more useful.
 
-<a href="https://buymeacoffee.com/stuffolio">
-  <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" width="150">
-</a>
+---
 
-Built during the development of [Stuffolio](https://stuffolio.app), an iOS/macOS app that tracks the things you own across their full life cycle — warranty, repair, and legacy. The audit skills came out of shipping real features like Legacy Wishes and Stuff Scout on a 600-file codebase.
+## What is this, and why might I want it?
 
-One install gives you a complete audit pipeline -- from data model integrity to visual quality to release readiness. Actively maintained as new patterns emerge from real shipping work. Star the repo to stay current; check [CHANGELOG.md](CHANGELOG.md) for release cadence.
+If you're newer to Claude Code and unsure what an "audit skill" does, here's the short version.
 
-## How is Radar Suite different from other code auditing skills?
+A **skill** is a markdown file Claude Code knows how to run. When you type `/radar-suite ui-path`, Claude follows the instructions in that skill: read these files, look for these patterns, write a report. You don't have to memorize anything. The skill tells Claude what to do; you read the report.
 
-Most code auditing skills are pattern matchers. They look at code in isolation — this file, this function, this line — and compare it against known-good patterns. *"You used `@StateObject` where `@State` works." "This `try?` swallows an error."* They're fast, precise, and context-free. They don't need to know what your app does.
+An **audit** is just a thorough look at your codebase for a specific kind of problem. Radar Suite has six audit skills, each focused on a different kind of bug:
 
-Radar Suite traces behavior. It starts from what the user sees — a button, a flow, a journey — and follows the data through views, view models, managers, and persistence to see if the round trip actually works. A file can pass every pattern check and still contain a bug that only appears when you trace the full path.
+| Skill | What it looks for |
+|---|---|
+| **data-model-radar** | Mistakes in how your `@Model` or Core Data classes are defined. Missing fields, broken relationships, things that won't migrate cleanly. |
+| **time-bomb-radar** | Code that works today but breaks later. Cache that expires wrong. Trial timers. Date math that fails after midnight on the 31st. |
+| **ui-path-radar** | Screens users can't reach. Buttons that don't navigate anywhere. Features that exist in code but aren't wired into a menu. |
+| **roundtrip-radar** | Data that gets quietly lost on the way through your app. Backup loses a field. Export drops attachments. Edit forgets a relationship. |
+| **ui-enhancer-radar** | Visual stuff. Color contrast, spacing, sheet sizing on iPad, tap targets that are smaller than they look. |
+| **capstone-radar** | Runs after the others and writes a single ship-or-don't-ship report grouped by what blocks release. |
 
-Most auditors are the building code. Radar Suite is the home inspector.
+There's also a seventh skill, `radar-suite`, that runs whichever of the six you ask for (or all of them).
 
-## What's Included
+You don't have to use all of these. Most people start with one.
 
-| Skill | What It Checks |
-|-------|---------------|
-| **radar-suite** | Unified entry point — routes to any skill or runs full audit sequence |
-| **radar-suite-axis-classification** | Foundation skill. Invoked automatically by every other radar before findings are emitted. Provides the 3-axis framework, verification checklist (reachability trace, whole-file scan, branch enumeration, pattern citation lookup), coaching schema, and schema gate that rejects findings without file:line citations. |
-| **data-model-radar** | Your data definitions across 9 domains: field completeness, computed property correctness, serialization coverage (with intentional exclusion framework), relationship integrity (including cross-context mutation and stale object detection), semantic clarity, field usage mapping (with extension discovery and hallucination guards), migration safety, cross-model consistency, and near-duplicate model detection. Risk-ranked model inventory shows which models to audit first. |
-| **time-bomb-radar** | Deferred operations -- will your app crash 30 days after release? Cascade deletes, cache expiry, trial paths, background tasks, date transitions, scheduled side effects, cascade delete with live child references |
-| **ui-path-radar** | Navigation flows -- can users reach every feature? Are there dead ends or broken links? Orphan feature detection enumerates all routing enum cases and flags features with no visible UI entry point or only reachable via command palette. 32 issue categories, each with a default axis and reclassification rules. |
-| **roundtrip-radar** | Data round-trips — does data survive backup→restore, export→import, create→edit→save? Every finding cites the full UI→manager→model→persistence→UI path in its verification log. Detects collection narrowing (arrays silently lose elements) and bridge parity gaps (multiple consumers of the same model read different field subsets). |
-| **ui-enhancer-radar** | Visual quality — requires you to view each screen before changes, walks through recommendations collaboratively, then finds similar patterns across views. 13 domains including iPad sheet sizing (caller-side `.sheet()` audit for missing `.presentationSizing(.page)` / `.presentationDetents([.large])` / project convenience modifiers) and Button hit region (three-factor detector for `.buttonStyle(.plain)` + trailing chevron + Form/List context, the combination that collapses tap targets on iPad). |
-| **capstone-radar** | Two-section report: "Fix Before Shipping" (axis_1 findings, A-F grade), "Hygiene Backlog" (axis_2/3, no grade impact). Aggregates findings from all other skills with axis-split rendering and audit coverage reporting. |
-
-## Session Strategy (Read This Before Your First Run)
-
-Radar Suite is deliberately thorough. It reads whole files to catch handlers the grep missed, walks call sites to verify reachability, and cites real patterns from your own codebase instead of generic advice. That thoroughness costs tokens — meaningfully more than a single-file linting skill.
-
-**What this means for you:** a full `/radar-suite full` run on a medium Swift project (200-600 files) will consume a substantial chunk of your Claude Code session. Users on Pro tier should expect to use a noticeable fraction of their weekly allocation on a single full run. Users on Max tier are fine.
-
-**Choose the right tier for your budget and task:**
-
-1. **Tier 1 (default): Single skill.** Run one skill at a time. `/radar-suite data-model` or `/radar-suite ui-path` gives you focused output without committing to a pipeline. Best during development or after a focused refactor.
-
-2. **Tier 2: Targeted pipeline.** Run 2-3 related skills. `/radar-suite --changed` auto-selects skills from your git diff (typically 1-2 hours). `/radar-suite --skills dmr,tbr` for manual selection. Best before opening a PR.
-
-3. **Tier 3: Full pipeline.** `/radar-suite --full` runs all 6 audit skills (the 6 you invoke directly; the orchestrator and the axis-classification foundation skill don't need direct invocation) with pipeline UX enhancements. Reserve for pre-release audits or quarterly health checks. Half-day commitment.
-
-**Two strategies that lower cost regardless of tier:**
-
-- **Capstone first.** Run `/capstone-radar` alone to see the high-level grade and which domains need attention. Then run only the radars capstone flagged via Tier 1 or Tier 2.
-- **Defer fixes to after capstone.** Switching to "fix all after capstone" runs all the scans first, then fixes in one batch — fewer build invocations, less total cost.
-
-**Why the cost is what it is:** you're paying for verification checks that prevent findings like "your empty-state handler is missing" from reaching you when the handler exists 500 lines down in the same file. Spending 10 minutes of session time to avoid spending 30 minutes of human time disproving a false positive is the trade Radar Suite is built around.
-
-**It gets faster as you keep using it.** Once you fix a finding, the ledger remembers it — subsequent runs won't re-surface fixed issues, and they verify the fix is still in place via reintroduction detection. The `known-intentional.yaml` file also accumulates patterns you've confirmed are intentional, suppressing those false positives on every future run. (Accepted findings do resurface after 180 days for re-evaluation, by design — see "Finding Management" below.) If you want a clean slate — say after a major refactor — pass `--fresh` (or pick "Yes, archive and start fresh" when prompted at startup) to archive prior state and rebuild from scratch. Your old ledger is moved to `.radar-suite/archive/`, never deleted.
-
-**If a full audit kills your session:** [file an issue](https://github.com/Terryc21/radar-suite/issues) with the project size (Swift file count, total LOC) and which skill was running when the session cratered. I'll update this section with data from real runs.
-
-## Scoping Audits to Specific Areas
-
-You don't have to audit your entire project every time. The `--scope` flag restricts all skill scans to a directory subtree, letting you audit just the code that matters right now.
-
-```
-/radar-suite --scope Sources/Features/StuffScout/
-/radar-suite --skills dmr,rtr,upr,uer --scope Sources/Features/Auth/
-```
-
-### When to Scope
-
-| Scenario | Command | What It Does |
-|----------|---------|-------------|
-| **New feature** | `--scope Sources/Features/Checkout/` | Audit only the feature you just built |
-| **Post-refactor** | `--scope Sources/Managers/` | Verify the layer you just restructured |
-| **Pre-PR review** | `--changed --scope Sources/` | Auto-select skills, but only for changed source files |
-| **Single model deep-dive** | `--scope Sources/Models/ --skills dmr` | Focus data-model-radar on your model layer |
-| **UI polish pass** | `--scope Sources/Views/Dashboard/ --skills upr,uer` | Navigation + visual audit of one screen family |
-| **Integration boundary** | `--scope Sources/Networking/` | Audit your API layer for round-trip and time-bomb issues |
-
-### Real Example
-
-During Stuffolio development, the Stuff Scout feature got a confidence gate, story-first refinement, and before/after history in one session. Rather than re-auditing the full 600-file codebase, a scoped Tier 2 audit targeted just the 30 StuffScout files:
-
-```
-/radar-suite --skills dmr,rtr,upr,uer --scope Sources/Features/StuffScout/
-```
-
-This found 8 issues in ~30 minutes that a full audit would have taken 2+ hours to surface: a persistence gap where refinement history was silently dropped on save, a macOS platform gap where the Save button was missing, and a state management bug where the UI didn't reset after refinement. All fixed in the same session.
-
-### Scoping Strategies for Common Project Structures
-
-**Feature-based architecture** (`Sources/Features/[Feature]/`): Scope to one feature at a time. Run data-model + roundtrip to verify the feature's data flows, then ui-path + ui-enhancer for its screens.
-
-**Layer-based architecture** (`Sources/Models/`, `Sources/Services/`, `Sources/Views/`): Scope to one layer. data-model-radar for `Models/`, roundtrip-radar for `Services/`, ui-path + ui-enhancer for `Views/`.
-
-**Module-based architecture** (SPM packages): Scope to a single package directory. Particularly useful when a package has its own models and views.
-
-**Shared components** (`Sources/Components/`, `Sources/Utilities/`): Scope here after refactoring shared code to catch callers that may have broken.
-
-Scoping combines with `--changed` and `--skills` for precise control. The narrower the scope, the faster the audit and the more relevant the findings.
+---
 
 ## Install
 
-**Recommended: Claude Code plugin**
-
-Run these two commands **one at a time** in Claude Code. Wait for Step 1 to confirm "Successfully added marketplace" before running Step 2.
-
-Step 1 — add the marketplace:
+Two commands in Claude Code. Run them **one at a time** and wait for the first to finish before pasting the second.
 
 ```
 /plugin marketplace add Terryc21/radar-suite
 ```
 
-Step 2 — install the plugin:
-
 ```
 /plugin install radar-suite@radar-suite
 ```
 
-All 8 skills are now available in Claude Code. The plugin manifest at `.claude-plugin/plugin.json` is the single source of truth for what ships, and `.claude-plugin/verify-manifest.sh` detects drift between the manifest and disk.
+That's it. The seven skills are now available everywhere you use Claude Code.
 
-> **Why two separate blocks?** If you copy both `/plugin` lines at once and paste them into Claude Code, the slash-command dispatcher treats the first `/plugin` as the command and the rest of the paste (including the second `/plugin install...`) as its arguments. Claude Code then tries to clone a repo literally named `Terryc21/radar-suite /plugin install radar-suite` and fails with a misleading SSH authentication error. Running them one at a time avoids the trap.
+> **Why one at a time?** If you paste both lines at once, Claude Code treats the second `/plugin` as text inside the first command and tries to clone a repo named `Terryc21/radar-suite /plugin install radar-suite`. The error message ("SSH authentication failed") is misleading. Running them one at a time avoids it.
 
-**Fallback: clone and install.sh (deprecated as of v2.0)**
+If for some reason the plugin path doesn't work, the long-form documentation has a fallback that uses `git clone` and an `install.sh` script: [Install fallback (git clone)](README-v2-detailed.md#install).
 
-If you can't use the plugin path yet, `install.sh` still works:
+---
 
-```bash
-git clone https://github.com/Terryc21/radar-suite.git
-cd radar-suite
-./install.sh
+## Your first run (start here)
+
+If you've never run an audit on your project before, **don't start with the full pipeline**. Audits read a lot of files and can use a noticeable chunk of your weekly Claude Code allocation.
+
+Start with one skill on one part of your code. Try this:
+
+```
+/radar-suite data-model
 ```
 
-The script now includes a drift guardrail that verifies its internal `SKILLS` array matches disk before installing. It will warn if drift is detected.
+Claude will look at your data model files, find issues, and write you a report with each finding rated by severity. Read the report. Decide which findings to fix and which to defer. That's a normal first run.
 
-### Installed between 2026-03-24 and 2026-04-10? Re-run `install.sh` or switch to the plugin
+Once you've done one skill and seen what the output looks like, you'll have a feel for what the others do.
 
-If you cloned this repo and ran `./install.sh` between **2026-03-24** and **2026-04-10**, your install was silently incomplete. The installer was missing two skills: `time-bomb-radar` (the 30-day crash detector) and `radar-suite` (the orchestrator). The `/time-bomb-radar` and `/radar-suite` commands would have returned "skill not found" errors even though the skill files existed in the repo.
+When you're ready to run a couple together, you can do this:
 
-The bug was fixed on 2026-04-10. To backfill the missing skills:
-
-```bash
-cd radar-suite
-git pull
-./install.sh
+```
+/radar-suite --changed
 ```
 
-`install.sh` is idempotent and safe to re-run. Existing symlinks are updated in place; missing symlinks are created. Nothing else in your Claude Code install is touched.
+That picks the skills relevant to your most recent git diff. Useful before opening a PR.
 
-The root cause: `install.sh` was a hand-maintained shell script with a hardcoded `SKILLS=()` array. When new skills were added to `skills/` in later commits, the array was not updated to match. Documentation (this README) said "7 skills" while the installer shipped 5. This class of drift is exactly what a plugin manifest prevents -- which is why Radar Suite is moving to one. See the next section.
+The full pipeline (`/radar-suite --full`) is what you run before a release, not what you start with. It's a half-day commitment in tokens. Save it for when you have a specific reason to do a deep sweep.
 
-### v2.0 deep dive: the 3 axes, the schema gate, and the plugin manifest
+More detail on session strategy and scoping (only read this when you need to): [Session Strategy and Scoping](README-v2-detailed.md#session-strategy-read-this-before-your-first-run).
 
-**The three axes.** Every finding from every radar is classified before it can be emitted:
+---
 
-- **axis_1_bug** — real user-facing defect. Counts toward the A-F grade. Fix before shipping.
-- **axis_2_scatter** — correct code, poor structure. Fix opportunistically. Does not affect grade.
-- **axis_3_dead_code / axis_3_smelly** — unreachable branches or reachable-but-unjustified code. Delete or document.
+## What the output looks like
 
-**The schema gate.** Every finding must populate `current_approach`, `suggested_fix`, `better_approach`, and `better_approach_tradeoffs` — and the `better_approach` field must contain a `file:line` citation matching a real pattern in your codebase. The gate enforces this with a regex check. Findings that don't cite are either fixed by the radar (run the missing verification checks, populate the missing fields) or downgraded to `possible` confidence and tagged "coaching incomplete" so they're visible as low-confidence entries rather than silently dropped.
+Every audit produces a markdown report saved to `.agents/research/` in your project. Each finding has:
 
-**The verification checklist.** Before a radar emits a finding, it runs the applicable checks: reachability trace (is this branch reachable from a production call site?), whole-file scan (is there a handler elsewhere in the same file?), branch enumeration (did we read both sides of every `#if os(iOS)` / `#else`?), pattern citation lookup (does the cited pattern actually exist?), and source root introspection (did we scan all the project's source roots, not just `Sources/`?). Every check that runs is logged in the finding's `verification_log` so a reader can see what the radar actually checked.
+- A short description of the problem
+- The exact file and line where it lives
+- A 9-column rating table (severity, urgency, risk of fixing, risk of not fixing, ROI, blast radius, fix effort, status)
+- A suggested fix when one is obvious
 
-**The plugin manifest.** `.claude-plugin/plugin.json` declares every skill the plugin ships. `.claude-plugin/verify-manifest.sh` diffs the manifest against `ls skills/` and fails if they disagree. The 17-day silent install drift bug that shipped only 5 of 7 skills between 2026-03-24 and 2026-04-10 is structurally impossible under the manifest — not "hard to hit" but impossible — as long as CI runs the verify script. `install.sh` is kept as a fallback and now runs the same verify check at install time.
+Because the report cites real file:line references in your own codebase, you can verify each finding yourself. If you don't agree with one, mark it Skipped and move on. The skill doesn't change your code; you do.
+
+---
+
+## Why this is different from a regular code linter
+
+Most code-checking tools look at one file at a time and compare what they see to a known list of patterns. They're fast and they catch real bugs, but only the kinds of bugs that fit a pattern.
+
+Radar Suite traces behavior. It starts from what the user sees (a button, a screen, a flow) and follows the data through your views, view models, managers, and persistence layer to check whether the round trip actually works. A file can pass every pattern check and still contain a bug that only appears when you trace the full path.
+
+A useful analogy: most auditors are the building code (every nail spec'd, every wire gauge correct). Radar Suite is the home inspector who turns on the shower and checks where the water actually goes.
+
+---
+
+## Honest about what it catches and misses
+
+I keep a [fidelity log](https://github.com/Terryc21/radar-suite/blob/main/MISSED-IT-BY-THAT-MUCH.md) of cases where Radar Suite missed a real bug or flagged something that wasn't a problem. The skills aren't perfect. Reading the log will give you a realistic sense of what to expect.
+
+---
 
 ## Updates
 
-**Plugin install (recommended):** Claude Code's `/plugin update` mechanism handles the upgrade. Each skill also checks for updates on startup at runtime — if a newer version is available, you'll see a one-line notice that never blocks your audit.
-
-**Clone-and-install fallback:** if you used `install.sh`, update with:
-
-```bash
-cd radar-suite
-git pull
-```
-
-If you installed via `install.sh` (symlinks), the update takes effect immediately. If you copied the files instead, re-run `./install.sh` after pulling.
-
-Each skill has a `VERSION` file and a `version:` field in its SKILL.md frontmatter. [GitHub Releases](https://github.com/Terryc21/radar-suite/releases) include changelogs for each version.
-
-## Recommended Run Order
-
-> **Skill 0:** `radar-suite-axis-classification` is invoked automatically by every other radar before findings are emitted. You never run it directly — it provides the verification checklist, coaching schema, and schema gate that the other skills depend on. The run order below covers the 6 skills you actually invoke plus capstone.
-
-**Easiest:** Use the unified entry point:
+The skills change often. After running for a while, ask Claude Code:
 
 ```
-/radar-suite full            # Runs the audit skills in optimal order
-/radar-suite                 # Interactive menu to choose skill or full audit
-/radar-suite resume          # Continue from last checkpoint
-/radar-suite audit --changed # Quick re-audit of files changed since last session
-/radar-suite ledger          # View all findings across skills
-/radar-suite verify          # Re-verify all fixed findings
+/plugin update radar-suite
 ```
 
-**Manual order:** Each skill writes findings that the next one can read:
+Or check [CHANGELOG.md](CHANGELOG.md) to see what shipped recently.
 
-```
-1. /data-model-radar      Checks data definitions (the foundation)
-        ↓ findings flow to...
-2. /time-bomb-radar        Checks deferred operations on aged data
-        ↓ findings flow to...
-3. /roundtrip-radar        Verifies data survives complete cycles
-        ↓ findings flow to...
-4. /ui-path-radar          Traces navigation and user flows
-        ↓ findings flow to...
-5. /ui-enhancer-radar      Reviews visual quality of each screen
-        ↓ findings flow to...
-6. /capstone-radar         Gives overall grade + ship/no-ship decision
-        ↓ deferred findings flow to...
-7. Post-capstone fixes     Fix deferred backlog from all skills
-```
+---
 
-You can also run any skill individually -- they work standalone. The findings handoff just makes them smarter when run together.
+## Other Claude Code skills I've built
 
-## Finding Management
+- [code-smarter](https://github.com/Terryc21/code-smarter) — turns a file from your project into an annotated tutorial with vocabulary, quizzes, and gap analysis. Works for any language.
+- [prompter](https://github.com/Terryc21/prompter) — rewrites your Claude Code prompt for clarity and fixes typos before acting.
+- [bug-echo](https://github.com/Terryc21/bug-echo) — after you fix a bug, scans the codebase for similar patterns elsewhere.
+- [workflow-audit](https://github.com/Terryc21/workflow-audit) — 5-layer behavioral audit of SwiftUI user flows.
 
-Every finding gets a unique RS-NNN ID and lives in a unified ledger (`.radar-suite/ledger.yaml`). This enables:
+All free, all Apache 2.0, all built while shipping Stuffolio.
 
-- **Cross-skill visibility** -- see all findings from all skills in one place, organized by impact (crash, data loss, UX broken, etc.)
-- **Deduplication** -- when two skills find the same issue from different angles, the ledger merges them instead of creating duplicates
-- **Regression detection** -- file hashes track whether fixed files have changed; `/radar-suite verify` confirms fixes still hold
-- **Finding relationships** -- link root causes to symptoms; fixing a root cause auto-flags symptoms for re-check
-- **Confidence decay** -- accepted findings resurface after 180 days so you re-evaluate with fresh context
-- **Partial re-audit** -- `/radar-suite audit --changed` scopes to modified files only (15-30 min vs 2.5-4 hours)
-
-The per-skill handoff YAMLs are still written for backward compatibility. The ledger is the cross-skill view that ties everything together.
-
-## What Each Skill Finds (Examples)
-
-**data-model-radar** found that InsuranceProfile and DonationRecord weren't included in backups — meaning users would lose their insurance settings and tax records on restore. Its time bomb audit found a deferred deletion that would crash the app 30 days after archiving items — invisible during development because no test data was old enough to trigger it. Its near-duplicate detection (Domain 7.5) found two Scout models sharing 90% of fields and methods with no shared protocol — every bug fix had to be applied twice. Its computed property check (Domain 1.5) catches business logic bugs like fallback chains that return `0` when "unknown" is the correct semantic — invisible in UI because `$0.00` looks intentional.
-
-**ui-path-radar** found 3 dead-end screens where users could navigate in but had no way to navigate out.
-
-**roundtrip-radar** found that CSV export included Room and UPC columns, but CSV import silently dropped them — data loss on round-trip. Its collection narrowing check found that selecting 4 photos for AI analysis only passed the first photo through — the flow worked, types were correct, but 75% of input data was silently discarded at each handoff point. Its bridge parity check found 3 functions that built notes from the same scout data model — two included all 6 narrative sections, one included only 3. No type error, no crash — users silently lost research data on one code path.
-
-**ui-enhancer-radar** found spacing inconsistencies, missing empty states, and color contrast issues that would cause App Store accessibility rejection.
-
-**capstone-radar** aggregated all findings into a B+ grade with 2 critical blockers preventing release.
-
-## When Fixes Happen
-
-At the start of every audit, you choose when findings get fixed:
-
-| Option | What Happens |
-|--------|-------------|
-| **Fix recommended after each skill** (default) | After each skill, fix high-urgency + low-effort findings immediately. Defer the rest to a post-capstone fix session. Best balance of speed and thoroughness. |
-| **Fix all after each skill** | Fix every finding before moving to the next skill. Most thorough, but slower. |
-| **Fix all after capstone** | Run the full audit first for the full picture, then fix everything in one session using the capstone report as a punch list. Fastest audit, largest fix backlog. |
-
-The default option uses a simple rule: fix now if the finding is high urgency, low effort, and touches 2 files or fewer. Everything else benefits from the full audit picture — capstone might reveal it's part of a larger pattern, or deprioritize it entirely.
-
-**No finding is silently dropped.** After capstone completes, the suite presents all deferred findings as a fix backlog. Each one either gets fixed, explicitly deferred to `DEFERRED.md`, or accepted as a design choice.
-
-## Finding Resolution
-
-Every finding from every skill must reach a terminal state before release:
-
-- **Fixed** — code changed, verified
-- **Planned** — added to `DEFERRED.md` with a release gate (pre-release, post-release, or next major) and review-by date
-- **Accepted** — intentional design choice, documented with rationale
-
-capstone-radar enforces this with a **Resolution Gate** — it won't recommend shipping while unresolved findings exist.
-
-## Audit Methodology
-
-Every skill follows three scanning principles to minimize false negatives:
-
-1. **Enumerate-then-verify** — For domains where violations can lack searchable code signatures, the skill lists all candidate files and verifies each one rather than relying on grep alone. This addresses the 57% miss rate observed in grep-only audits. Each skill's domains are tagged `grep-sufficient`, `enumerate-required`, or `mixed` to guide scan depth.
-2. **File-scoped skip lists** — A resolved finding applies to that file only. Callers and dependents of a fixed file need independent verification.
-3. **Negative pattern matching** — The skill searches for subjects, then verifies the correct pattern exists around them. Findings from absent patterns are ranked into three confidence tiers (Almost certain / Probable / Possible) and presented separately from verified findings.
-
-## Fidelity
-
-AI audit tools can sound confident while being shallow. The radar skills include structural constraints that make deep work easier than shortcuts, and make shallow work visible when it happens. See [FIDELITY.md](FIDELITY.md) for the full philosophy and roadmap.
-
-## Development Notes
-
-[MISSED-IT-BY-THAT-MUCH.md](MISSED-IT-BY-THAT-MUCH.md) — How 6 audit skills all passed the codebase while 38 fields vanished after save. What cross-skill handoffs look like in practice.
-
-## Other Claude Code skills I have built
-
-- [code-smarter](https://github.com/Terryc21/code-smarter) -- generates annotated code-reading lessons from your own codebase, with vocabulary tracking and gap analysis
-- [prompter](https://github.com/Terryc21/prompter) -- rewrites your prompt for clarity before Claude acts. (Originally bundled with code-smarter; split into its own repo for independent discovery.)
-- [bug-echo](https://github.com/Terryc21/bug-echo) -- after you fix a bug, finds and rates other instances of the same pattern, then presents options to fix them
-- [workflow-audit](https://github.com/Terryc21/workflow-audit) -- 5-layer audit of SwiftUI user workflows; finds dead ends, broken promises, and missing data wiring
-
-## Previous Individual Repos
-
-The skills were originally published as separate repos. Those repos now redirect here -- this monorepo is the single source of truth. The skills are deeply interdependent (cross-skill handoffs, shared DEFERRED.md, unified grading) and are designed to be installed together.
+---
 
 ## Requirements
 
-- [Claude Code](https://claude.com/claude-code) CLI
-- A Swift/SwiftUI project (iOS, macOS, iPadOS, tvOS, or visionOS)
+- Claude Code (any tier; Pro works, Max is comfier for full audits)
+- A Swift codebase to audit (iOS, macOS, or Catalyst)
 
-## Tips
+That's the entire requirements list.
 
-<details>
-<summary><strong>Optional: Dippy</strong> — recommended only if your project path contains spaces</summary>
+---
 
-If your project lives on a path with spaces (e.g., `/Volumes/My Drive/Projects/...`), Claude Code triggers a security warning — "Command contains backslash-escaped whitespace that could alter command parsing" — on routine commands like `grep`, `git log`, and `ls`. Each warning requires manual permission approval, which interrupts audit flow repeatedly. There is no Claude Code setting to suppress this warning; it's a hardcoded security check.
+## Deeper documentation
 
-[Dippy](https://github.com/ldayton/Dippy) solves this by acting as a PreToolUse hook that auto-approves safe, read-only commands while blocking destructive operations (force push, `rm -rf`, `git reset --hard`). It uses a custom bash parser with 14,000+ tests to understand what each command actually does — it's not a blanket auto-approve.
+If you want to go beyond the basics, the long-form documentation is in [README-v2-detailed.md](README-v2-detailed.md). It covers:
 
-```bash
-brew tap ldayton/dippy
-brew install dippy
-```
+- The 3-axis classification system that tells each skill how to rate findings
+- The schema gate that rejects findings without file:line citations
+- Per-project scoping strategies for monorepos and modular codebases
+- Run-order recommendations
+- Release history and what changed in v2.0 / v2.1 / v2.2 / v2.3
 
-Then add the hook to `~/.claude/settings.json`:
+You don't need any of that to start. Run one skill, read the report, see if you like it.
 
-```json
-{
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "Bash",
-        "hooks": [{ "type": "command", "command": "dippy" }]
-      }
-    ]
-  }
-}
-```
-
-Radar Suite includes Dippy integration at two levels:
-
-- **Pre-flight check** — At audit startup, if your project path contains spaces and Dippy isn't installed, the skill prints a one-line recommendation. Non-blocking — the audit continues either way.
-- **Bundled `.dippy` config** — A reference config tuned for audit workflows is included in this repo. Copy it to your project root to customize which commands are auto-approved during audits.
-
-If your project path has no spaces, none of this applies and you won't see any Dippy-related messages.
-
-Dippy is MIT licensed; Radar Suite is Apache-2.0. The license boundary is at the integration point: Radar Suite's Dippy support code is Apache-2.0, Dippy itself remains MIT.
-
-</details>
-
-## Release History
-
-### What's New in v2.3.0 (2026-04-18)
-
-**data-model-radar v2.3.0** with cross-context object safety checks:
-
-- **Domain 3a: Cross-Context Mutation** detects methods that create their own `ModelContext` and mutate `@Model` objects passed in from callers. SwiftData crashes at runtime when objects from different contexts are related. Every line of code is valid Swift; the bug is the *relationship* between two individually correct files. No grep pattern can find it because there is no searchable code signature. The heuristic checks for `makeContext()` / `ModelContext(container)` combined with parameter mutation, with a false-positive filter for methods that re-fetch by `persistentModelID` before mutating.
-- **Domain 3b: Stale Object After Cross-Context Save** detects the silent variant of the same pattern. A manager saves in its own context, but the caller's copy of the passed-in object never sees the update. UI shows stale data until the user navigates away and back. Not a crash, but frequently reported as "save didn't work."
-- **Origin:** a Stuffolio Legacy Wishes crash where `assignItem()` created its own `ModelContext` and set `item.legacyAssignment = assignment` on an Item from the view's context. Every audit skill (radar-suite and Axiom) passed the code because each file was correct in isolation. The bug only existed at the boundary between two files.
-
-**time-bomb-radar v2.2.0** with cascade delete child reference detection:
-
-- **Pattern 7: Cascade Delete With Live Child References** detects `.cascade` delete rules where a view holds a direct reference to a child object independently of the parent. When the parent is deleted, the child is cascade-deleted, but the view still holds and accesses the deleted child. Distinct from Pattern 1 (deferred deletion) because the delete is immediate; the "bomb" is spatial (which views are active), not temporal (how much time has passed).
-
-### What's New in v2.2.1 (2026-04-14)
-
-**ui-path-radar v2.2.0** with orphan feature detection:
-
-- **Automated Check 4 rewritten** from a 4-line stub to a 3-tier detection system: enumerate all routing enum cases, cross-reference against visible UI triggers (excluding command palette), classify each feature as orphan / command-palette-only / deeply buried / adequately surfaced.
-- **Two new issue categories:** `command_palette_only` (HIGH) flags features reachable only via Go To / QuickFind with no visible UI entry point. `deeply_buried_feature` (HIGH) flags user-facing features requiring 4+ taps from the nearest tab bar item.
-- **Origin:** a Stuffolio session found 6 features only accessible via Go To and 10+ features buried 3+ taps deep in Tools subcategories. The existing skill traced paths forward from entry points but couldn't detect features with zero UI entry points.
-
-### What's New in v2.2 (2026-04-12)
-
-**data-model-radar v2.2.0** with 7 improvements driven by real audit findings:
-
-**Two new domains:**
-- **Domain 1.5: Computed Property Correctness** checks business logic in computed properties for nil propagation bugs, wrong fallback defaults, currency unit mismatches, and stale threshold assumptions.
-- **Domain 7.5: Near-Duplicate Model Detection** flags models sharing 70%+ fields that should be consolidated via a shared protocol.
-
-**Reliability fixes that prevent false findings:**
-- **Full-tree discovery** scans all of `Sources/`, not just `Sources/Models/`. Models under `Sources/Features/` (like ScoutBookmark) are no longer missed.
-- **Field existence gate** requires grep verification that a field actually exists before reporting it dead. Prevents hallucinated field names from reaching you.
-- **Extension discovery** reads `Model+Extension.swift` files before declaring fields unused. A field consumed only in an extension is not dead.
-- **Intentional exclusion framework** classifies serialization gaps as intentional (format mismatch, internal metadata, scope boundary) or real. Intentional exclusions don't lower the domain grade.
-
-**Consistent grading:**
-- **Scoring rubric** with A-F criteria, per-domain deduction rules, evidence requirements, and weighted overall grade (Domain 2 Serialization = 25%, Domain 3 Relationships = 15%, Domain 6 Migration = 15%).
-
-**Cross-suite improvements (all skills):**
-- **9-column rating table** adds Status column (Open/Fixed/Deferred/Skipped) on re-display. Omitted on first display when all findings are Open.
-- **Rating Table Gate** requires the table before every approval/continue/commit prompt. The most common display failure mode is now structurally prevented.
-- **"No tables" opt-out** in session setup for users who prefer text-only findings.
-- **Auto-generated execution rules memory** written on first invocation, survives context compression in long sessions.
-- **Rules Summary** block at top of core.md with the 6 most commonly violated rules.
-
-### What's New in v2.1 (2026-04-11)
-
-**3-tier depth model.** You now choose how deep to audit:
-
-| Tier | Command | What It Does | Time |
-|------|---------|-------------|------|
-| **1 (Quick)** | `/radar-suite data-model` | Single skill, own rating table, no pipeline | 20-60 min |
-| **2 (Targeted)** | `/radar-suite --skills dmr,tbr` | 2-3 skills with cross-skill handoffs | 1-2 hours |
-| **2 (Auto)** | `/radar-suite --changed` | Auto-select skills from git diff | varies |
-| **3 (Full)** | `/radar-suite --full` | All 6 audit skills + capstone + UX enhancements | 2.5-4 hours |
-
-Tier 1 is the new default. The full pipeline is now opt-in via `--full`, not the implicit behavior.
-
-**6 pipeline UX enhancements** for Tier 3: progress banners at every skill transition, per-skill mini rating tables (marked "PRELIMINARY"), audit-only mode statement, duration estimates, pre-capstone summary, and `short_title` on every finding ID (e.g., `RS-002 (cascade delete crash)` instead of bare `RS-002`).
-
-**Skill abbreviations** for `--skills`: `dmr` (data-model), `tbr` (time-bomb), `rtr` (roundtrip), `upr` (ui-path), `uer` (ui-enhancer).
-
-### What Shipped in v2.0 (2026-04-10)
-
-**Every finding now cites a real pattern in your own codebase.** Not generic advice -- a specific file and line number you can open, read, and copy. The schema gate rejects findings without citations, so "consider adding error handling" never reaches you; "follow the pattern at `CloudSyncManager.swift:104-112`" does.
-
-The 3-axis classification framework (bug / scatter / dead) keeps hygiene out of your ship grade so you can focus on what actually blocks release. axis_1 findings count toward the A-F grade; axis_2 and axis_3 findings live in a separate Hygiene Backlog and do not.
-
-v2.0 ships as a Claude Code plugin via `/plugin install`, replacing the hand-maintained `install.sh` distribution path (which still works as a fallback).
+---
 
 ## License
 
-Apache-2.0. See [LICENSE](LICENSE).
+Apache 2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
+
+## Author
+
+Terry Nyberg, [Coffee & Code LLC](https://stuffolio.app/).
