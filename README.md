@@ -149,7 +149,7 @@ Or check [CHANGELOG.md](CHANGELOG.md). I update these often enough that re-check
 
 ## Other Claude Code skills I've built
 
-- [code-smarter](https://github.com/Terryc21/code-smarter) — turns a file from your project into an annotated tutorial with vocabulary tracking, pre/post tests, and prerequisite gap analysis. Works for any language.
+- [tutorial-creator](https://github.com/Terryc21/tutorial-creator) — turns a file from your project into an annotated tutorial with vocabulary tracking, pre/post tests, and prerequisite gap analysis. Works for any language.
 - [prompter](https://github.com/Terryc21/prompter) — rewrites your Claude Code prompt for clarity (resolves ambiguous references, tightens vague verbs, restructures stacked questions) before acting.
 - [bug-echo](https://github.com/Terryc21/bug-echo) — after you fix a bug, infers the anti-pattern from your diff, validates against the pre-fix file, and scans for sibling instances.
 - [workflow-audit](https://github.com/Terryc21/workflow-audit) — 5-layer audit of SwiftUI user flows. Pairs naturally with `ui-path-radar`; the radar enumerates routes while workflow-audit traces what a user trying to do something would experience step by step.
