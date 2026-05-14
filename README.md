@@ -16,14 +16,8 @@ Built while shipping [Stuffolio](https://stuffolio.app) (Universal iOS/iPadOS/ma
 - **Why:** Linters find single-file pattern bugs efficiently. Radar Suite finds cross-file behavior bugs that don't show up in any one file. **Both belong in a thorough audit; neither replaces the other.**
 - **Install:** Two `/plugin` commands in Claude Code; then `/radar-suite` is available in any project.
 - **Try first:** `/radar-suite ui-enhancer --scope <small directory>` — ~5 min, one report to look at.
-- **Calibrated:** public [fidelity log](MISSED-IT-BY-THAT-MUCH.md) of real misses and false positives; "[What it can't catch](#honest-limits)" section enumerates structural blind spots.
+- **Honest limits:** [What it can't catch](#honest-limits) section enumerates structural blind spots.
 - **Maturity:** v2.1.0 shipped; used through real App Store submission cycles on a 600-file Swift codebase; CHANGELOG tracks every release.
-
-## Calibrated honesty (read this before installing)
-
-I keep [**MISSED-IT-BY-THAT-MUCH.md**](MISSED-IT-BY-THAT-MUCH.md) — a public log of cases where Radar Suite missed a real bug or flagged something that wasn't a problem. The entries are specific (this commit, this file, this finding) and unflattering. Reading it gives you a calibrated sense of false-positive and false-negative rates rather than a marketing pitch about accuracy.
-
-Behavioral analysis has a wider detection envelope than pattern matching, but it also has more ways to be wrong. Radar Suite's domains are explicitly tagged `grep-sufficient`, `enumerate-required`, or `mixed` precisely so the next reader can see where my approach has structural limits and where a pattern-based tool would do better. The log is the audit on the audit.
 
 ## What Radar Suite is for vs what linters are for
 
@@ -146,8 +140,6 @@ Behavioral audits have real limits. Read these before installing.
 Treat findings as leads to investigate, not items to fix blindly. Verify critical findings before committing.
 
 **Where to look for the bugs Radar Suite won't find:** pattern-based linters (SwiftLint, etc.) catch the single-file violations; runtime profiling (Instruments, debug builds with sanitizers) catches the threading and memory issues; targeted unit tests catch business-logic correctness. Radar Suite covers the cross-file behavioral gap between those tools.
-
-**Calibrated fidelity:** [MISSED-IT-BY-THAT-MUCH.md](MISSED-IT-BY-THAT-MUCH.md) — public log of real misses and false positives, by commit and file. Read it for the calibrated picture.
 
 ## Other Claude Code skills
 
