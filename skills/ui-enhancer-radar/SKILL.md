@@ -1,7 +1,7 @@
 ---
 name: ui-enhancer-radar
-description: 'Systematic iOS/SwiftUI UI audit with design intent interview, 13-domain analysis (including Color Audit with adaptive Color Profile, iPad Sheet Sizing caller-side audit, and Button Hit Region three-factor interaction audit), element compaction, cross-view consistency checks, layout reorganization, design-aware push-back, App Store guardrails, and incremental apply with revert safety. 19 subcommands. Run /ui-enhancer-radar help for all commands. Triggers: "enhance this UI", "ui enhancer radar", "improve this view", "screen review", "ux audit", "ipad sheet truncation", "button not tappable on iPad".'
-version: 2.1.0  # 3-tier depth model (was 2.0.0)
+description: 'Systematic iOS/SwiftUI UI audit with design intent interview, 13-domain analysis (including Color Audit with adaptive Color Profile, iPad Sheet Sizing caller-side audit, and Button Hit Region three-factor interaction audit), element compaction, cross-view consistency checks, layout reorganization, design-aware push-back, App Store guardrails, and incremental apply with revert safety. Run /ui-enhancer-radar help for all commands. Triggers: "enhance this UI", "ui enhancer radar", "improve this view", "screen review", "ux audit", "ipad sheet truncation", "button not tappable on iPad".'
+version: 3.4.0  # Color Audit (Domain 11) + iPad sheet sizing (12) + button hit region (13) + visual inspection gate + App Store guardrails + view profile + refinement loop + cross-view consistency
 author: Terry Nyberg
 license: MIT
 allowed-tools: [Read, Grep, Glob, Bash, Write, Edit, AskUserQuestion]
@@ -99,7 +99,9 @@ Then proceed directly to Phase 1.
 
 ## Skill Introduction (MANDATORY — run before anything else)
 
-On first invocation, ask the user two questions in a single `AskUserQuestion` call:
+**This section replaces `radar-suite-core.md § Session Setup` for the ui-enhancer-radar entry point.** Do NOT also run core's 4-question Session Setup — its questions are consolidated below. Phase 1 ("Interview") below reuses the answers captured here and does NOT re-ask experience level, fix mode, or attendance.
+
+On first invocation, ask all setup questions in a single `AskUserQuestion` call:
 
 **Question 1: "What's your experience level with Swift/SwiftUI?"**
 - **Beginner** — New to Swift. Plain language, analogies, define terms on first use.
@@ -107,9 +109,23 @@ On first invocation, ask the user two questions in a single `AskUserQuestion` ca
 - **Experienced (Recommended)** — Fluent with SwiftUI. Concise findings, no definitions.
 - **Senior/Expert** — Deep expertise. Terse, file:line only, skip explanations.
 
-**Question 2: "Would you like a brief explanation of what this skill does?"**
-- **No, let's go (Recommended)** — Skip explanation, proceed to audit.
-- **Yes, explain it** — Show a 3-5 sentence explanation adapted to the user's experience level (see below), then proceed.
+**Question 2: "How should fixes be handled?"**
+- **Auto-fix safe items (Recommended)** — Apply isolated, low-blast-radius fixes automatically. Present cross-cutting fixes and design decisions for approval first.
+- **Review first** — Present all findings with ratings, then ask before making any changes. Fixes still happen — you just approve each wave first.
+- **Batch mode** — Approve all fixes in each wave at once.
+
+**IMPORTANT:** All three modes lead to fixes. "Review first" means the user sees the plan before code changes — it does NOT mean "skip fixes and jump to handoff." After presenting findings, ALWAYS offer to fix them regardless of which mode was selected. (Exception: Hands-Free mode overrides this — see Question 3.)
+
+**Question 3: "Will you be stepping away during the audit?"**
+- **I'll be here (Recommended)** — Normal mode. Permission prompts may appear for writes/edits.
+- **Hands-Free (walk away safe)** — Read-only analysis only (Read, Grep, Glob). No edits, no Bash, no prompts. **Hands-Free overrides Question 2:** all fixes are deferred regardless of `FIX_MODE`. Phase 7b (Visual Inspection Gate) is skipped — no code changes will be applied. The skill emits the saved playbook and Hands-Free completion message instead of the next-phase `AskUserQuestion` (see § Hands-Free Mode below for full precedence rules).
+- **Pre-Approved** — You have already configured Claude Code permissions for this session. Run at full speed without restriction.
+
+Store as: `USER_EXPERIENCE`, `FIX_MODE`, `PRESENCE_MODE`. Apply to ALL output for the session, per `radar-suite-core.md § Experience-Level Output Rules`. Also persist to `.radar-suite/session-prefs.yaml` per `radar-suite-core.md § Session Persistence`.
+
+**Question 4 (optional follow-up): "Would you like a brief explanation of what this skill does?"**
+- **No, let's go (Recommended)** — Skip explanation, proceed to Phase 1 (Interview).
+- **Yes, explain it** — Show one of the explanations below adapted to experience level, then proceed.
 
 **Experience-adapted explanations for UI Enhancer:**
 
@@ -117,7 +133,7 @@ On first invocation, ask the user two questions in a single `AskUserQuestion` ca
 
 - **Intermediate**: "UI Enhancer performs a 13-domain analysis of SwiftUI views: layout, spacing, color accessibility, typography, element compaction, cross-view consistency, iPad sheet sizing, button hit regions, and more. It interviews you about design intent first, then audits against Apple HIG and your app's design system. Changes are applied incrementally with revert safety."
 
-- **Experienced**: "13-domain SwiftUI UI audit with design intent interview, adaptive color profiles, element compaction, cross-view consistency checks, iPad sheet sizing caller-side audit, button hit region three-factor audit, layout reorganization, App Store guardrails, and incremental apply with revert safety. 19 subcommands."
+- **Experienced**: "13-domain SwiftUI UI audit with design intent interview, adaptive color profiles, element compaction, cross-view consistency checks, iPad sheet sizing caller-side audit, button hit region three-factor audit, layout reorganization, App Store guardrails, and incremental apply with revert safety. Run `/ui-enhancer-radar help` for the full command list."
 
 - **Senior/Expert**: "13-domain view audit: layout, color, typography, spacing, compaction, consistency, accessibility, iPad sheet sizing, button hit region. Interview → analyze → apply incrementally."
 
@@ -135,9 +151,9 @@ See `radar-suite-core.md` for: Tier System, Pipeline UX Enhancements, Table Form
 
 ## Pre-Scan Startup (MANDATORY — before any domain scan)
 
-1. **Known-intentional check:** Read `.radar-suite/known-intentional.yaml` (if exists). Store as `KNOWN_INTENTIONAL`. Before presenting any finding during the audit, check it against these entries. If file + pattern match, skip silently and increment `intentional_suppressed` counter.
+1. **Known-intentional suppression:** Run the protocol in `radar-suite-core.md § Known-Intentional Suppression`. Core owns this — do not restate the steps here.
 
-2. **Pattern reintroduction check:** Read `.radar-suite/ledger.yaml` for `status: fixed` findings with `pattern_fingerprint` and `grep_pattern`. For each, grep the codebase. If the pattern appears in a new file without the `exclusion_pattern`, report as "Reintroduced pattern" at 🟡 HIGH urgency.
+2. **Pattern reintroduction detection:** Run the protocol in `radar-suite-core.md § Pattern Reintroduction Detection`. Core owns this.
 
 ---
 
@@ -145,24 +161,15 @@ See `radar-suite-core.md` for: Tier System, Pipeline UX Enhancements, Table Form
 
 Before analyzing, run a brief intake to focus the audit on what matters most.
 
+**Experience level was already captured in § Skill Introduction (Question 1). Do NOT re-ask it here. The questions below are content-specific to ui-enhancer-radar's audit shape — focus, priority, design intent, aggressiveness.**
+
 **Display this instruction before the first set of questions:**
 
-> To answer, type the option labels (e.g., "General polish, All domains, Moderate, Experienced") or use numbers (e.g., "1, 1, 1, 1, 3"). You can answer all questions at once or one at a time.
+> To answer, type the option labels (e.g., "General polish, All domains, Moderate") or use numbers (e.g., "1, 1, 1"). You can answer all questions at once or one at a time.
 
 ```
 questions:
 [
-  {
-    "question": "What's your experience level with Swift/SwiftUI?",
-    "header": "Experience",
-    "options": [
-      {"label": "Beginner", "description": "New to Swift — plain language, analogies, define terms on first use"},
-      {"label": "Intermediate", "description": "Comfortable with SwiftUI basics — standard terms, explain non-obvious patterns"},
-      {"label": "Experienced (Recommended)", "description": "Fluent with SwiftUI — concise findings, no definitions"},
-      {"label": "Senior/Expert", "description": "Deep expertise — terse output, file:line only, skip explanations"}
-    ],
-    "multiSelect": false
-  },
   {
     "question": "What's the main reason for this review?",
     "header": "Focus",
@@ -178,7 +185,7 @@ questions:
     "question": "Which aspects matter most right now?",
     "header": "Priority",
     "options": [
-      {"label": "All domains (Recommended)", "description": "Full 9-domain analysis"},
+      {"label": "All domains (Recommended)", "description": "Full 13-domain analysis"},
       {"label": "Visual \u2014 layout and hierarchy", "description": "Space, visual weight, information density"},
       {"label": "Interaction \u2014 usability", "description": "Touch targets, discoverability, feedback"},
       {"label": "Technical \u2014 performance and compliance", "description": "Dark mode, perf, HIG, design system"}
@@ -240,32 +247,31 @@ questions:
 ]
 ```
 
-### Attendance (always ask)
+### Attendance
 
-```
-questions:
-[
-  {
-    "question": "Will you be stepping away during the audit?",
-    "header": "Attendance",
-    "options": [
-      {"label": "I'll be here (Recommended)", "description": "Normal mode — permission prompts may appear for writes/edits"},
-      {"label": "Hands-free (walk away safe)", "description": "Read-only analysis only — no edits, no Bash, no prompts. Code changes deferred until you return."},
-      {"label": "Pre-approved", "description": "You've configured Claude Code permissions for this session. Full speed, no restrictions."}
-    ],
-    "multiSelect": false
-  }
-]
-```
+Attendance mode (`PRESENCE_MODE`) was already captured in § Skill Introduction (Question 3). Do NOT re-ask here. The Hands-Free Mode section below documents precedence rules for write-tool deferral and `AskUserQuestion` suppression.
 
-**If "Hands-free"** — restrict to Read, Grep, Glob tools only. Complete Phases 1-5 (interview through analysis) without blocking. Defer Phase 6+ (code changes) until the user returns. Print when paused:
+### Hands-Free Mode (precedence rules — load-bearing)
+
+When `PRESENCE_MODE = Hands-Free`:
+
+1. **Hands-Free overrides `FIX_MODE`.** Even if Question 2 was answered `Auto-fix safe items`, `Review first`, or `Batch mode`, no fixes are applied in Hands-Free mode. All findings are emitted with `Status: Deferred (hands-free)` in the Issue Rating table. The Fix Plan, Report (Phase 6), and Playbook (Phase 7) are still produced — they're held in the conversation for the user to act on when they return.
+2. **Phase 7b (Visual Inspection Gate) is skipped.** Since no code changes will be applied, the gate has nothing to protect. The skill emits the saved playbook to `.agents/ui-enhancer-radar/[date]-[view]-playbook.md` and prints the completion message below.
+3. **Phase 7c-7f are deferred.** Guided Visual Review, Apply Approved Changes, Pattern Sweep, and Refinement Loop all require interactive user prompts (`AskUserQuestion`) and/or write tools. None of these run in Hands-Free.
+4. **BLOCKING progress banner exception.** The "CRITICAL — BLOCKING requirement" for the next-phase `AskUserQuestion` (§ Phase Progress Banner) applies in Normal and Pre-Approved modes only. In Hands-Free, the progress banner still prints after each completed phase, but the `AskUserQuestion` is suppressed in favor of the completion message.
+5. **Handoff YAML emitted inline.** Writing `.agents/ui-audit/ui-enhancer-radar-handoff.yaml` and `.radar-suite/ledger.yaml` requires Edit/Write — forbidden in Hands-Free. The skill emits these as fenced YAML blocks inline in the conversation so the user can persist them on return.
+
+Hands-Free completion message:
 ```
-⏱ Hands-free audit complete through Phase 5 (analysis).
-  Phases requiring action: Phase 6 (compaction), Phase 7 (apply changes)
+⏱ Hands-free audit complete through Phase 5 (Domain Analysis) + Phase 6 (Report).
+  Phases skipped (deferred until you return): 7a-7f (apply), 8 (tests), 9 (summary).
+  Findings deferred: [count] (no fixes applied — Hands-Free mode)
+  Playbook saved: .agents/ui-enhancer-radar/[date]-[view]-playbook.md
+  Handoff YAML + ledger entries: emitted inline above; copy to .agents/ui-audit/ and .radar-suite/ when you return
   Reply to continue with supervised phases.
 ```
 
-**If "Pre-approved"** — full speed, no restrictions. Assumes permissions are configured per the Permission Setup guide below.
+When `PRESENCE_MODE = Pre-Approved`: full speed, no restrictions. Assumes permissions are configured per the Permission Setup guide below. All phases run normally.
 
 ### Permission Setup (for unattended runs)
 
@@ -310,7 +316,7 @@ The aggressiveness setting affects all findings throughout the audit:
 | **Aggressive** | Minimize to HIG minimum | Remove unless `[PRESERVE]` | Remove | Remove |
 
 The interview determines:
-- Which domains to run (all 9, or a focused subset)
+- Which domains to run (all 13, or a focused subset)
 - Severity weighting (user-reported problems get Critical minimum)
 - Whether to include competitive comparison
 - Which elements are sacred (`[PRESERVE]` tag)
@@ -456,14 +462,24 @@ Before grading a view, produce this checklist showing what was actually inspecte
 |--------|----------|---------|----------|
 | 1. Space Efficiency | ? | (file:line) | |
 | 2. Visual Hierarchy | ? | (file:line) | |
-| ... | | | |
+| 3. Information Density | ? | (file:line) | |
+| 4. Interaction Patterns | ? | (file:line) | |
+| 5. Accessibility | ? | (file:line) | |
+| 6. HIG Compliance | ? | (file:line) | |
+| 7. Dark Mode | ? | (file:line) | |
+| 8. Performance Impact | ? | (file:line) | |
+| 9. Design System Compliance | ? | (file:line) | |
+| 10. Competitive Comparison | ? | (file:line) | (only if competitor screenshot provided; otherwise skip with reason) |
 | 11. Color Audit | ? | (file:line) | |
+| 12. iPad Sheet Sizing | ? | (file:line) | |
+| 13. Button Hit Region | ? | (file:line) | |
 ```
 
 Rules:
 - Every domain must be marked checked (yes) or skipped (no — with reason)
 - Skipped domains cannot contribute to the grade (positive or negative)
 - A grade cannot be produced while any domain has `?`
+- Domain 10 is conditionally applicable — only runs when the user supplies a competitor screenshot during Phase 1. If no screenshot, mark it `skipped (no competitor screenshot provided)` and do not include in scoring.
 
 ### Domain 1: Space Efficiency `enumerate-required`
 
@@ -1302,17 +1318,20 @@ The View Profile is a persistent file that grows with each audit, enabling cross
 
 | Domain | Score | Notes |
 |--------|-------|-------|
-| Space Efficiency | 4/10 | Content starts at 410pt |
-| Visual Hierarchy | 6/10 | Date text too dominant |
-| Information Density | 7/10 | Good density, some redundancy |
-| Interaction | 5/10 | Combined buttons, gesture-only deletes |
-| Accessibility | 8/10 | Good labels, some fixed fonts |
-| HIG Compliance | 7/10 | Minor deviations |
-| Dark Mode | 6/10 | Some hardcoded colors |
-| Performance | 8/10 | Clean structure |
-| Design System | 7/10 | Mostly compliant |
-| Color | 5/10 | Monochromatic sections, inconsistent opacities |
-| **Overall** | **6.2/10** | |
+| 1. Space Efficiency | 4/10 | Content starts at 410pt |
+| 2. Visual Hierarchy | 6/10 | Date text too dominant |
+| 3. Information Density | 7/10 | Good density, some redundancy |
+| 4. Interaction Patterns | 5/10 | Combined buttons, gesture-only deletes |
+| 5. Accessibility | 8/10 | Good labels, some fixed fonts |
+| 6. HIG Compliance | 7/10 | Minor deviations |
+| 7. Dark Mode | 6/10 | Some hardcoded colors |
+| 8. Performance Impact | 8/10 | Clean structure |
+| 9. Design System Compliance | 7/10 | Mostly compliant |
+| 10. Competitive Comparison | N/A | (skipped — no competitor screenshot provided) |
+| 11. Color Audit | 5/10 | Monochromatic sections, inconsistent opacities |
+| 12. iPad Sheet Sizing | 9/10 | Uses .iPadPageSheet() convention |
+| 13. Button Hit Region | 6/10 | One .plain + chevron in Form section needs .contentShape(Rectangle()) |
+| **Overall** | **6.4/10** | (Domain 10 excluded from average when N/A) |
 
 ### Before/After ASCII Mockup
 
@@ -2285,11 +2304,15 @@ Findings resolved: 8/12
 Tests added: 5
 ```
 
-### Phase Progress Banner (CRITICAL — BLOCKING requirement)
+### Phase Progress Banner (CRITICAL — BLOCKING requirement in Normal and Pre-Approved modes)
 
 **After EVERY phase and EVERY commit, your NEXT output MUST be the progress banner followed by the next-phase `AskUserQuestion`. Do not output anything else first. Do not leave a blank prompt.**
 
-After completing each phase, **always** print this banner:
+**Hands-Free mode exception:** In Hands-Free mode, the progress banner still prints, but the next-phase `AskUserQuestion` is suppressed (per the Hands-Free Mode precedence rules in § Skill Introduction). Replace the AskUserQuestion with the Hands-Free completion message instead.
+
+The skill has **9 numbered top-level phases** (the user-facing structure). Several phases have lettered sub-phases (2b, 6b/6c/6d, 7a/7b/7c/7d/7e/7f) — these are implementation steps within a parent phase and print as substeps, not as standalone phases.
+
+**Banner template (top-level phase completion):**
 
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -2299,25 +2322,33 @@ After completing each phase, **always** print this banner:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
+**Banner template (sub-phase completion within a top-level phase):**
+
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ Phase [N] (substep [letter]) of 9 complete: [substep name]
+
+⏱  Next: Phase [N] (substep [next-letter]) — [substep name] (~[time estimate])
+   or → Phase [N+1] if this was the last substep
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+This keeps the denominator stable at 9 while still announcing fine-grained progress through Phase 7's six substeps (7a-7f).
+
 Phase time estimates:
 | Phase | Name | Est. Time |
 |-------|------|-----------|
 | 1 | Interview | ~2 min |
-| 2-2b | Gather Input + Classification | ~3 min |
+| 2 (with substep 2b) | Gather Input + View Type Classification | ~3 min |
 | 3 | Screenshot Analysis | ~2 min |
 | 4 | Code Analysis | ~3-5 min |
 | 5 | Domain Analysis | ~5-10 min |
-| 6 | Report + Compaction | ~3-5 min |
-| 7-7a | Playbook + Commit Offer | ~3 min |
-| 7b | Visual Inspection Gate | ~2 min (user opens view) |
-| 7c | Guided Visual Review | ~5-10 min (collaborative walk-through) |
-| 7d | Apply Approved Changes | ~10-15 min |
-| 7e | Pattern Sweep | ~5 min |
-| 7f | Refinement Loop | ~5-10 min |
+| 6 (with substeps 6b/6c/6d) | Report + Content Preservation + Compaction + Compensation | ~3-5 min |
+| 7 (with substeps 7a/7b/7c/7d/7e/7f) | Implementation Playbook through Refinement Loop | ~25-50 min total |
 | 8 | Tests | ~5-10 min |
 | 9 | Summary | ~2 min |
 
-Then immediately prompt for the next phase. **After a commit**, reprint the banner and auto-prompt. Never leave a blank prompt.
+Then immediately prompt for the next phase (or substep, where applicable). **After a commit**, reprint the banner and auto-prompt. Never leave a blank prompt.
 
 ---
 
