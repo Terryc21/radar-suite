@@ -1,20 +1,24 @@
 ---
 name: roundtrip-radar
 description: 'Per-journey code audit tracing data through complete user flows for bugs, data safety, performance, and round-trip completeness. Discovers workflows, audits each end-to-end, rolls up cross-cutting issues, and supports natural-language flow tracing. Triggers: "roundtrip audit", "trace user journey", "/roundtrip-radar".'
-version: 2.1.0  # 3-tier depth model (was 2.0.0)
+version: 2.1.0  # axis classification protocol + named bug-class guides (Collection Narrowing, Bridge Parity)
 author: Terry Nyberg
 license: MIT
+allowed-tools: [Read, Grep, Glob, Bash, Edit, Write, AskUserQuestion]
 inherits: radar-suite-core.md
 ---
 
 # Roundtrip Radar
 
 This skill audits application workflows for bugs, data-safety issues, performance
-problems, and data round-trip completeness. It operates in three steps:
+problems, and data round-trip completeness. It operates in three primary steps
+plus two targeted entry points:
 
 - **Step 0** — Discover all workflows (run once, or when workflows change)
 - **Step 1** — Deep audit one workflow at a time (one prompt per workflow)
 - **Step 2** — Roll-up cross-cutting patterns across all audited workflows
+- **Trace** — Audit a specific user journey described in natural language (see § Trace Command)
+- **Diff** — Compare findings against the previous audit's ledger entries (see § Diff Command)
 
 ## Usage
 
@@ -85,9 +89,80 @@ Issues Found:
 
 ---
 
+## Diff Command
+
+**Compare findings against the previous roundtrip-radar audit** — surface what regressed, what got fixed, and what's new since the last run.
+
+### Usage
+
+```
+/roundtrip-radar diff
+/roundtrip-radar diff --since 2026-04-01
+/roundtrip-radar diff --workflow Backup
+```
+
+### Source of Truth
+
+The diff reads from `.radar-suite/ledger.yaml` — the only authoritative cross-session store of roundtrip-radar findings. Per-workflow handoff YAMLs (`.agents/ui-audit/roundtrip-radar-handoff.yaml`) are overwritten each run, so they cannot serve as a diff baseline.
+
+The "previous audit" is defined as **the most recent ledger session entry with `skill: roundtrip-radar`** that is strictly older than the current session. If no prior session exists, the diff command MUST refuse with:
+
+> "No prior roundtrip-radar audit found in `.radar-suite/ledger.yaml`. Run a workflow audit first to establish a baseline."
+
+Do not invent a baseline. Do not fall back to memory or `.agents/research/` markdown reports.
+
+### How It Works
+
+1. **Identify the baseline session** — read `.radar-suite/ledger.yaml`, find the most recent prior session entry with `skill: roundtrip-radar`. With `--since YYYY-MM-DD`, use the latest entry on or after that date instead.
+2. **Identify the current session** — either the in-progress session (if the user just ran an audit and is asking for the diff) or the most recent completed session.
+3. **Bucket every finding** from the union of baseline + current into one of four categories by RS-NNN ID:
+   - **Fixed** — present in baseline with `status: open`, present in current with `status: fixed`
+   - **Regressed** — present in baseline with `status: fixed`, present in current with `status: open` (also flag if `file_hash` changed since the fix, per the Regression Detection protocol in `radar-suite-core.md`)
+   - **New** — RS-NNN ID is in current but not baseline
+   - **Persistent** — present in both with the same status (open or deferred)
+4. **Apply optional filters:** `--workflow [NAME]` restricts to findings whose `workflow` field matches.
+
+### Output Format
+
+```
+Diff: 2026-04-15 → 2026-05-12 (27 days, 4 sessions)
+
+✅ Fixed (3)
+| RS-NNN | short_title | Workflow | Fixed in |
+|--------|-------------|----------|----------|
+| RS-042 | Backup drops attachment storage | Backup | 2026-04-22 |
+...
+
+🔴 Regressed (1)
+| RS-NNN | short_title | Workflow | Was fixed | file_hash changed? |
+|--------|-------------|----------|-----------|--------------------|
+| RS-019 | CSV import loses Room field | CSV Import | 2026-04-18 | yes (CSVImportManager.swift) |
+
+🆕 New (5)
+| RS-NNN | short_title | Workflow | Urgency |
+|--------|-------------|----------|---------|
+
+📌 Persistent (12)
+[collapsed by default; pass --verbose to expand]
+```
+
+### When to Use
+
+- **Pre-PR review** — confirm the changes in this PR didn't reintroduce any previously-fixed bug
+- **Post-release retrospective** — what got fixed this release cycle, what slipped
+- **Suspecting a regression** — `--workflow [NAME]` narrows to one user journey
+
+### Refusal cases
+
+- No prior ledger session: refuse with the message above
+- `--since` date is in the future: refuse with "Date is in the future; no audits to compare"
+- `--workflow [NAME]` matches no findings in either baseline or current: print "No findings in workflow [NAME] across either session" (not a refusal — a legitimate empty result)
+
+---
+
 ## Skill Introduction (MANDATORY — run before anything else)
 
-On first invocation, ask the user two questions in a single `AskUserQuestion` call:
+**This section replaces `radar-suite-core.md § Session Setup` for the roundtrip-radar entry point.** Do NOT also run core's 4-question Session Setup — its questions are consolidated below. All four setup questions go in ONE `AskUserQuestion` call on first invocation. Step 1's per-workflow flow reuses these answers and never re-asks them.
 
 **Question 1: "What's your experience level with Swift/SwiftUI?"**
 - **Beginner** — New to Swift. Plain language, analogies, define terms on first use.
@@ -95,7 +170,26 @@ On first invocation, ask the user two questions in a single `AskUserQuestion` ca
 - **Experienced (Recommended)** — Fluent with SwiftUI. Concise findings, no definitions.
 - **Senior/Expert** — Deep expertise. Terse, file:line only, skip explanations.
 
-**Question 2: "Would you like a brief explanation of what this skill does?"**
+**Question 2: "How should fixes be handled?"**
+- **Auto-fix safe items (Recommended)** — Apply isolated, low-blast-radius fixes automatically. Present cross-cutting fixes and design decisions for approval first.
+- **Review first** — Present all findings with ratings, then ask before making any changes. Fixes still happen — you just approve each wave first.
+- **Batch mode** — Approve all fixes in each wave at once.
+
+**IMPORTANT:** All three modes lead to fixes. "Review first" means the user sees the plan before code changes — it does NOT mean "skip fixes and jump to handoff." After presenting findings, ALWAYS offer to fix them regardless of which mode was selected. (Exception: Hands-Free mode overrides this — see Question 4.)
+
+**Question 3: "How should results be delivered?"**
+- **Display only (Recommended)** — Show findings in the conversation. No file written.
+- **Report only** — Write findings to `.agents/research/[DATE]-[WORKFLOW]-audit.md`. Minimal conversation output. **Before writing**, per Artifact Lifecycle (Class 3) in `radar-suite-core.md`, archive any existing `.agents/research/*-[WORKFLOW]-audit.md` matching the same workflow to `.agents/research/archive/superseded/`.
+- **Display and report** — Show findings in the conversation AND write to file.
+
+**Question 4: "Will you be stepping away during the audit?"**
+- **I'll be here (Recommended)** — Normal mode. Permission prompts may appear for writes/edits.
+- **Run the full analysis without stopping to ask — no code changes** — Hands-Free mode. Restricts to read-only tools (Read, Grep, Glob). No Bash, no Edit, no Write — nothing that triggers a permission prompt. **Hands-Free overrides Question 2:** all fixes are deferred regardless of `FIX_MODE`. The progress banner still prints, but the `AskUserQuestion` next-wave prompt is suppressed; the skill emits the "audit complete through Step N" completion message instead (see Hands-Free Mode below).
+- **Pre-approved** — You have already configured Claude Code permissions for this session (see Permission Setup below). Run at full speed without restriction.
+
+Store as: `USER_EXPERIENCE`, `FIX_MODE`, `DELIVERY`, `PRESENCE_MODE`. Apply to ALL output for session, per `radar-suite-core.md § Experience-Level Output Rules`. Also persist to `.radar-suite/session-prefs.yaml` per `radar-suite-core.md § Session Persistence`.
+
+**Question 5 (optional follow-up): "Would you like a brief explanation of what this skill does?"**
 - **No, let's go (Recommended)** — Skip explanation, proceed to audit.
 - **Yes, explain it** — Show a 3-5 sentence explanation adapted to the user's experience level (see below), then proceed.
 
@@ -117,9 +211,9 @@ Store the experience level as `USER_EXPERIENCE` and apply to ALL output for the 
 
 **Subsequent workflows:** Do NOT re-ask the full setup questions. Instead, show a one-line reminder before each workflow:
 ```
-Using: [Beginner] mode, [Auto-fix small issues], [Display only]. Type "adjust" to change, or press Enter to continue.
+Using: [Experienced] mode, [Auto-fix safe items], [Display only], [I'll be here]. Type "adjust" to change, or press Enter to continue.
 ```
-If the user types "adjust", re-ask only the question(s) they want to change. Users may want to adjust experience level after a few workflows (beginner explanations may feel too simple, expert too terse).
+The four bracketed values map to `USER_EXPERIENCE`, `FIX_MODE`, `DELIVERY`, `PRESENCE_MODE` set during the Skill Introduction. If the user types "adjust", re-ask only the question(s) they want to change. Users may want to adjust experience level after a few workflows (beginner explanations may feel too simple, expert too terse).
 
 ---
 
@@ -210,9 +304,9 @@ axis_summary:
 
 ## Pre-Scan Startup (MANDATORY — before any workflow scan)
 
-1. **Known-intentional check:** Read `.radar-suite/known-intentional.yaml` (if exists). Store as `KNOWN_INTENTIONAL`. Before presenting any finding during the audit, check it against these entries. If file + pattern match, skip silently and increment `intentional_suppressed` counter.
+1. **Known-intentional suppression:** Run the protocol in `radar-suite-core.md § Known-Intentional Suppression`. Core owns this — do not restate the steps here.
 
-2. **Pattern reintroduction check:** Read `.radar-suite/ledger.yaml` for `status: fixed` findings with `pattern_fingerprint` and `grep_pattern`. For each, grep the codebase. If the pattern appears in a new file without the `exclusion_pattern`, report as "Reintroduced pattern" at 🟡 HIGH urgency.
+2. **Pattern reintroduction detection:** Run the protocol in `radar-suite-core.md § Pattern Reintroduction Detection`. Core owns this.
 
 ---
 
@@ -286,30 +380,9 @@ performance problems, and data round-trip completeness.
 
 ### Before Starting (First Workflow Only)
 
-Ask the user these questions **once per session** in a single prompt. For subsequent workflows, show the one-line reminder from Skill Introduction and skip to the audit.
+All setup questions were captured during the Skill Introduction call (`USER_EXPERIENCE`, `FIX_MODE`, `DELIVERY`, `PRESENCE_MODE`). Do NOT re-ask any of them. Show the one-line settings reminder from § Skill Introduction and proceed to the audit.
 
-**Question 1: "What's your experience level with Swift/SwiftUI?"**
-- **Beginner** — New to Swift. Plain language, analogies, define terms on first use.
-- **Intermediate** — Comfortable with SwiftUI basics. Standard terms, explain non-obvious patterns.
-- **Experienced (Recommended)** — Fluent with SwiftUI. Concise findings, no definitions.
-- **Senior/Expert** — Deep expertise. Terse, file:line only, skip explanations.
-
-**Question 2: "How should fixes be handled?"**
-- **Auto-fix safe items (Recommended)** — Apply isolated, low-blast-radius fixes automatically. Present cross-cutting fixes and design decisions for approval first.
-- **Review first** — Present all findings with ratings, then ask before making any changes. Fixes still happen — you just approve each wave first.
-
-**IMPORTANT:** Both modes lead to fixes. "Review first" means the user sees the plan before code changes — it does NOT mean "skip fixes and jump to handoff." After presenting findings, ALWAYS offer to fix them regardless of which mode was selected.
-
-**Question 3: "How should results be delivered?"**
-- **Display only (Recommended)** — Show findings in the conversation. No file written.
-- **Report only** — Write findings to `.agents/research/[DATE]-[WORKFLOW]-audit.md`.
-  Minimal conversation output. **Before writing**, per Artifact Lifecycle (Class 3) in `radar-suite-core.md`, archive any existing `.agents/research/*-[WORKFLOW]-audit.md` matching the same workflow to `.agents/research/archive/superseded/`.
-- **Display and report** — Show findings in the conversation AND write to file.
-
-**Question 4: "Will you be stepping away during the audit?"**
-- **I'll be here (Recommended)** — Normal mode. Permission prompts may appear for writes/edits.
-- **Run the full analysis without stopping to ask — no code changes** — Restricts to read-only tools (Read, Grep, Glob) for discovery and audit steps. No Bash, no Edit, no Write — nothing that triggers a permission prompt. Fix application is deferred until you return. Results are held in conversation output.
-- **Pre-approved** — You have already configured Claude Code permissions for this session (see Permission Setup below). Run at full speed without restriction.
+If any of the four variables is missing for some reason (e.g., session-prefs file deleted mid-session), re-run the full Skill Introduction call before continuing — never partially re-ask, since the questions are interdependent (Question 4 overrides Question 2).
 
 ### Permission Modes
 
@@ -333,10 +406,18 @@ It will NOT use:
 - `Edit` / `Write` — no file modifications
 - `AskUserQuestion` — no interactive prompts
 
+**Precedence rules (load-bearing — Hands-Free wins all ties):**
+
+1. **Hands-Free overrides `FIX_MODE`.** Even if Question 2 was answered `Auto-fix safe items` or `Batch mode`, no fixes are applied in Hands-Free mode. All findings are emitted with `Status: Deferred (hands-free)` in the Issue Rating table. The Fix Plan is still produced (so the user can act on it on return), but no Wave 1-5 fix application runs.
+2. **Hands-Free suppresses the next-wave `AskUserQuestion`.** The "BLOCKING — progress banner + next-wave prompt" rule under § Progress Banner applies in Normal and Pre-Approved modes only. In Hands-Free mode, the progress banner still prints (so the user can see what was audited), but the `AskUserQuestion` call is omitted and replaced by the completion message below.
+3. **Hands-Free does not suppress handoff writes.** Writing `.agents/ui-audit/roundtrip-radar-handoff.yaml` and `.radar-suite/ledger.yaml` uses `Edit`/`Write` — which Hands-Free forbids. To resolve: in Hands-Free mode, the skill emits the handoff and ledger content **inline in the conversation as fenced YAML blocks** so the user can persist them on return. Inline emission does not count as a write.
+
 When the audit completes (or hits a step that needs restricted tools), it prints:
 ```
 ⏱ Hands-free audit complete through Step [N].
   Steps requiring action: [list]
+  Findings deferred: [count] (no fixes applied — Hands-Free mode)
+  Handoff YAML + ledger entries: emitted inline above; copy to .agents/ui-audit/ and .radar-suite/ when you return
   Reply to continue with supervised steps.
 ```
 
@@ -703,7 +784,9 @@ For each pattern found and fixed in this workflow:
 
 ### Progress Banner (CRITICAL — BLOCKING requirement)
 
-**This is a BLOCKING requirement.** After EVERY wave and EVERY commit, your NEXT output MUST be the progress banner followed by the next-wave `AskUserQuestion`. Do not output anything else first. Do not wait for user input. Do not leave a blank prompt.
+**This is a BLOCKING requirement in Normal and Pre-Approved modes.** After EVERY wave and EVERY commit, your NEXT output MUST be the progress banner followed by the next-wave `AskUserQuestion`. Do not output anything else first. Do not wait for user input. Do not leave a blank prompt.
+
+**Hands-Free mode exception:** In Hands-Free mode, the progress banner still prints, but the next-wave `AskUserQuestion` call is suppressed (per the Hands-Free Mode precedence rules above). Replace the AskUserQuestion with the Hands-Free completion message instead.
 
 After completing each wave, **always** print:
 
@@ -767,11 +850,13 @@ All finding ID references in output (tables, banners, summaries) use the format:
 
 Run after all per-workflow audits are complete.
 
-Review the findings from the individual workflow audits below and identify
-cross-cutting patterns.
+### Data Sources (read these — do NOT ask the user to paste)
 
-[Paste the finding tables from each workflow audit here, or reference the
-report files if they were written.]
+1. `.agents/research/roundtrip-radar-deferred.md` — the accumulator written by every per-workflow audit (see § Deferred Items Registry). Contains every deferred finding across the session.
+2. `.radar-suite/ledger.yaml` — filter to entries where `skill: roundtrip-radar` AND the session timestamp is in this rollup's scope (default: all sessions since the last `Step 2 rollup` ledger entry, or all sessions if none).
+3. Each per-workflow handoff's `axis_summary` block — load from the in-memory session state for the current run.
+
+Identify cross-cutting patterns across the loaded entries.
 
 ### Output
 
