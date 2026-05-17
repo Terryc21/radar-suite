@@ -17,7 +17,7 @@ Built while shipping [Stuffolio](https://stuffolio.app) (Universal iOS/iPadOS/ma
 - **Install:** Two `/plugin` commands in Claude Code; then `/radar-suite` is available in any project.
 - **Try first:** `/radar-suite ui-enhancer --scope <small directory>` — ~5 min, one report to look at.
 - **Honest limits:** [What it can't catch](#honest-limits) section enumerates structural blind spots.
-- **Maturity:** v2.1.0 shipped; used through real App Store submission cycles on a 600-file Swift codebase; CHANGELOG tracks every release.
+- **Maturity:** v2.1.1 shipped; used through real App Store submission cycles on a 600-file Swift codebase; CHANGELOG tracks every release.
 
 ## What Radar Suite is for vs what linters are for
 
@@ -49,7 +49,7 @@ Eight skills total: six domain auditors, a router that orchestrates them, and a 
 |---|---|
 | `data-model-radar` | SwiftData / Core Data definitions across nine domains: field completeness, computed property correctness, serialization coverage with intentional-exclusion framework, relationship integrity (including cross-context mutation and stale-object detection), semantic clarity, field usage mapping, migration safety, cross-model consistency, near-duplicate model detection. Risk-ranks the model inventory so you know which to audit first. |
 | `time-bomb-radar` | Code that compiles and ships fine but breaks later on aged data. Cascade deletes with live child references, cache expiry that fires wrong, trial paths, background tasks, date-transition edge cases, scheduled side effects. The class of bug that doesn't fail in tests because tests run on fresh data. |
-| `ui-path-radar` | Navigation correctness. Enumerates every routing case, traces reachability, flags orphan features (in code but not in any menu), dead ends, broken back links. 32 issue categories. |
+| `ui-path-radar` | Navigation correctness. Enumerates every routing case, traces reachability, flags orphan features (in code but not in any menu), dead ends, broken back links. 34 issue categories (19 automated checks). |
 | `roundtrip-radar` | Data integrity through complete user journeys. Backup→restore, export→import, create→edit→save. Catches collection narrowing (arrays silently lose elements), bridge parity gaps (multiple consumers of the same model read different field subsets), and silent loss anywhere in the loop. Each finding cites the full UI→manager→model→persistence→UI path. |
 | `ui-enhancer-radar` | Visual quality. 13 domains including iPad sheet sizing (audits caller-side `.sheet(...)` for missing `.presentationSizing(.page)` / `.presentationDetents([.large])` / project convenience modifiers), Button hit region (three-factor detector for `.buttonStyle(.plain)` + trailing chevron + Form/List context — the combination that collapses tap targets on iPad), color contrast, spacing, typography. |
 | `capstone-radar` | Aggregates findings from the others into a two-section report: "Fix Before Shipping" (release-blocking; A-F grade) and "Hygiene Backlog" (everything else; doesn't affect grade). Tracks velocity over time and celebrates fixes between runs. |
