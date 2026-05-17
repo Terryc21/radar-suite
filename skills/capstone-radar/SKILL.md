@@ -1,7 +1,7 @@
 ---
 name: capstone-radar
-description: 'Unified A-F grading and ship/no-ship decisions for the 5-skill radar family. Aggregates companion handoffs, owns 5 grep-reliable domains, tracks velocity, celebrates improvements. Triggers: "capstone radar", "can I ship", "grade codebase", "/capstone-radar".'
-version: 2.1.0  # 3-tier depth model (was 2.0.0)
+description: 'Unified A-F grading and ship/no-ship decisions for the 6-skill radar family (5 companions + capstone). Aggregates handoffs from data-model, ui-path, roundtrip, time-bomb, and ui-enhancer; owns 5 grep-reliable domains; tracks velocity; celebrates improvements. Triggers: "capstone radar", "can I ship", "grade codebase", "/capstone-radar".'
+version: 3.2.0  # axis-split grading + staleness decay + dependency graph + tier awareness + hygiene backlog + time-bomb consumption + impact-based organization
 author: Terry Nyberg
 license: MIT
 inherits: radar-suite-core.md
@@ -9,7 +9,7 @@ inherits: radar-suite-core.md
 
 # Capstone Radar
 
-Capstone Radar is the **aggregator + gap filler** for the 5-skill radar family. It consumes findings from 4 companion skills, runs its own scans for 5 domains the companions don't cover, grades everything on one unified scale, and makes the ship/no-ship decision.
+Capstone Radar is the **aggregator + gap filler** for the 6-skill radar family (5 companions + capstone). It consumes findings from 5 companion skills, runs its own scans for 5 domains the companions don't cover, grades everything on one unified scale, and makes the ship/no-ship decision.
 
 It does NOT:
 - Re-scan domains already covered by companion skills
@@ -107,7 +107,7 @@ Projection: A- by Build 28 at current rate
 
 ## Skill Introduction (MANDATORY — run before anything else)
 
-On first invocation, ask the user two questions in a single `AskUserQuestion` call:
+On first invocation, ask the user three questions in a single `AskUserQuestion` call:
 
 **Question 1: "What's your experience level with Swift/SwiftUI?"**
 - **Beginner** — New to Swift. Plain language, analogies, define terms on first use.
@@ -124,17 +124,17 @@ On first invocation, ask the user two questions in a single `AskUserQuestion` ca
 - **No (default)** — Table only. Findings speak for themselves.
 - **Yes** — After the table, each finding gets a 3-line explanation: what's wrong, the fix, and how a user experiences it before/after.
 
-Can also be toggled mid-session with `--explain` / `--no-explain`. See `skills/shared/rating-system.md` "User Impact Explanations" for format and rules.
+Can also be toggled mid-session with `--explain` / `--no-explain`. See `radar-suite-core.md § Experience-Level Output Rules` for format and rules.
 
 **Experience-adapted explanations for Capstone Radar:**
 
-- **Beginner**: "Capstone Radar is the final check before your app goes to the App Store. It combines results from 4 other audit tools (if you've run them) with its own security, testing, and code quality checks, then gives your whole app a letter grade and tells you if it's safe to ship. Think of it as the building inspector who reviews all the specialist reports plus checks the things no one else covered."
+- **Beginner**: "Capstone Radar is the final check before your app goes to the App Store. It combines results from 5 other audit tools (if you've run them) with its own security, testing, and code quality checks, then gives your whole app a letter grade and tells you if it's safe to ship. Think of it as the building inspector who reviews all the specialist reports plus checks the things no one else covered."
 
-- **Intermediate**: "Capstone Radar aggregates findings from 4 companion skills (data-model-radar, ui-path-radar, roundtrip-radar, ui-enhancer-radar) and adds its own scans for security, test health, code hygiene, dependencies, and build health. It grades all 10 domains on one scale, tracks trends across runs, and makes a ship/no-ship recommendation."
+- **Intermediate**: "Capstone Radar aggregates findings from 5 companion skills (data-model-radar, ui-path-radar, roundtrip-radar, ui-enhancer-radar, time-bomb-radar) and adds its own scans for security, test health, code hygiene, dependencies, and build health. It grades 11 weighted inputs on one scale (5 own + 5 consumed + 1 cross-domain synthesis), tracks trends across runs, and makes a ship/no-ship recommendation."
 
-- **Experienced**: "Aggregator + gap filler for the radar family. Consumes 4 companion handoffs, owns 5 grep-reliable domains, unified A-F grading, velocity tracking, risk heatmap, ship/no-ship decision."
+- **Experienced**: "Aggregator + gap filler for the radar family. Consumes 5 companion handoffs, owns 5 grep-reliable domains, unified A-F grading across 11 weighted inputs, velocity tracking, risk heatmap, ship/no-ship decision."
 
-- **Senior/Expert**: "5 owned + 4 consumed domains. Velocity. Heatmap. Ship/no-ship."
+- **Senior/Expert**: "5 owned + 5 consumed + 1 cross-domain = 11 weighted domains. Velocity. Heatmap. Ship/no-ship."
 
 Store the experience level as `USER_EXPERIENCE` and apply to ALL output for the session.
 
@@ -180,11 +180,11 @@ Existing behavior. Missing handoffs show "Not audited -- run [skill-name] for co
 
 ## Pre-Scan Startup (MANDATORY — before Step 1)
 
-1. **Known-intentional check:** Read `.radar-suite/known-intentional.yaml` (if exists). Store as `KNOWN_INTENTIONAL`. Before presenting any finding from own domain scans, check it against these entries. If file + pattern match, skip silently and increment `intentional_suppressed` counter. Companion findings that were suppressed at the companion level are already excluded.
+1. **Known-intentional suppression:** Run the protocol in `radar-suite-core.md § Known-Intentional Suppression`. Core owns this — do not restate the steps here. (Note: companion findings already excluded at the companion level; capstone only filters its own domain scans through this protocol.)
 
-2. **Pattern reintroduction check:** Read `.radar-suite/ledger.yaml` for `status: fixed` findings with `pattern_fingerprint` and `grep_pattern`. For each, grep the codebase. If the pattern appears in a new file without the `exclusion_pattern`, report as "Reintroduced pattern" at 🟡 HIGH urgency.
+2. **Pattern reintroduction detection:** Run the protocol in `radar-suite-core.md § Pattern Reintroduction Detection`. Core owns this.
 
-3. **Experience-level auto-apply:** If `USER_EXPERIENCE` = Beginner, auto-set `EXPLAIN_FINDINGS = true` and default sort to `impact`. If Senior/Expert, default sort to `effort`. Apply all output rules from Experience-Level Output Rules table in `radar-suite-core.md`.
+3. **Experience-level auto-apply (capstone-radar local):** If `USER_EXPERIENCE` = Beginner, auto-set `EXPLAIN_FINDINGS = true` and default sort to `impact`. If Senior/Expert, default sort to `effort`. Apply all output rules from `radar-suite-core.md § Experience-Level Output Rules`.
 
 ---
 
@@ -257,7 +257,7 @@ In all cases, weight is redistributed proportionally to audited domains.
 
 Print companion status:
 ```
-Companions: data-model-radar [found/missing] | ui-path-radar [found/missing] | roundtrip-radar [found/missing] | ui-enhancer-radar [found/missing]
+Companions: data-model-radar [found/missing] | ui-path-radar [found/missing] | roundtrip-radar [found/missing] | time-bomb-radar [found/missing] | ui-enhancer-radar [found/missing]
 ```
 
 **Skip this step if mode = Quick.**
@@ -297,6 +297,7 @@ Companion freshness:
   data-model-radar: Fresh (1 day, 3 commits)
   ui-path-radar: Aging (8 days, 12 commits)
   roundtrip-radar: Stale (22 days, 47 commits) — grades downgraded by one letter
+  time-bomb-radar: Fresh (2 days, 5 commits)
   ui-enhancer-radar: Expired (35 days, 89 commits) — handoff ignored, re-run recommended
 ```
 
@@ -312,7 +313,7 @@ Companion freshness:
 
 ---
 
-## Step 3.6: Axis Classification Consumption (MANDATORY — after companion handoffs, before risk-ranking)
+## Step 3.5: Axis Classification Consumption (MANDATORY — after companion handoffs, before risk-ranking)
 
 > **New in v1.1 (axis framework).** Every companion handoff now includes an `axis_summary` block and every finding includes an `axis` field. Capstone splits findings by axis before grading: only axis_1 findings count toward the A-F grade. axis_2 and axis_3 findings land in a separate Hygiene Backlog section.
 
@@ -369,7 +370,7 @@ Handoffs from older radar versions (pre-v1.1) lack the `axis_summary` block and 
 
 ---
 
-## Step 3.5: Risk-Ranking (MANDATORY — before own domain scans)
+## Step 3.6: Risk-Ranking (MANDATORY — before own domain scans)
 
 Before running grep patterns, determine where to go deep vs quick. The default behavior is to run all grep patterns with equal effort — but some domains have more risk than others based on context.
 
@@ -410,7 +411,7 @@ Risk Ranking for Own Domains:
 
 ## Step 4: Own Domain Scans
 
-Run grep-based scans for the 5 domains capstone owns. Apply Verification Rule (Step 5) to every hit. **Follow the risk-ranking from Step 3.5** — deep-verify domains go first and get full candidate classification.
+Run grep-based scans for the 5 domains capstone owns. Apply Verification Rule (Step 5) to every hit. **Follow the risk-ranking from Step 3.6** — deep-verify domains go first and get full candidate classification.
 
 ### Shared Grep Patterns
 
@@ -576,6 +577,8 @@ This graph is consulted when the user selects `--sort implement`. It also inform
 
 ### Domain Weights
 
+The 11 weighted inputs sum to 100%. Cross-Domain Risk is a synthesized domain derived from the heatmap in Step 6.1 — not a separately-audited area.
+
 | Domain | Source | Weight |
 |--------|--------|--------|
 | Code Hygiene | Own scan | 10% |
@@ -585,17 +588,20 @@ This graph is consulted when the user selects `--sort implement`. It also inform
 | Build Health | Own scan | 5% |
 | Model Layer | data-model-radar handoff | 10% |
 | Navigation/UX | ui-path-radar handoff | 10% |
-| Data Safety | roundtrip-radar handoff | 15% |
+| Data Safety | roundtrip-radar handoff | 10% |
+| Time Bombs | time-bomb-radar handoff | 5% |
 | Visual Quality | ui-enhancer-radar handoff | 10% |
-| Cross-Domain Risk | Correlation analysis | 5% |
+| Cross-Domain Risk | Correlation analysis (synthesized) | 5% |
 
-**Weight redistribution:** When domains are unaudited (missing companion handoff), divide their total weight proportionally among audited domains. Example: if Data Safety (15%) and Visual Quality (10%) are missing, remaining 75% becomes 100%. Code Hygiene's 10% becomes 10/75 = 13.3%.
+**Why these weights:** Data Safety dropped from 15% → 10% to make room for Time Bombs (5%) — both domains are about data integrity across time, so the combined 15% allocation matches the prior single-domain weight for Data Safety alone. A cascade-delete crash from time-bomb is functionally equivalent to a round-trip data loss from roundtrip-radar for shipping decisions; splitting them at 10/5 lets the grade distinguish active-flow bugs (roundtrip) from aged-data bugs (time-bomb) without overweighting the combined area.
+
+**Weight redistribution:** When domains are unaudited (missing companion handoff), divide their total weight proportionally among audited domains. Example: if Data Safety (10%) and Visual Quality (10%) are missing, remaining 80% becomes 100%. Code Hygiene's 10% becomes 10/80 = 12.5%.
 
 ### Grade Honesty Rules
 
 **1. Label the scope.** The overall grade line must state how many domains were audited:
 ```
-Overall: B+ [87] (6/10 domains audited — 4 companion domains missing)
+Overall: B+ [87] (6/11 weighted inputs audited — 5 companion domains missing)
 ```
 Not just `Overall: B+ [87]`.
 
@@ -749,8 +755,11 @@ If any companion skills were not run:
 Coverage gaps — these domains were NOT audited:
   Model Layer: Run data-model-radar for coverage
   Data Safety: Run roundtrip-radar for coverage
+  Time Bombs: Run time-bomb-radar for coverage
+  Navigation/UX: Run ui-path-radar for coverage
+  Visual Quality: Run ui-enhancer-radar for coverage
 
-Ship recommendation is based on {N}/10 domains. Run missing companions for full confidence.
+Ship recommendation is based on {N}/11 weighted inputs. Run missing companions for full confidence.
 ```
 
 ---
@@ -834,7 +843,7 @@ This section lists every axis_1_bug finding from all companion handoffs plus cap
 | 🔴 CRITICAL | 🟢 Medium | 🔴 Critical | 🟠 Excellent | ⚪ 1 file | Small |
 ```
 
-Each finding in this section displays the full coaching schema. The rating table stays 9-column per `radar-suite-core.md`.
+Each finding in this section displays the full coaching schema. The rating table is **10-column** (capstone adds the Source column to the standard 9 — see § Issue Rating Format below).
 
 **Section 14a — Hygiene Backlog (axis_2 + axis_3)**
 
@@ -873,7 +882,7 @@ This section does NOT affect the grade. It is a separate list organized by axis 
 [similar format]
 ```
 
-Hygiene findings use a simpler format (no 9-column rating table) since they don't block shipping and don't need severity ranking. Each finding still includes its coaching and file:line citation.
+Hygiene findings use a simpler format (no 10-column rating table) since they don't block shipping and don't need severity ranking. Each finding still includes its coaching and file:line citation.
 
 **Section 14b — Audit Coverage**
 
@@ -903,7 +912,7 @@ This section answers "what was checked" so a clean audit run is not ambiguous.
 
 ### Impact-Based Finding Organization (v3.0)
 
-When the unified ledger (`.radar-suite/ledger.yaml`) exists, section 14 presents ALL findings in a single 9-column table with the Source column showing provenance. The table is sorted by impact category (Crash Risk → Data Loss → UX Broken → UX Degraded → Polish → Hygiene), then by Urgency within each category:
+When the unified ledger (`.radar-suite/ledger.yaml`) exists, section 14 presents ALL findings in a single 10-column table (the standard 9 plus a Source column showing provenance). The table is sorted by impact category (Crash Risk → Data Loss → UX Broken → UX Degraded → Polish → Hygiene), then by Urgency within each category:
 
 ```markdown
 | # | Finding | Source | Urgency | Risk: Fix | Risk: No Fix | ROI | Blast Radius | Fix Effort | Status |
@@ -1048,6 +1057,13 @@ for_data_model_radar:
       grade: "<letter>"
       reason: "<specific model issues>"
       group_hint: "<optional batching suggestion>"
+
+for_time_bomb_radar:
+  priority_targets:
+    - domain: "<e.g., Time Bombs>"
+      grade: "<letter>"
+      reason: "<specific aged-data risk patterns>"
+      group_hint: "<optional, e.g. 'cascade_delete', 'cache_expiry', 'background_accumulation'>"
 ```
 
 ### File Timestamps
@@ -1140,7 +1156,9 @@ Adjust ALL output (grades, findings, recommendations, domain summaries) based on
 
 **After EVERY step and EVERY commit, your NEXT output MUST be the progress banner followed by the next-step `AskUserQuestion`. Do not output anything else first. Do not leave a blank prompt.**
 
-After completing each step, **always** print this banner:
+The skill has **10 numbered top-level steps** (the user-facing structure). Three steps have substep refinements (3 has substeps 3.5 and 3.6; 6 has substep 6.5). Substeps print using substep notation so the `/10` denominator stays stable.
+
+**Banner template (top-level step completion):**
 
 ```
 Step [N] of 10 complete: [step name]
@@ -1148,16 +1166,24 @@ Step [N] of 10 complete: [step name]
 Next: Step [N+1] — [step name] (~[time estimate])
 ```
 
+**Banner template (substep completion):**
+
+```
+Step [N] (substep [.5/.6]) of 10 complete: [substep name]
+
+Next: Step [N] (substep [next]) — [substep name] (~[time estimate])
+   or → Step [N+1] if this was the last substep
+```
+
 Step time estimates:
 | Step | Name | Est. Time |
 |------|------|-----------|
 | 1 | Project Metrics | ~1 min |
 | 2 | Previous Audit Check | ~1 min |
-| 3 | Companion Handoff Consumption | ~1 min |
-| 3.5 | Risk-Ranking | ~1 min |
+| 3 (with substeps 3.5/3.6) | Companion Handoff Consumption + Axis Classification + Risk-Ranking | ~3-4 min total |
 | 4 | Own Domain Scans | ~3-5 min |
 | 5 | Verification | ~2-5 min |
-| 6 | Cross-Domain Correlation | ~2 min |
+| 6 (with substep 6.5) | Cross-Domain Correlation + Dependency Graph Construction | ~3-4 min total |
 | 7 | Grading | ~1 min |
 | 8 | Velocity + Regressions | ~2 min |
 | 9 | Ship Recommendation | ~1 min |
@@ -1165,22 +1191,24 @@ Step time estimates:
 
 ---
 
-## Companion Skills (5-Skill Family)
+## Companion Skills (6-Skill Family — 5 companions + capstone)
 
 | Skill | Unique Role |
 |-------|-------------|
 | data-model-radar | Are your @Model definitions correct? |
 | ui-path-radar | Can users reach every feature? |
 | roundtrip-radar | Does data survive the full journey? |
+| time-bomb-radar | Will this code crash after 30+ days of aged data? |
 | ui-enhancer-radar | Does it look and feel right? |
 | **capstone-radar** (this skill) | Can you ship? Unified grade + decision. |
 
 **Recommended audit order:**
 1. data-model-radar (foundation — model layer)
 2. ui-path-radar (navigation paths)
-3. roundtrip-radar (data flows)
-4. ui-enhancer-radar (visual quality)
-5. capstone-radar (unified grade + ship decision)
+3. roundtrip-radar (active data flows)
+4. time-bomb-radar (aged data flows — chains from roundtrip findings)
+5. ui-enhancer-radar (visual quality)
+6. capstone-radar (unified grade + ship decision)
 
 Capstone is both the **entry point** ("what should I audit?") and the **exit point** ("can I ship?"). The other radars are the deep work in between.
 
@@ -1190,6 +1218,6 @@ Capstone is both the **entry point** ("what should I audit?") and the **exit poi
 
 After every step/commit: print progress banner → `AskUserQuestion` → never blank prompt.
 
-**Grade honesty:** State N/10 domains audited. State verification depth (deep/sampled/spot-checked). No clean A+ from surface greps alone.
+**Grade honesty:** State N/11 weighted inputs audited (5 own + 5 companion + 1 synthesized). State verification depth (deep/sampled/spot-checked). No clean A+ from surface greps alone.
 
-**Risk-ranking:** Produce Step 3.5 risk-ranking table before Step 4. Verify riskiest domains first.
+**Risk-ranking:** Produce Step 3.6 risk-ranking table before Step 4. Verify riskiest domains first.
