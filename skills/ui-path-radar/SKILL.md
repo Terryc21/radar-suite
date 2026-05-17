@@ -1,6 +1,6 @@
 ---
 name: ui-path-radar
-description: 'UI path tracer for SwiftUI/UIKit apps. 5-layer audit with 30 issue categories: discover entry points, trace flows, detect dead ends and broken promises, evaluate UX impact, verify data wiring. Supports targeted trace, diff against previous audits, and handoff to planning skills. Triggers: "trace UI paths", "find dead ends", "/ui-path-radar".'
+description: 'UI path tracer for SwiftUI/UIKit apps. 5-layer audit with 34 issue categories and 19 automated checks: discover entry points, trace flows, detect dead ends and broken promises, evaluate UX impact, verify data wiring. Supports targeted trace, diff against previous audits, and handoff to planning skills. Triggers: "trace UI paths", "find dead ends", "/ui-path-radar".'
 version: 2.2.0  # orphan feature detection (was 2.1.0)
 author: Terry Nyberg
 license: MIT
@@ -168,29 +168,9 @@ from scanning the actual codebase as it exists now.
 
 ## Before Starting
 
-Ask the user:
+All setup questions were captured during the Skill Introduction call below (`USER_EXPERIENCE`, `FIX_MODE`, `DELIVERY`, `PRESENCE_MODE`). Do NOT re-ask them here. Show the one-line settings reminder from § Skill Introduction and proceed to the audit.
 
-**Question 1: "How should fixes be handled?"**
-- **Auto-fix safe items (Recommended)** — Apply isolated, low-blast-radius fixes automatically. Present cross-cutting fixes and design decisions for approval first.
-- **Review first** — Present all findings with ratings, then ask before making any changes. Fixes still happen — you just approve each wave first.
-
-**IMPORTANT:** Both modes lead to fixes. "Review first" means the user sees the plan before code changes — it does NOT mean "skip fixes and jump to handoff." After presenting findings, ALWAYS offer to fix them regardless of which mode was selected.
-
-**Question 2: "How should results be delivered?"**
-- **Display only (Recommended)** — Show findings in the conversation. No file written.
-- **Report only** — Write findings to `.ui-path-radar/[DATE]-audit.md`. Minimal conversation output. **Before writing**, per Artifact Lifecycle (Class 3) in `radar-suite-core.md`, archive any existing `.ui-path-radar/*-audit.md` to `.ui-path-radar/archive/superseded/`.
-- **Display and report** — Show findings in the conversation AND write to file.
-
-**Question 3: "What's your experience level with Swift/SwiftUI?"**
-- **Beginner** — New to Swift or SwiftUI. Explain findings in plain language with analogies. Define technical terms on first use.
-- **Intermediate** — Comfortable with SwiftUI basics. Use standard terminology but explain non-obvious patterns.
-- **Experienced (Recommended)** — Fluent with SwiftUI, navigation, state management. Concise findings, no definitions.
-- **Senior/Expert** — Deep expertise. Terse output, file:line references only, skip explanations — just the findings table.
-
-**Question 4: "Will you be stepping away during the audit?"**
-- **I'll be here (Recommended)** — Normal mode. Permission prompts may appear for writes/edits.
-- **Hands-free (walk away safe)** — Read-only tools (Read, Grep, Glob) for Layers 1-4. No Bash, no Edit, no Write. Results held in conversation output.
-- **Pre-approved** — You have already configured Claude Code permissions. Run at full speed.
+If any of the four variables is missing for some reason (e.g., session-prefs file deleted mid-session), re-run the full Skill Introduction call before continuing — never partially re-ask, since the questions are interdependent (Question 4 overrides Question 1 — see Hands-Free Mode below).
 
 ### Permission Modes
 
@@ -204,10 +184,19 @@ Ask the user:
 **Guarantees no blocking prompts.** Only uses: `Read`, `Grep`, `Glob`.
 Does NOT use: `Bash`, `Edit`, `Write`, `AskUserQuestion`.
 
+**Precedence rules (load-bearing — Hands-Free wins all ties):**
+
+1. **Hands-Free overrides `FIX_MODE`.** Even if Question 2 was answered `Auto-fix safe items` or `Batch mode`, no fixes are applied in Hands-Free mode. All findings are emitted with `Status: Deferred (hands-free)` in the Issue Rating table. The Fix Plan is still produced (so the user can act on it on return), but no Wave 1-4 fix application runs.
+2. **Hands-Free suppresses the next-wave `AskUserQuestion`.** The "CRITICAL — BLOCKING requirement" rule under § Progress Banner applies in Normal and Pre-Approved modes only. In Hands-Free mode, the progress banner still prints, but the `AskUserQuestion` call is omitted and replaced by the completion message below.
+3. **Hands-Free defers all write-tool layer steps.** The following steps require Edit/Write and are deferred until the user returns: writing `.ui-path-radar/layer3-results.yaml`, `.ui-path-radar/layer5-data-wiring.yaml`, `.ui-path-radar/canaries.yaml`, `.ui-path-radar/handoff.yaml`, `.agents/ui-audit/ui-path-radar-handoff.yaml`, and `.radar-suite/ledger.yaml`. To resolve: in Hands-Free mode, the skill emits these YAML files **inline in the conversation as fenced YAML blocks** so the user can persist them on return. Inline emission does not count as a write.
+4. **Hands-Free covers all 5 layers, not just 1-4.** Layer 5 step 7 (write `layer5-data-wiring.yaml`) and Layer 3's cross-layer verification table edits both fall under rule 3 above — emitted inline rather than written to disk.
+
 When complete:
 ```
-Hands-free audit complete through Step [N] of 5: [plain description].
-  Steps requiring your input: [list with plain descriptions]
+⏱ Hands-free audit complete through Layer [N] of 5: [plain description].
+  Layers requiring write access: [list]
+  Findings deferred: [count] (no fixes applied — Hands-Free mode)
+  Handoff YAML + ledger entries: emitted inline above; copy to .ui-path-radar/, .agents/ui-audit/, and .radar-suite/ when you return
   Reply to continue with supervised steps.
 ```
 
@@ -281,7 +270,7 @@ At the **start of each layer**, silently check: "Am I writing at the selected ex
 
 ### Skill Introduction (MANDATORY — run before anything else)
 
-On first invocation, ask the user two questions in a single `AskUserQuestion` call:
+**This section replaces `radar-suite-core.md § Session Setup` for the ui-path-radar entry point.** Do NOT also run core's 4-question Session Setup — its questions are consolidated below. On first invocation, ask all four setup questions in a single `AskUserQuestion` call. The "Before Starting" section above reuses these answers and never re-asks.
 
 **Question 1: "What's your experience level with Swift/SwiftUI?"**
 - **Beginner** — New to Swift. Plain language, analogies, define terms on first use.
@@ -289,9 +278,28 @@ On first invocation, ask the user two questions in a single `AskUserQuestion` ca
 - **Experienced (Recommended)** — Fluent with SwiftUI. Concise findings, no definitions.
 - **Senior/Expert** — Deep expertise. Terse, file:line only, skip explanations.
 
-**Question 2: "Would you like a brief explanation of what this skill does?"**
+**Question 2: "How should fixes be handled?"**
+- **Auto-fix safe items (Recommended)** — Apply isolated, low-blast-radius fixes automatically. Present cross-cutting fixes and design decisions for approval first.
+- **Review first** — Present all findings with ratings, then ask before making any changes. Fixes still happen — you just approve each wave first.
+- **Batch mode** — Approve all fixes in each wave at once.
+
+**IMPORTANT:** All three modes lead to fixes. "Review first" means the user sees the plan before code changes — it does NOT mean "skip fixes and jump to handoff." After presenting findings, ALWAYS offer to fix them regardless of which mode was selected. (Exception: Hands-Free mode overrides this — see Question 4.)
+
+**Question 3: "How should results be delivered?"**
+- **Display only (Recommended)** — Show findings in the conversation. No file written.
+- **Report only** — Write findings to `.ui-path-radar/[DATE]-audit.md`. Minimal conversation output. **Before writing**, per Artifact Lifecycle (Class 3) in `radar-suite-core.md`, archive any existing `.ui-path-radar/*-audit.md` to `.ui-path-radar/archive/superseded/`.
+- **Display and report** — Show findings in the conversation AND write to file.
+
+**Question 4: "Will you be stepping away during the audit?"**
+- **I'll be here (Recommended)** — Normal mode. Permission prompts may appear for writes/edits.
+- **Hands-Free (walk away safe)** — Read-only tools (Read, Grep, Glob) only. No Bash, no Edit, no Write, no AskUserQuestion. **Hands-Free overrides Question 2:** all fixes are deferred regardless of `FIX_MODE`. The progress banner still prints, but the `AskUserQuestion` next-wave prompt is suppressed; the skill emits the "audit complete through Layer N" completion message instead (see Hands-Free Mode below).
+- **Pre-Approved** — You have already configured Claude Code permissions. Run at full speed.
+
+Store as: `USER_EXPERIENCE`, `FIX_MODE`, `DELIVERY`, `PRESENCE_MODE`. Apply to ALL output for the session, per `radar-suite-core.md § Experience-Level Output Rules`. Also persist to `.radar-suite/session-prefs.yaml` per `radar-suite-core.md § Session Persistence`.
+
+**Question 5 (optional follow-up): "Would you like a brief explanation of what this skill does?"**
 - **No, let's go (Recommended)** — Skip explanation, proceed to audit.
-- **Yes, explain it** — Show a 3-5 sentence explanation adapted to the user's experience level, then proceed.
+- **Yes, explain it** — Show one of the explanations below adapted to experience level, then proceed.
 
 **Experience-adapted explanations:**
 
@@ -299,15 +307,13 @@ On first invocation, ask the user two questions in a single `AskUserQuestion` ca
 
 - **Intermediate**: "UI Path Radar systematically audits all UI entry points (sheets, navigation links, toolbar buttons, deep links, notifications) across your SwiftUI app. It traces user flows end-to-end, flags dead ends, promise-scope mismatches, platform gaps, and orphaned state. Five layers: discovery → flow tracing → issue detection → UX evaluation → data wiring verification."
 
-- **Experienced**: "5-layer UI path audit: entry point discovery, flow tracing, issue detection (dead ends, promise mismatches, orphaned state, platform gaps), semantic UX evaluation, and data wiring verification. Outputs issue rating tables with fix plans."
+- **Experienced**: "5-layer UI path audit across 34 issue categories and 19 automated checks: entry point discovery, flow tracing, issue detection, semantic UX evaluation, and data wiring verification. Outputs issue rating tables with fix plans."
 
-- **Senior/Expert**: "Entry point → flow trace → issue scan → UX eval → data wiring. Rating tables + fix plans."
+- **Senior/Expert**: "Entry point → flow trace → issue scan → UX eval → data wiring. 34 categories, 19 checks. Rating tables + fix plans."
 
-Store the experience level as `USER_EXPERIENCE` and apply to ALL output for the session.
+**User impact explanations:** Can be toggled at any time with `--explain` / `--no-explain`. When enabled, each finding gets a 3-line companion explanation (what's wrong, fix, user experience before/after). See `radar-suite-core.md` for format and rules. Store as `EXPLAIN_FINDINGS` (default: false).
 
-**User impact explanations:** Can be toggled at any time with `--explain` / `--no-explain`. When enabled, each finding gets a 3-line companion explanation (what's wrong, fix, user experience before/after). See the shared rating system doc for format and rules. Store as `EXPLAIN_FINDINGS` (default: false).
-
-**Experience-level auto-apply:** If `USER_EXPERIENCE` = Beginner, auto-set `EXPLAIN_FINDINGS = true` and default sort to `impact`. If Senior/Expert, default sort to `effort`. Apply all output rules from Experience-Level Output Rules table in `radar-suite-core.md`.
+**Experience-level auto-apply (ui-path-radar local):** If `USER_EXPERIENCE` = Beginner, auto-set `EXPLAIN_FINDINGS = true` and default sort to `impact`. If Senior/Expert, default sort to `effort`. Apply all output rules from `radar-suite-core.md § Experience-Level Output Rules`.
 
 ---
 
@@ -317,9 +323,9 @@ See `radar-suite-core.md` for: Tier System, Pipeline UX Enhancements, Table Form
 
 ## Pre-Scan Startup (MANDATORY — before any layer scan)
 
-1. **Known-intentional check:** Read `.radar-suite/known-intentional.yaml` (if exists). Store as `KNOWN_INTENTIONAL`. Before presenting any finding during the audit, check it against these entries. If file + pattern match, skip silently and increment `intentional_suppressed` counter.
+1. **Known-intentional suppression:** Run the protocol in `radar-suite-core.md § Known-Intentional Suppression`. Core owns this — do not restate the steps here.
 
-2. **Pattern reintroduction check:** Read `.radar-suite/ledger.yaml` for `status: fixed` findings with `pattern_fingerprint` and `grep_pattern`. For each, grep the codebase. If the pattern appears in a new file without the `exclusion_pattern`, report as "Reintroduced pattern" at 🟡 HIGH urgency.
+2. **Pattern reintroduction detection:** Run the protocol in `radar-suite-core.md § Pattern Reintroduction Detection`. Core owns this.
 
 ---
 
@@ -329,12 +335,12 @@ When invoked, perform the audit:
 
 **Before starting, print:**
 ```
-Full Audit: 5 steps — estimated total: ~10-30 min depending on codebase size
-  Step 1: Find all entry points → Step 2: Trace how users navigate → Step 3: Detect issues → Step 4: Evaluate user impact → Step 5: Verify data wiring
+Full Audit: 5 layers — estimated total: ~10-30 min depending on codebase size
+  Layer 1: Find all entry points → Layer 2: Trace how users navigate → Layer 3: Detect issues → Layer 4: Evaluate user impact → Layer 5: Verify data wiring
 ```
 
 Run all 5 layers sequentially, outputting findings to `.ui-path-radar/` in the project root.
-**Between layers, print:** `✓ Step [N] of 5 complete: [plain description] — starting Step [N+1]: [plain description]`
+**Between layers, print:** `✓ Layer [N] of 5 complete: [plain description] — starting Layer [N+1]: [plain description]`
 
 ### If "layer1" or "discovery": `enumerate-required`
 
@@ -544,7 +550,9 @@ Before scanning for new issues, re-verify ALL flagged findings from Layer 1 and 
 
 **Then proceed with automated checks 1-18 below.**
 
-After each check, print: `Layer 3: ✓ Check [N] [check name] ([N]/18) — [N] findings so far`
+After each check, print: `Layer 3: ✓ Check [N] [check name] ([N]/19) — [N] findings so far`
+
+> **Numbering note:** Checks 1-10, 10b, 11-18 = 19 total. Check 10b ("Notification Type-Safety") was added in v2.0 as a strict sub-case of Check 10. Rather than renumber 11-18 (which would invalidate every external reference to "Check 11" etc.), 10b is kept as a suffix and counted in the `/19` denominator. When printing progress for Check 10b, use the literal token `10b`: `Layer 3: ✓ Check 10b Notification Type-Safety (11/19) — N findings so far`.
 
 ---
 
@@ -1234,7 +1242,7 @@ grep -rn "var.*:.*\[.*\]?" Sources/Models/ --include="*.swift" | grep -v "//"
 # Find computed properties that aggregate data
 grep -rn "var.*:.*{" Sources/Models/ --include="*.swift" | grep -i "total\|average\|count\|cost\|price"
 ```
-**Print:** `Layer 5: ✓ Model inventory (1/4) — [N] models, [N] properties`
+**Print:** `Layer 5: ✓ Model inventory (1/7) — [N] models, [N] properties`
 
 2. **Select features to cross-reference.** Don't check every feature — select the **top 5-8** using these criteria:
    - Features that **make decisions** based on model data (advisors, calculators, suggestion engines)
@@ -1242,7 +1250,7 @@ grep -rn "var.*:.*{" Sources/Models/ --include="*.swift" | grep -i "total\|avera
    - Features flagged in earlier layers
    - The **primary detail view** (reads the most model data)
 
-   For each, check what model data it reads vs what's available. **Print:** `Layer 5: ✓ Feature scan (2/4) — [N] features checked`
+   For each, check what model data it reads vs what's available. **Print:** `Layer 5: ✓ Feature scan (2/7) — [N] features checked`
 
 3. **Mock data detection:**
 ```bash
@@ -1258,13 +1266,15 @@ grep -rn "Score.*=.*[0-9]\|rating.*=.*[0-9]" Sources/Features/ --include="*.swif
 # Functions that simulate work
 grep -rn "func fetch\|func load\|func compute" Sources/Features/ --include="*.swift" -A 15 | grep "asyncAfter\|sleep\|\.random"
 ```
-**Print:** `Layer 5: ✓ Mock data scan (3/4)`
+**Print:** `Layer 5: ✓ Mock data scan (3/7)`
 
 4. **Cross-reference matrix:**
 
 | Feature | Data Available | Data Used | Data Ignored |
 |---------|---------------|-----------|--------------|
 | [name] | [model properties] | [what it reads] | [gap] |
+
+**Print:** `Layer 5: ✓ Cross-reference matrix (4/7) — [N] features cross-referenced, [N] gaps found`
 
 5. **Form-to-detail parity check (MANDATORY):**
 
@@ -1285,7 +1295,7 @@ grep -rn "func fetch\|func load\|func compute" Sources/Features/ --include="*.sw
 
    **Handoff input:** If data-model-radar ran first, check `.agents/ui-audit/data-model-radar-handoff.yaml` for `form_only_fields[]`. These are pre-identified suspects -- verify each against the actual detail view rather than re-scanning from scratch.
 
-   **Print:** `Layer 5: ✓ Form-to-detail parity (5/[total]) — [N] form-only fields found`
+   **Print:** `Layer 5: ✓ Form-to-detail parity (5/7) — [N] form-only fields found`
 
 6. **Integration gap detection:**
 ```bash
@@ -1295,6 +1305,8 @@ grep -rn "class.*Manager\|class.*Service" Sources/ --include="*.swift" | grep -v
 # Check if feature views reference them
 ```
 
+**Print:** `Layer 5: ✓ Integration gap detection (6/7) — [N] manager/service references checked`
+
 7. **Platform parity check:**
 ```bash
 # Find iOS-only dismiss buttons
@@ -1303,24 +1315,70 @@ grep -rn "#if os(iOS)" Sources/ --include="*.swift" -A 3 | grep -i "dismiss\|too
 # Find extension files with platform-specific computed properties
 grep -rl "extension.*View" Sources/ --include="*.swift" | grep "+"
 ```
-**Print:** `Layer 5: ✓ Platform parity (7/8)`
+**Print:** `Layer 5: ✓ Platform parity (7/7)`
 
 8. Output to `layer5-data-wiring.yaml`
 
 ### If "diff":
-Compare current codebase against the previous audit to show what changed:
-1. Read existing `.ui-path-radar/layer3-results.yaml` and `.ui-path-radar/handoff.yaml`
-2. For each previously-reported issue, check if the referenced file + line still has the problem
-3. Run a quick scan for NEW issues not in the previous report
-4. Output a diff summary:
+
+**Compare findings against the previous ui-path-radar audit** — surface what regressed, what got fixed, and what's new since the last run.
+
+#### Usage
+
 ```
-Audit Diff: <previous date> → <current date>
-✅ Resolved: <count> issues fixed since last audit
-🔴 Still Open: <count> issues remain
-🆕 New: <count> new issues detected
-📁 Changed: <count> files modified since audit (may need re-verification)
+/ui-path-radar diff
+/ui-path-radar diff --since 2026-04-01
+/ui-path-radar diff --layer 3        # restrict to one layer's findings
 ```
-5. Show the full Issue Rating Table with a Status column prepended (✅/🔴/🆕)
+
+#### Source of Truth
+
+The diff reads from `.radar-suite/ledger.yaml` — the only authoritative cross-session store of ui-path-radar findings. Per-layer YAML files (`.ui-path-radar/layer3-results.yaml`, `.ui-path-radar/layer5-data-wiring.yaml`) and per-run handoff files are overwritten each run, so they cannot serve as a diff baseline.
+
+The "previous audit" is defined as **the most recent ledger session entry with `skill: ui-path-radar`** that is strictly older than the current session. If no prior session exists, the diff command MUST refuse with:
+
+> "No prior ui-path-radar audit found in `.radar-suite/ledger.yaml`. Run a full audit (`/ui-path-radar`) first to establish a baseline."
+
+Do not invent a baseline. Do not fall back to memory or stale `.ui-path-radar/*-audit.md` reports.
+
+#### How It Works
+
+1. **Identify the baseline session** — read `.radar-suite/ledger.yaml`, find the most recent prior session entry with `skill: ui-path-radar`. With `--since YYYY-MM-DD`, use the latest entry on or after that date instead.
+2. **Identify the current session** — either the in-progress session (if the user just ran an audit) or the most recent completed session.
+3. **Run a quick re-verification scan** on the current codebase for each previously-reported issue's file:line — has the problem been fixed in place?
+4. **Bucket every finding** from the union of baseline + current into one of four categories by RS-NNN ID:
+   - **Fixed** — present in baseline with `status: open`, present in current with `status: fixed`, OR the file:line no longer matches the pattern fingerprint
+   - **Regressed** — present in baseline with `status: fixed`, but `file_hash` changed AND the pattern fingerprint matches at the same file:line again
+   - **New** — RS-NNN ID is in current but not baseline
+   - **Persistent** — present in both with the same status
+5. **Apply optional filters:** `--layer [1-5]` restricts to findings whose `layer` field matches.
+
+#### Output Format
+
+```
+Audit Diff: <previous date> → <current date> (<days> days)
+
+✅ Fixed (<count>)
+| RS-NNN | short_title | Category | Fixed in |
+
+🔴 Regressed (<count>)
+| RS-NNN | short_title | Category | Was fixed | file_hash changed? |
+
+🆕 New (<count>)
+| RS-NNN | short_title | Category | Urgency |
+
+📌 Persistent (<count>)
+[collapsed by default; pass --verbose to expand]
+
+📁 Changed files since baseline: <count> (may need re-verification)
+```
+
+#### Refusal cases
+
+- No prior ledger session: refuse with the message above
+- `--since` date is in the future: refuse with "Date is in the future; no audits to compare"
+- `--layer [N]` outside 1-5: refuse with "Layer N is not a valid ui-path-radar layer (must be 1-5)"
+- `--layer [N]` matches no findings in either baseline or current: print "No findings in Layer N across either session" (not a refusal — a legitimate empty result)
 
 ### If "fix" or "fixes":
 1. Read `layer3-results.yaml` and `layer5-data-wiring.yaml` for unfixed issues
@@ -1348,10 +1406,10 @@ Audit Diff: <previous date> → <current date>
 
 When completing a layer and moving to the next, print:
 ```
-✓ Step [N] of 5 complete: [plain description] — [M] findings ([X] verified, [Y] probable, [Z] needs-runtime)
-  Retracted from prior steps: [count or "none"]
+✓ Layer [N] of 5 complete: [plain description] — [M] findings ([X] verified, [Y] probable, [Z] needs-runtime)
+  Retracted from prior layers: [count or "none"]
   Cumulative: [total] findings ([C] critical, [H] high, [M] medium, [L] low)
-  Next: Step [N+1] — [plain description of what it does and why it matters given current findings].
+  Next: Layer [N+1] — [plain description of what it does and why it matters given current findings].
   → "proceed" | "explain #[N]" | "stop here"
 ```
 
@@ -1449,7 +1507,9 @@ Skip empty waves.
 
 ### Progress Banner (MANDATORY after every wave)
 
-**CRITICAL — BLOCKING requirement.** After EVERY wave and EVERY commit, your NEXT output MUST be the progress banner followed by the next-wave `AskUserQuestion`.
+**CRITICAL — BLOCKING requirement in Normal and Pre-Approved modes.** After EVERY wave and EVERY commit, your NEXT output MUST be the progress banner followed by the next-wave `AskUserQuestion`.
+
+**Hands-Free mode exception:** In Hands-Free mode, the progress banner still prints, but the next-wave `AskUserQuestion` call is suppressed (per the Hands-Free Mode precedence rules above). Replace the AskUserQuestion with the Hands-Free completion message instead.
 
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1644,7 +1704,9 @@ for_capstone_radar:
       group_hint: "<optional>"
 
 checks_performed:
-  automated_checks: 18
+  # automated_checks: 19 = Checks 1-10, 10b, 11-18 (Check 10b kept as suffix to preserve external references — see § Layer 3 Numbering Note)
+  automated_checks: 19
+  # categories_scanned MUST match the Issue Categories table at SKILL.md:57-92 (34 categories) — keep in sync when adding categories
   categories_scanned:
     - dead_end
     - wrong_destination
@@ -1663,6 +1725,9 @@ checks_performed:
     - sheet_asymmetry
     - empty_state_missing
     - error_recovery_missing
+    - keyboard_obscures_input
+    - permission_denied_dead_end
+    - modal_stacking
     - nav_container_mismatch
     - two_step_flow
     - missing_feedback
