@@ -4,7 +4,7 @@ description: 'Finds deferred operations that crash on aged data -- code that pas
 version: 2.2.0  # +Pattern 7 cascade delete with live child references (was 2.1.0)
 author: Terry Nyberg
 license: MIT
-allowed-tools: [Read, Grep, Glob, Bash, AskUserQuestion]
+allowed-tools: [Read, Grep, Glob, Bash, Edit, Write, AskUserQuestion]
 inherits: radar-suite-core.md
 metadata:
   tier: execution
@@ -30,12 +30,28 @@ Time bombs are deferred operations that pass every test, every code review, ever
 | `/time-bomb-radar background-tasks` | Pattern 4 only -- accumulated background work |
 | `/time-bomb-radar date-transitions` | Pattern 5 only -- date-threshold state changes |
 | `/time-bomb-radar scheduled-side-effects` | Pattern 6 only -- notifications/reminders scheduled from aged data |
-| `--show-suppressed` | Show findings suppressed by known-intentional entries |
-| `--accept-intentional` | Mark current finding as known-intentional (not a bug) |
+| `/time-bomb-radar cascade-live-refs` | Pattern 7 only -- cascade delete with live child references |
+| `--show-suppressed` | Show findings suppressed by known-intentional entries (see § Intentional Suppression Flags) |
+| `--accept-intentional` | Mark current finding as known-intentional (see § Intentional Suppression Flags) |
+
+### Intentional Suppression Flags
+
+Both flags wrap the protocol in `radar-suite-core.md § Known-Intentional Suppression`, which owns the canonical spec for `.radar-suite/known-intentional.yaml` (file format, fields, matching rules).
+
+| Flag | Behavior |
+|------|----------|
+| `--show-suppressed` | After the scan completes, list every finding that was suppressed by a matching entry in `.radar-suite/known-intentional.yaml` this session. Output includes the finding (file:line + pattern), the suppression entry that matched, and the date the entry was added. Read-only — does not modify the suppression file. |
+| `--accept-intentional` | Interactive flow that appends a new entry to `.radar-suite/known-intentional.yaml` for the most recently presented finding in the current conversation. Asks via `AskUserQuestion` to confirm the file:line + pattern_fingerprint + reason text before writing. Requires the conversation to contain at least one finding emitted by this skill (refuses with "No recent finding to accept" otherwise). |
+
+Future scans (this session or later) will silently skip findings matching accepted entries and increment the `intentional_suppressed` counter per § Pre-Scan Startup.
+
+## Shared Patterns
+
+See `radar-suite-core.md` for: Tier System, Pipeline UX Enhancements, Table Format, Progress Banner, Issue Rating Tables, Handoff YAML schema, Known-Intentional Suppression, Pattern Reintroduction Detection, Experience-Level Output Rules, Session Persistence, short_title requirement.
 
 ## Key concepts
 
-These concepts appear throughout the 5 patterns. Understanding them makes the patterns easier to apply regardless of framework.
+These concepts appear throughout the 7 patterns. Understanding them makes the patterns easier to apply regardless of framework.
 
 ### Lazy loading and faults
 
@@ -83,22 +99,44 @@ External storage is the highest-risk target for time bombs because:
 
 To catch a time bomb manually, you'd need to: create data, archive it, set your device clock forward 30-90 days, disconnect from the network, and relaunch. Nobody does this.
 
-## Skill introduction (run before scanning)
+## Skill Introduction (MANDATORY — run before scanning)
 
-Present to the user based on experience level:
+**This section replaces `radar-suite-core.md § Session Setup` for the time-bomb-radar entry point.** Do NOT also run core's 4-question Session Setup — its questions are consolidated below. On first invocation, ask all setup questions in a single `AskUserQuestion` call:
 
-- **New to this skill**: "I'll search your codebase for operations that fire after a time delay -- deletions, cache purges, trial expirations, background tasks, and date-based state changes. For each one, I'll check whether it can crash on data that's been sitting idle for weeks or months with incomplete cloud sync. The question I ask for every hit: if this runs 90 days after the data was created, with bad network, what breaks?"
+**Question 1: "What's your experience level with Swift/SwiftUI?"**
+- **Beginner** — New to Swift. Plain language, analogies, define terms on first use.
+- **Intermediate** — Comfortable with SwiftUI basics. Standard terms, explain non-obvious patterns.
+- **Experienced (Recommended)** — Fluent with SwiftUI. Concise findings, no definitions.
+- **Senior/Expert** — Deep expertise. Terse, file:line only, skip explanations.
+
+**Question 2: "Table format?"**
+- **Full tables (Recommended)** — full Issue Rating Tables
+- **Compact tables** — 3-column with details below
+
+**Question 3: "Would you like a brief explanation of what this skill does?"**
+- **No, let's go (Recommended)** — Skip explanation, proceed to scan.
+- **Yes, explain it** — Show one of the explanations below adapted to experience level, then proceed.
+
+Store as: `USER_EXPERIENCE`, `TABLE_FORMAT`. Apply to ALL output for the session, per `radar-suite-core.md § Experience-Level Output Rules`. Also persist to `.radar-suite/session-prefs.yaml` per `radar-suite-core.md § Session Persistence`.
+
+**Note on fix mode:** Time-bomb-radar is a read-only audit skill — it identifies bombs and writes them to the handoff/ledger, but does NOT apply fixes directly. The capstone-radar and roundtrip-radar skills consume time-bomb findings and drive the fix work. So no FIX_MODE question is asked here; the `allowed-tools` list includes Edit/Write only for handoff/ledger persistence, not for source modification.
+
+**Experience-adapted explanations for Time Bomb Radar:**
+
+- **Beginner**: "I'll search your codebase for operations that fire after a time delay — deletions, cache purges, trial expirations, background tasks, and date-based state changes. For each one, I check whether it can crash on data that's been sitting idle for weeks or months with incomplete cloud sync. Think of it like asking: 'If this code runs 90 days after the data was created, on a phone with bad Wi-Fi, what breaks?' Bugs found this way don't show up in tests — they only appear in production, weeks after release, on your most loyal users' devices."
+- **Intermediate**: "Time-bomb-radar audits deferred operations that pass tests but fail on aged data with incomplete sync. Covers 7 patterns: cascade deletes (1), cache expiry (2), trial expiry (3), background task accumulation (4), date-threshold transitions (5), scheduled side effects (6), and cascade delete with live child references (7). Outputs BOMB/Risky/Safe ratings with grep evidence and file:line citations."
 - **Experienced**: "Time bomb audit across 7 patterns: deferred cascade deletes, cache expiry with model relationships, trial/subscription expiry paths, background task accumulation, date-threshold state transitions, scheduled side effects from aged data, and cascade delete with live child references. Outputs rated findings with grep evidence."
+- **Senior/Expert**: "7-pattern aged-data audit. BOMB/Risky/Safe + grep evidence + file:line."
 
-**User impact explanations:** Can be toggled at any time with `--explain` / `--no-explain`. When enabled, each finding gets a 3-line companion explanation (what's wrong, fix, user experience before/after). See the shared rating system doc for format and rules. Store as `EXPLAIN_FINDINGS` (default: false).
+**User impact explanations:** Can be toggled at any time with `--explain` / `--no-explain`. When enabled, each finding gets a 3-line companion explanation (what's wrong, fix, user experience before/after). See `radar-suite-core.md` for format and rules. Store as `EXPLAIN_FINDINGS` (default: false).
 
-**Experience-level auto-apply:** If `USER_EXPERIENCE` = Beginner, auto-set `EXPLAIN_FINDINGS = true` and default sort to `impact`. If Senior/Expert, default sort to `effort`. Apply all output rules from Experience-Level Output Rules table in `radar-suite-core.md`.
+**Experience-level auto-apply (time-bomb-radar local):** If `USER_EXPERIENCE` = Beginner, auto-set `EXPLAIN_FINDINGS = true` and default sort to `impact`. If Senior/Expert, default sort to `effort`. Apply all output rules from `radar-suite-core.md § Experience-Level Output Rules`.
 
 ## Pre-Scan Startup (MANDATORY — before any pattern scan)
 
-1. **Known-intentional check:** Read `.radar-suite/known-intentional.yaml` (if exists). Store as `KNOWN_INTENTIONAL`. Before presenting any finding during the audit, check it against these entries. If file + pattern match, skip silently and increment `intentional_suppressed` counter.
+1. **Known-intentional suppression:** Run the protocol in `radar-suite-core.md § Known-Intentional Suppression`. Core owns this — do not restate the steps here.
 
-2. **Pattern reintroduction check:** Read `.radar-suite/ledger.yaml` for `status: fixed` findings with `pattern_fingerprint` and `grep_pattern`. For each, grep the codebase. If the pattern appears in a new file without the `exclusion_pattern`, report as "Reintroduced pattern" at 🟡 HIGH urgency.
+2. **Pattern reintroduction detection:** Run the protocol in `radar-suite-core.md § Pattern Reintroduction Detection`. Core owns this.
 
 ## Step 0: Codebase scan
 
@@ -136,7 +174,20 @@ External storage: [list of models/properties]
 Subscription system: [yes/no, which framework]
 ```
 
-This tells you which patterns are relevant. Local-only apps without subscriptions can skip patterns 2, 3, and parts of 1.
+### Pattern Relevance Matrix
+
+Use the Step 0 output to decide which patterns to run. Pattern 1 always applies if there's any persistence framework; the rest scale with the codebase's characteristics.
+
+| Codebase characteristic | Patterns to run |
+|---|---|
+| Any persistence framework (always) | 1, 4 |
+| Has cache layer with TTL or expires_at | + 2 |
+| Has freemium/trial/subscription system | + 3 |
+| Has date-based state transitions (warranties, loans, password expiry, etc.) | + 5 |
+| Schedules notifications, reminders, calendar events, or emails | + 6 |
+| Swift + SwiftData/Core Data + SwiftUI with `.cascade` delete rules and views holding child refs | + 7 |
+
+A full audit (`/time-bomb-radar` with no arguments) runs all patterns whose characteristic matches the Step 0 output and skips the rest. The skill announces which patterns were skipped and why in the opening banner so the user can override with a per-pattern command if needed.
 
 ---
 
@@ -547,10 +598,13 @@ For every hit, produce a rated finding:
 
 | # | Pattern | File:Line | Trigger | Risk | Evidence |
 |---|---------|-----------|---------|------|----------|
-| 1 | Deferred delete | SafeDeletionManager.swift:89 | 30 days after archive | BOMB | Cascade to PhotoAttachment with .externalStorage |
-| 2 | Cache expiry | OCRCacheManager.swift:235 | 90 days after cache creation | Risky | Object-level purge, no .externalStorage but has relationships |
-| 3 | Trial expiry | AITrialManager.swift:44 | Trial end date | Safe | Gate check at view level with fallback |
-| 4 | Cascade delete | Item.swift:405 | Parent delete while child sheet open | BOMB | Child view holds @Bindable ref, no dismiss guard |
+| 1 | Pattern 1: Deferred delete | SafeDeletionManager.swift:89 | 30 days after archive | BOMB | Cascade to PhotoAttachment with .externalStorage |
+| 2 | Pattern 2: Cache expiry | OCRCacheManager.swift:235 | 90 days after cache creation | Risky | Object-level purge, no .externalStorage but has relationships |
+| 3 | Pattern 3: Trial expiry | AITrialManager.swift:44 | Trial end date | Safe | Gate check at view level with fallback |
+| 4 | Pattern 4: Background accumulation | ThumbnailGenerator.swift:152 | First launch after >30 day idle | Risky | No batch limit; loads relationships per item |
+| 5 | Pattern 5: Date-threshold transition | ExtendedWarranty.swift:78 | Warranty expiration date | Risky | Force-unwraps `.warranty!.expirationDate` |
+| 6 | Pattern 6: Scheduled side effect | NotificationManager.swift:201 | Scheduled reminder fire date | BOMB | Handler force-unwraps deleted source `Item` |
+| 7 | Pattern 7: Cascade live-ref | Item.swift:405 | Parent delete while child sheet open | BOMB | Child view holds @Bindable ref, no dismiss guard |
 
 ### Rating each finding
 
@@ -596,7 +650,7 @@ After completing each pattern scan, print:
 
 ```
 ---------------------------------------------
-TIME BOMB RADAR: Pattern [N]/6 complete
+TIME BOMB RADAR: Pattern [N]/7 complete
   Scanned: [pattern name]
   Hits: [count]
   Bombs: [count] | Risky: [count] | Safe: [count]
@@ -622,10 +676,6 @@ Example: `short_title: "30-day cascade delete crash"`
 
 All finding ID references in output (tables, banners, summaries) use the format: `RS-NNN (short_title)`.
 
-### Shared Patterns
-
-See `radar-suite-core.md` for: Tier System, Pipeline UX Enhancements, Table Format, Progress Banner, Issue Rating Tables, Handoff YAML schema, Experience-Level Output Rules, short_title requirement.
-
 ---
 
 ## On Completion -- Write Handoff
@@ -634,11 +684,11 @@ Write findings to `.radar-suite/time-bomb-radar-handoff.yaml`:
 
 ```yaml
 source: time-bomb-radar
-version: 1.0.0
+version: "<SKILL_VERSION>"  # read from frontmatter at write time (currently 2.2.0); keep in sync with VERSION file
 date: <ISO 8601>
 project: <project name>
 build: <build number>
-patterns_audited: [1, 2, 3, 4, 5, 6]
+patterns_audited: [1, 2, 3, 4, 5, 6, 7]  # omit any patterns skipped per § Pattern Relevance Matrix
 
 for_roundtrip_radar:
   suspects:
