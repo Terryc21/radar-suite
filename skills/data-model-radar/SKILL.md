@@ -1,7 +1,7 @@
 ---
 name: data-model-radar
 description: 'Audits SwiftData/Core Data model layer for field completeness, serialization gaps, relationship integrity, semantic ambiguity, dead fields, and migration safety. Finds model-layer bugs that manifest as workflow bugs. Triggers: "audit models", "model radar", "/data-model-radar".'
-version: 2.3.0  # +Domain 3a/3b cross-context mutation and stale object checks (was 2.2.0)
+version: 2.3.0  # Domain 3a/3b cross-context mutation and stale object checks
 author: Terry Nyberg
 license: MIT
 allowed-tools: [Read, Grep, Glob, Bash, Edit, Write, AskUserQuestion]
@@ -21,7 +21,7 @@ metadata:
 
 | Command | Description |
 |---------|-------------|
-| `/data-model-radar` | Full 9-domain audit of all models (+ delegates to time-bomb-radar for Domain 8) |
+| `/data-model-radar` | Full audit across all model-layer domains (9 numbered + 2 sub-domains under Domain 3 + Domain 8 delegated to time-bomb-radar) |
 | `/data-model-radar [ModelName]` | Audit a single model in depth |
 | `/data-model-radar models` | Show all models with risk ranking (no audit, discovery only) |
 | `/data-model-radar serialization` | Domain 2 only — backup/export coverage |
@@ -43,17 +43,22 @@ Data Model Radar audits the foundation your app is built on — the data models.
 | **1.5 Computed Properties** | Business logic bugs in computed properties (nil chains, fallback defaults, currency math) | ~5-10 min |
 | **2. Serialization Coverage** | Backup/export fields that don't round-trip | ~10-20 min |
 | **3. Relationship Integrity** | Cascade rules, inverse relationships, orphan risk | ~3-5 min |
+| **3a. Cross-Context Mutation** | @Model param mutated in a manager's own context = crash | ~3-5 min |
+| **3b. Stale Object After Cross-Context Save** | Manager saves in own context; caller's @Model reference goes stale | ~3-5 min |
 | **4. Semantic Clarity** | nil vs zero ambiguity, missing type distinctions | ~2-3 min |
 | **5. Field Usage Mapping** | Dead fields (no UI reads), phantom fields (UI shows, model doesn't store) | ~10-20 min |
 | **6. Migration Safety** | Schema versions, VersionedSchema coverage, migration plan gaps | ~5-10 min |
 | **7. Cross-Model Consistency** | Identifier strategy, naming conventions, shared pattern violations | ~3-5 min |
 | **7.5 Near-Duplicate Detection** | Models sharing 70%+ fields that should be consolidated | ~3-5 min |
+| **8. Time Bombs** (delegated to time-bomb-radar) | Deferred operations on aged data — cascade deletes, cache expiry, scheduled side effects | ~5-10 min |
 
 ---
 
 ## Skill Introduction (MANDATORY — run before anything else)
 
-On first invocation, ask the user two questions in a single `AskUserQuestion` call:
+**This section replaces `radar-suite-core.md § Session Setup` for the data-model-radar entry point.** Do NOT also run core's 4-question Session Setup — its questions are consolidated below. Other radar-suite skills entered via their own SKILL.md files have their own equivalent sections.
+
+On first invocation, ask the user all four setup questions in a single `AskUserQuestion` call:
 
 **Question 1: "What's your experience level with Swift/SwiftUI?"**
 - **Beginner** — New to Swift. Plain language, analogies, define terms on first use.
@@ -61,9 +66,22 @@ On first invocation, ask the user two questions in a single `AskUserQuestion` ca
 - **Experienced (Recommended)** — Fluent with SwiftUI. Concise findings, no definitions.
 - **Senior/Expert** — Deep expertise. Terse, file:line only, skip explanations.
 
-**Question 2: "Would you like a brief explanation of what this skill does?"**
+**Question 2: "Table format?"**
+- **Full tables (Recommended)** — 8-column Issue Rating Tables
+- **Compact tables** — 3-column with details below
+
+**Question 3: "Fix handling?"**
+- **Auto-fix safe items (Recommended)** — Apply isolated, low-blast-radius fixes automatically. Present cross-cutting fixes and design decisions for approval first.
+- **Review first** — Present all findings with ratings, then ask before making any changes. Fixes still happen — you just approve each wave first.
+- **Batch mode** — Approve all fixes in each wave at once.
+
+**IMPORTANT:** All three fix modes lead to fixes. "Review first" means the user sees the plan before code changes — it does NOT mean "skip fixes and jump to handoff." After presenting findings, ALWAYS offer to fix them regardless of which mode was selected.
+
+**Question 4: "Would you like a brief explanation of what this skill does?"**
 - **No, let's go (Recommended)** — Skip explanation, proceed to audit.
 - **Yes, explain it** — Show a 3-5 sentence explanation adapted to the user's experience level (see below), then proceed.
+
+Store as: `USER_EXPERIENCE`, `TABLE_FORMAT`, `FIX_MODE`. Apply to ALL output for session, per `radar-suite-core.md § Experience-Level Output Rules`. Also persist these to `.radar-suite/session-prefs.yaml` per `radar-suite-core.md § Session Persistence`.
 
 **Experience-adapted explanations for Data Model Radar:**
 
@@ -71,9 +89,9 @@ On first invocation, ask the user two questions in a single `AskUserQuestion` ca
 
 - **Intermediate**: "Data Model Radar audits your @Model classes for field completeness (missing enums, semantic holes), serialization coverage (backup/export round-trip gaps), relationship integrity (cascade rules, orphan risk), nil-vs-zero ambiguity, dead fields (defined but never read), migration safety (schema versions), and cross-model consistency. It finds model-layer bugs that would otherwise surface as workflow bugs across multiple features."
 
-- **Experienced**: "8-domain audit of @Model layer: field completeness, serialization coverage, relationship integrity, semantic clarity, usage mapping, migration safety, cross-model consistency, time bomb detection. Outputs issue rating tables with fix plans. Findings feed roundtrip-radar as suspects."
+- **Experienced**: "Audits @Model layer across 9 numbered domains (1, 1.5, 2, 3, 4, 5, 6, 7, 7.5) plus 2 sub-domains (3a cross-context mutation, 3b stale object) plus Domain 8 (time bombs, delegated to time-bomb-radar). Covers field completeness, computed properties, serialization coverage, relationship integrity, cross-context safety, semantic clarity, usage mapping, migration safety, cross-model consistency, near-duplicate detection. Outputs issue rating tables with fix plans. Findings feed roundtrip-radar as suspects."
 
-- **Senior/Expert**: "Model audit: fields → serialization → relationships → semantics → usage → migration → consistency. Rating tables + fix plans."
+- **Senior/Expert**: "Model audit: fields → computed → serialization → relationships (+3a/3b cross-context) → semantics → usage → migration → consistency → near-dupes → time-bombs (delegated). Rating tables + fix plans."
 
 Store the experience level as `USER_EXPERIENCE` and apply to ALL output for the session.
 
@@ -92,11 +110,11 @@ See `radar-suite-core.md` for: Rules Summary, Tier System, Pipeline UX Enhanceme
 
 ## Pre-Scan Startup (MANDATORY — before any domain scan)
 
-1. **Known-intentional check:** Read `.radar-suite/known-intentional.yaml` (if exists). Store as `KNOWN_INTENTIONAL`. Before presenting any finding during the audit, check it against these entries. If file + pattern match, skip silently and increment `intentional_suppressed` counter.
+1. **Known-intentional suppression:** Run the protocol in `radar-suite-core.md § Known-Intentional Suppression`. Core owns this — do not restate the steps here.
 
-2. **Pattern reintroduction check:** Read `.radar-suite/ledger.yaml` for `status: fixed` findings with `pattern_fingerprint` and `grep_pattern`. For each, grep the codebase. If the pattern appears in a new file without the `exclusion_pattern`, report as "Reintroduced pattern" at 🟡 HIGH urgency.
+2. **Pattern reintroduction detection:** Run the protocol in `radar-suite-core.md § Pattern Reintroduction Detection`. Core owns this.
 
-3. **Experience-level auto-apply:** If `USER_EXPERIENCE` = Beginner, auto-set `EXPLAIN_FINDINGS = true` and default sort to `impact`. If Senior/Expert, default sort to `effort`. Apply output rules from Experience-Level Output Rules table in core.
+3. **Experience-level auto-apply (data-model-radar local):** If `USER_EXPERIENCE` = Beginner, auto-set `EXPLAIN_FINDINGS = true` and default sort to `impact`. If Senior/Expert, default sort to `effort`. Apply output rules from `radar-suite-core.md § Experience-Level Output Rules`.
 
 ---
 
@@ -267,20 +285,16 @@ Fields added recently are highest risk -- they may not have been added to backup
 
 ## Step 1: Per-Model Audit
 
-Audit one model at a time across all 9 domains (1, 1.5, 2, 3, 4, 5, 6, 7, 7.5) plus Domain 8 delegation.
+Audit one model at a time across all 9 numbered domains (1, 1.5, 2, 3, 4, 5, 6, 7, 7.5) plus the 2 sub-domains under Domain 3 (3a, 3b) plus Domain 8 (delegated to time-bomb-radar).
 
 ### Before Starting (First Model Only)
 
-Ask setup questions:
-
-**"How should fixes be handled?"**
-- **Auto-fix safe items (Recommended)** — Apply isolated, low-blast-radius fixes automatically. Present cross-cutting fixes and design decisions for approval first.
-- **Review first** — Present all findings with ratings, then ask before making any changes. Fixes still happen — you just approve each wave first.
-
-**IMPORTANT:** Both modes lead to fixes. "Review first" means the user sees the plan before code changes — it does NOT mean "skip fixes and jump to handoff." After presenting findings, ALWAYS offer to fix them regardless of which mode was selected.
+`FIX_MODE` was already captured during the Skill Introduction setup call. Confirm the remaining per-session preferences in one `AskUserQuestion`:
 
 - Delivery: Display only / Report / Both
 - Presence: Normal / Hands-free / Pre-approved
+
+If `FIX_MODE` has not been set for some reason (e.g. session-prefs file deleted mid-session), re-ask Question 3 from § Skill Introduction before proceeding.
 
 ### Domain 1: Field Completeness `enumerate-required`
 
@@ -660,6 +674,9 @@ Every domain produces a letter grade. Use this rubric so grades are consistent a
 **Domain 7.5 (Near-Duplicate Detection):**
 - Start at A. Deduct: 90%+ overlap without shared protocol = -5, duplicated methods = -3 each, fragile conversion method = -3.
 
+**Domain 8 (Time Bombs — delegated):**
+- Not graded by data-model-radar. Findings from `/time-bomb-radar` flow directly to `for_capstone_radar.blockers[]` in the handoff and do NOT enter this skill's weighted-average model grade. Domain 8 is therefore absent from the weight table below by design.
+
 ### Evidence Requirement
 
 **Every grade must include an Evidence block:**
@@ -678,14 +695,16 @@ The overall model grade is the **weighted average** of domain grades:
 | Domain | Weight | Rationale |
 |--------|--------|-----------|
 | 1. Field Completeness | 10% | Foundation, but gaps are usually LOW severity |
-| 1.5 Computed Properties | 10% | Business logic correctness |
+| 1.5 Computed Properties | 10% | Business logic correctness — one wrong computation affects every view that consumes the property, so equal weight to Domain 1 is intentional |
 | 2. Serialization Coverage | 25% | Data loss is the highest-impact model bug |
-| 3. Relationship Integrity | 15% | Cascade/orphan bugs cause crashes |
+| 3. Relationship Integrity | 15% | Cascade/orphan bugs cause crashes. 3a/3b deductions roll into Domain 3's score per § Per-Domain Scoring Rules — they do NOT get their own weight rows |
 | 4. Semantic Clarity | 5% | Important but rarely causes data loss |
 | 5. Field Usage Mapping | 10% | Dead fields are hygiene, not crashes |
 | 6. Migration Safety | 15% | Wrong migration = app won't launch |
 | 7. Cross-Model Consistency | 5% | Consistency aids maintenance |
 | 7.5 Near-Duplicate Detection | 5% | Code hygiene |
+
+**Sub-domain treatment:** Domains 3a and 3b are scored *within* Domain 3 (their deductions appear in Domain 3's "Per-Domain Scoring Rules" entry). Domain 8 is excluded entirely — see "Domain 8 (Time Bombs — delegated)" above. The 9 weight rows sum to 100%.
 
 Convert letter grades to numeric (A=97, A-=92, B+=87, B=82, B-=77, C+=72, C=67, C-=62, D=55, F=40), compute weighted average, convert back to letter.
 
@@ -834,7 +853,7 @@ date: <ISO 8601>
 project: <project name>
 models_audited: <count>
 audit_depth: <full | partial | quick>
-domains_verified: [1, 1.5, 2, 3, 4, 5, 6, 7, 7.5]
+domains_verified: [1, "1.5", 2, 3, "3a", "3b", 4, 5, 6, 7, "7.5"]  # quote any non-integer entries to keep YAML valid
 domains_at_quick_depth: []
 domains_skipped: []
 
