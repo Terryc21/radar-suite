@@ -1,7 +1,7 @@
 ---
 name: radar-suite-axis-classification
 description: 'Shared axis classification framework for all radar-suite skills. Every finding must be classified as axis_1 (bug), axis_2 (scatter), or axis_3 (dead/smelly) before emission, with mandatory coaching fields and file:line citations to existing patterns in the audited codebase. Triggers: invoked by every radar before emitting findings.'
-version: 2.0.0  # unified plugin version as of 2026-04-10 (skill is new in this release)
+version: 2.1.0  # schema gate regex format + source-root introspection check + audience tagging override rules + rejected_no_citation tracking (initial creation was 2.0.0 on 2026-04-10)
 author: Terry Nyberg
 license: MIT
 allowed-tools: [Read, Grep, Glob]
@@ -17,11 +17,21 @@ metadata:
 
 ---
 
+## Inheritance Note (this is a framework skill, not an audit skill)
+
+This skill inherits `radar-suite-core.md` for shared schema definitions (Issue Rating Table format, Handoff YAML schema) but does NOT run core's interactive protocols (Session Setup, Pre-Scan Startup, Known-Intentional Suppression, Pattern Reintroduction Detection). Those protocols apply within the audit skills that invoke this framework, not at this skill's level.
+
+**This skill is invoked programmatically by audit skills during finding emission; it never runs standalone.** There is no `/radar-suite-axis-classification` slash command, no setup interview, no phases, no progress banner. A radar reads this skill's spec, follows the Invocation Protocol below to classify and coach its candidate findings, then writes them to its own handoff YAML with the required axis + coaching fields.
+
+If you're reading this skill expecting a runnable command, you want a sibling radar instead (`/data-model-radar`, `/ui-path-radar`, `/roundtrip-radar`, `/time-bomb-radar`, `/ui-enhancer-radar`, `/capstone-radar`).
+
+---
+
 ## What This Skill Does
 
 Three things, in order:
 
-1. **Classify** every candidate finding on three axes: does it break user-visible behavior, is it correct code that is hard to read, or is it dead or unjustified code?
+1. **Classify** every candidate finding on three axes (with axis_3 splitting into two sub-labels, giving four total schema values — see § The Three Axes below): does it break user-visible behavior, is it correct code that is hard to read, or is it dead or unjustified code?
 2. **Verify** the classification against a checklist of concrete evidence checks before the finding can be emitted.
 3. **Coach** with a mandatory `better_approach` section that cites a real file:line pattern from the audited codebase (not generic advice).
 
@@ -229,10 +239,10 @@ findings:
 
 A finding is **REJECTED** (not emitted, returned to the radar for correction) if any of these apply:
 
-1. `axis` field is missing or not one of the four valid values
+1. `axis` field is missing or not one of the four valid schema values (`axis_1_bug`, `axis_2_scatter`, `axis_3_dead_code`, `axis_3_smelly`)
 2. `before_after_experience` is missing or any sub-field is empty
 3. `current_approach`, `suggested_fix`, or `better_approach` is missing or empty
-4. `better_approach` does not contain a file:line citation (format: `[A-Za-z0-9_/+.-]+\.swift:\d+`)
+4. `better_approach` does not contain a file:line citation (format: `[A-Za-z0-9_/+.-]+\.(swift|py|rb|ts|js|kt|java|m|mm|h|hpp|cpp|cc|c|go|rs|cs|php|scala|sql|yaml|yml|toml|json):\d+` — matches common source-file extensions across the languages the radar-suite audits, primarily Swift but including Python/Ruby/Node/Kotlin/Java for time-bomb-radar's multi-language detection patterns)
 5. `verification_log` is missing or does not contain a `pattern_citation_lookup` entry
 6. `better_approach_tradeoffs` is missing or does not contain both a "when to apply" and a "when not to apply" sentence
 
@@ -292,7 +302,7 @@ Before writing `better_approach` for any finding, the radar loads coaching examp
 1. **Check the target project for `.radar-suite/project.yaml`**
 2. **Read the `coaching_examples:` array** — e.g., `[stuffolio, generic]` or `[generic]`
 3. **Load each named file** in order from `skills/radar-suite-axis-classification/coaching-examples-<name>.md`
-4. **First citation match wins.** When deciding which pattern shape to cite, prefer the first loaded file that has a matching example. The Stuffolio overlay loaded first means Stuffolio-specific citations take priority when auditing Stuffolio; generic falls back when a pattern has no Stuffolio example.
+4. **First-loaded-file wins.** When deciding which pattern shape to cite, prefer the example from the earliest file in the `coaching_examples` load order that has a matching example. Within a single file, all matching examples are equally valid — the radar may choose any of them. The Stuffolio overlay loaded first means Stuffolio-specific citations take priority when auditing Stuffolio; generic falls back when a pattern has no Stuffolio example.
 
 **Example `.radar-suite/project.yaml` for Stuffolio:**
 ```yaml
@@ -362,24 +372,84 @@ This skill does not run as a standalone orchestrator. Each radar invokes it via 
      axis_2_scatter: 7
      axis_3_dead_code: 2
      axis_3_smelly: 4
-     rejected_no_citation: 3  # findings dropped at the gate for missing coaching
+     rejected_no_citation: 3  # findings emitted as "coaching incomplete" — visible in handoff at low confidence, NOT silently dropped (see Schema Gate Rules above)
    ```
-3. The `rejected_no_citation` count is visible so capstone knows the radar had candidate findings it could not coach.
+3. The `rejected_no_citation` count surfaces the gate's coaching failures so capstone knows N findings need follow-up coaching but were still emitted for visibility. These findings appear in the handoff with `confidence: possible` and a `coaching_incomplete: true` flag (or equivalent marker in the per-finding fields). They are NOT removed from the handoff — visibility beats silent drops.
+
+### Worked Example (a finding going through all 6 invocation steps)
+
+A radar grep flagged `try!` in `Sources/Managers/BackupManager.swift:142`. Here's what the radar does:
+
+**Step 1 — Classify.** `try!` in production code throws a fatal runtime error on failure. From the end-user's perspective, this is a crash risk. **Axis: `axis_1_bug`.**
+
+**Step 2 — Run required checks.**
+
+`pattern_citation_lookup` (always required): Grep the codebase for the proper async-throws pattern. Find `Sources/Managers/CSVManager.swift:89` which uses `do { try ... } catch { Logger.error(...) }` in the same shape (operation that can fail). Cite it.
+
+`reachability_trace` (required for axis_1 dead-end claims, NOT required here — this is a crash, not a dead-end). Skip.
+
+`whole_file_scan` (required for "missing handler" claims, NOT required here — this is a wrong-handler claim). Skip.
+
+`source_root_introspection` (always required when claiming a citation is absent or present): `Sources/` is the single source root for this project. Run the citation grep across the full root.
+
+**Step 3 — Load coaching examples.** Read `.radar-suite/project.yaml`:
+```yaml
+coaching_examples: [stuffolio, generic]
+```
+Load `coaching-examples-stuffolio.md` first, then `coaching-examples-generic.md` as fallback. Both files have "try!-in-production" examples; the Stuffolio one wins.
+
+**Step 4 — Write coaching.**
+- `current_approach`: "`BackupManager.swift:142` uses `try!` for `try! context.save()` inside the cleanup path. If save fails (disk full, schema mismatch, permission error), the app crashes via fatalError with no user feedback."
+- `suggested_fix`: "Replace `try!` with `do { try context.save() } catch { Logger.error(...); errorState = .saveFailed(error) }`. Surface `errorState` in the UI via the existing error banner pattern."
+- `better_approach`: "Follow the pattern at `Sources/Managers/CSVManager.swift:89` which uses do/catch + Logger.error + state propagation for the same shape (operation that can fail with user-visible consequences). Extract a shared `safeSave(_:)` helper if 3+ managers have this pattern."
+- `better_approach_tradeoffs`: "Apply when the operation has user-visible consequences and a recoverable failure mode (save, sync, export). Don't apply when the failure is genuinely unrecoverable (e.g., bundle resource missing) — in that case `precondition` or `fatalError` with a clear message is more honest than catching and ignoring."
+
+**Step 5 — Validate against schema gate.**
+- `axis: axis_1_bug` ✓
+- `before_after_experience.audience: end_user` ✓ (defaults from axis_1)
+- `before_after_experience.before: "App crashes silently when BackupManager save fails — user loses the active backup with no error message"` ✓
+- `before_after_experience.after: "App shows a 'Backup save failed' banner with retry button; user keeps the data and can recover"` ✓
+- `current_approach`, `suggested_fix`, `better_approach`, `better_approach_tradeoffs` all populated ✓
+- `better_approach` contains file:line citation matching regex (`Sources/Managers/CSVManager.swift:89` matches `[A-Za-z0-9_/+.-]+\.swift:\d+`) ✓
+- `verification_log` contains `pattern_citation_lookup` entry ✓
+
+Schema gate passes. Emit.
+
+**Step 6 — Emit.** Append to the radar's handoff YAML with full schema. The capstone reader will see this in the `Fix Before Shipping` section (axis_1) with the rating table.
+
+This example is one finding through one path. A radar processing N candidates runs steps 1-6 per candidate; the `axis_summary` block at the end aggregates the totals.
 
 ---
 
 ## What This Skill Does NOT Do
 
 - **It does not scan code directly.** Each radar scans; this skill provides the framework.
-- **It does not replace existing finding categories.** ui-path-radar's 30 issue categories still apply; each category gets an axis label on top.
+- **It does not replace existing finding categories.** ui-path-radar's 34 issue categories still apply; each category gets an axis label on top. (Category count is maintained in ui-path-radar's SKILL.md and may evolve — verify against that skill's Issue Categories table rather than hardcoding the count here.)
 - **It does not block findings from being emitted indefinitely.** If the gate rejects a finding, the radar can downgrade confidence and emit it as "coaching incomplete" rather than drop it.
-- **It does not change the 8-column rating table.** axis_1 findings still render with the existing rating table format. Hygiene findings use a simpler format (see capstone-radar integration).
+- **It does not change the rating table format.** axis_1 findings still render with the standard 9-column rating table defined in `radar-suite-core.md` (or capstone-radar's 10-column variant which adds a Source column for cross-skill aggregation). Hygiene findings (axis_2 and axis_3) use a simpler format without the rating table — see capstone-radar's Hygiene Backlog section for details.
 
 ---
 
 ## Reference Files
 
-- **`coaching-examples-generic.md`** — Anonymized worked examples for all 3 axes. Ships with the skill. Default fallback.
-- **`coaching-examples-stuffolio.md`** — Stuffolio-specific overlay with real file:line citations from the Stuffolio codebase. Loaded first when auditing Stuffolio.
+**Co-located with this skill** (`skills/radar-suite-axis-classification/`):
 
-Future projects with their own overlays: create `coaching-examples-<projectname>.md` in this skill's directory and reference it in the target project's `.radar-suite/project.yaml`.
+- **`coaching-examples-generic.md`** — Anonymized worked examples for all 3 axes. Ships with the skill. Default fallback when no project overlay exists.
+- **`coaching-examples-stuffolio.md`** — Stuffolio-specific overlay with real file:line citations from the Stuffolio codebase. Loaded first when auditing Stuffolio (per `.radar-suite/project.yaml` declaration in the Stuffolio repo).
+
+**In the audited project** (created per-project):
+
+- **`.radar-suite/project.yaml`** — Declares which coaching example overlays to load and in what order. Optional; defaults to `[generic]` when absent. Schema:
+  ```yaml
+  coaching_examples:
+    - <project-name>   # loads coaching-examples-<project-name>.md (must exist in this skill's directory)
+    - generic           # always include as fallback (recommended)
+  ```
+  See § Coaching Examples Loader above for the full load order and pattern-match precedence.
+
+**Adding a new project overlay:**
+
+1. Create `coaching-examples-<projectname>.md` in this skill's directory (e.g., `coaching-examples-mycompany.md`)
+2. Populate it with worked examples for all 3 axes using real file:line citations from the project's codebase
+3. In the target project, create `.radar-suite/project.yaml` listing `coaching_examples: [<projectname>, generic]`
+4. The next radar invocation will load the new overlay first, with generic as fallback
