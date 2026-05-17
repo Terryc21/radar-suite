@@ -1,7 +1,7 @@
 ---
 name: radar-suite
-description: 'Unified entry point for the 5-skill radar family. Routes to individual skills or runs full audit sequence. Triggers: "radar suite", "full audit", "run all radars", "/radar-suite".'
-version: 2.1.0  # 3-tier depth model (was 2.0.0)
+description: 'Unified entry point for the 6-skill radar family (5 companions + capstone). Routes to individual skills, runs targeted (Tier 2) or full (Tier 3) audit sequences, owns the unified ledger, and provides cross-skill operations (status, verify, ledger, link, deferred, fresh/no-fresh). Triggers: "radar suite", "full audit", "run all radars", "/radar-suite".'
+version: 3.0.0  # time-bomb integration + Fresh Scan Check + Stale-Deferred Check + Link command + Verify command + impact-based ledger filtering
 author: Terry Nyberg
 license: MIT
 inherits: radar-suite-core.md
@@ -63,6 +63,18 @@ inherits: radar-suite-core.md
 | **ui-enhancer-radar** | Visual UI audit with design intent interview | ~20-45 min |
 | **capstone-radar** | Aggregate grades, ship/no-ship decision | ~15-30 min |
 
+### Count vocabulary used throughout this spec
+
+To prevent ambiguity, this document uses three distinct counts:
+
+| Term | Meaning | Skills included |
+|------|---------|-----------------|
+| **5 companions** | The audit skills that capstone consumes | data-model + time-bomb + roundtrip + ui-path + ui-enhancer |
+| **6 skills** / **the family** | All audit + aggregation skills | 5 companions + capstone |
+| **2-5 skills** (used in `--skills` validation) | Subset accepted by Tier 2 routing | Any 2-5 of the 5 companions (capstone excluded — runs after) |
+
+Throughout the rest of this spec, references to "5 companions" or "5 skills" mean companion-only (audit skills before capstone aggregates them). References to "6 skills" mean the complete family. References to "5-skill" (without "companion") elsewhere in this document are historical drift and should read "6-skill" — see capstone-radar's matching framing.
+
 ---
 
 ## Session Setup (MANDATORY -- runs before anything else)
@@ -95,7 +107,23 @@ On EVERY `/radar-suite` invocation, check `.radar-suite/session-prefs.yaml`:
 - **No, let's go (Recommended)** -- Skip explanation
 - **Yes, briefly** -- 3-5 sentence explanation
 
-Store answers in `.radar-suite/session-prefs.yaml` as `experience_level`, `table_format`, `fix_mode`. See `radar-suite-core.md` for experience-level output rules.
+Store answers in `.radar-suite/session-prefs.yaml` as `experience_level`, `table_format`, `fix_mode` (3 of the 4 questions — Q4's explain toggle is a one-time per-session choice and is NOT persisted). The `fix_timing` key is added later by the Fix Timing section below (after the Interactive Menu); see § Fix Timing for its values. See `radar-suite-core.md` for experience-level output rules.
+
+#### session-prefs.yaml schema (consolidated reference)
+
+The full set of keys radar-suite writes to `.radar-suite/session-prefs.yaml`:
+
+| Key | Source | Values |
+|---|---|---|
+| `experience_level` | Q1 above | `beginner` / `intermediate` / `experienced` / `senior` |
+| `table_format` | Q2 above | `full` / `compact` / `none` |
+| `fix_mode` | Q3 above | `auto` / `review` / `batch` |
+| `fix_timing` | § Fix Timing below | `recommended` / `all_per_skill` / `all_after_capstone` |
+| `tier` | Menu routing / `--full` / `--skills` | `1` / `2` / `3` |
+| `tier_skills` | `--skills` invocation | Array of abbreviations (only when `tier: 2`) |
+| `dippy_check` | `radar-suite-core.md § Environment Pre-flight` | Object with `path_has_spaces`, `dippy_installed`, `checked_on` |
+| `last_skill` / `last_session` | Updated on session end | Skill name / ISO 8601 timestamp |
+| `accepted_risks` | User opt-in per finding | Array of RS-NNN IDs |
 
 ### Execution Order
 
@@ -137,6 +165,16 @@ type: feedback
 - If the file already exists, overwrite it (prefs may have changed)
 - Add an entry to MEMORY.md if not already present: `- [Radar Suite execution rules](radar_suite_execution_rules.md) -- auto-generated display and behavior rules`
 - Do NOT ask the user for permission to write this file; it is part of session setup
+
+---
+
+## State Read Protocols (meta-skill level)
+
+Radar-suite reads `.radar-suite/ledger.yaml` (Stale-Deferred Check, Ledger command, Verify command), `.radar-suite/known-intentional.yaml` (Fresh Scan Check), and `.radar-suite/{skill}-handoff.yaml` files (Status command, Tier 3 pipeline orchestration) but **does NOT itself scan source code or generate findings**. The Known-Intentional Suppression and Pattern Reintroduction Detection protocols from `radar-suite-core.md` apply within each invoked companion skill, not at the meta-orchestrator level.
+
+The meta-skill's one cross-session integrity check is the **Stale-Deferred Check** below, which fires on every invocation regardless of which command follows.
+
+The meta-skill's one state-mutation operation outside delegated skill runs is the **Fresh Scan Check** (archive `ledger.yaml` + `known-intentional.yaml`). All other state changes happen inside the delegated companion skills.
 
 ---
 
@@ -186,7 +224,7 @@ Before starting any audit, ask the user when fixes should be applied. Use `AskUs
 |--------|-------------|
 | **Fix recommended after each skill (Recommended)** | After each skill completes, fix findings that are high urgency + low effort + small blast radius. Defer the rest to a post-capstone fix session. Best balance of momentum and thoroughness. |
 | **Fix all after each skill** | Fix every finding before moving to the next skill. Thorough but slower — you may fix issues that capstone would deprioritize. |
-| **Fix all after capstone** | Run all 5 skills first for the complete picture, then fix everything in one focused session using the capstone report as a punch list. Fastest audit but largest fix backlog. |
+| **Fix all after capstone** | Run all 5 companion skills first (data-model, time-bomb, roundtrip, ui-path, ui-enhancer) for the complete picture, then run capstone-radar to aggregate, then fix everything in one focused session using the capstone report as a punch list. Fastest audit but largest fix backlog. |
 
 ### Fix-Now Recommendation Logic
 
@@ -447,7 +485,7 @@ Options:
 When `--skills` is provided:
 
 1. Parse comma-separated abbreviations using the table in `radar-suite-core.md` (dmr, tbr, rtr, upr, uer).
-2. Validate: must be 2-5 skills. If 1, redirect to Tier 1 with a note. If all 5, auto-upgrade to Tier 3.
+2. Validate: must be 2-5 skills. If 1, redirect to Tier 1 with a note. If all 5, auto-upgrade to Tier 3. **`--skills` accepts only the 5 companion skills**; capstone-radar is the aggregator and runs automatically at the end of Tier 3 (via `--full`) or standalone via menu option 9. Attempting to include capstone in `--skills` returns: `"capstone-radar runs after the companion skills; use --full for the complete pipeline or invoke capstone standalone via menu option 9."`
 3. Set `tier: 2` and `tier_skills: [abbreviations]` in `.radar-suite/session-prefs.yaml`.
 4. Execute in standard pipeline order (dmr, tbr, rtr, upr, uer) regardless of argument order.
 5. Write handoff YAMLs between skills. Each skill reads handoffs from prior skills in the subset.
@@ -477,7 +515,7 @@ When `--scope [path]` is provided, restrict all skill scans to files within the 
 
 Triggered by `/radar-suite --full`, `/radar-suite full`, or menu option 8. Sets `tier: 3` in session prefs.
 
-Execute skills in this order:
+Execute the 6 skills in this order:
 
 1. **data-model-radar** -- Foundation layer, feeds model/relationship info to others
 2. **time-bomb-radar** -- Uses data-model findings to check deferred operations on aged data
@@ -485,7 +523,8 @@ Execute skills in this order:
 4. **ui-path-radar** -- Navigation audit, independent of data layer
 5. **ui-enhancer-radar** -- Visual audit, runs on specific views
 6. **capstone-radar** -- Aggregates all findings, produces final grade
-7. **Post-capstone fix session** -- Fix deferred findings from all skills (see Fix Timing above)
+
+After step 6 completes, run the **Post-Capstone Fix Session** (see § Fix Timing above for the workflow). This is a phase, not a skill — it operates on findings already discovered by steps 1-6 and is governed by the `fix_timing` preference (`recommended` / `all_per_skill` / `all_after_capstone`). Findings deferred from per-skill fixes during the audit are presented here as a unified backlog.
 
 ### Tier 3 Pipeline UX (MANDATORY)
 
@@ -515,6 +554,7 @@ Fix timing: Fix recommended after each skill
 | Skill | Last Run | Findings | Fixed | Deferred |
 |-------|----------|----------|-------|----------|
 | data-model-radar | 2 days ago | 12 | 10 | 2 |
+| time-bomb-radar | 2 days ago | 3 | 2 | 1 |
 | roundtrip-radar | 2 days ago | 8 | 6 | 2 |
 | ui-path-radar | not run | — | — | — |
 | ui-enhancer-radar | not run | — | — | — |
