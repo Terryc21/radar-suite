@@ -8,8 +8,6 @@ Use Radar Suite **alongside** your existing linter / SwiftLint / pattern-based a
 
 Built while shipping [Stuffolio](https://stuffolio.app) (Universal iOS/iPadOS/macOS app, currently build 33). Free, open source, Apache 2.0.
 
-> **New to Claude Code skills?** Start with [README-newer-dev.md](README-newer-dev.md) for a gentler walk-through. The doc below assumes you already work with Claude Code daily.
-
 ## TL;DR
 
 - **What:** 8 skills (6 domain auditors + a router + a foundation skill) that trace behavior across files to find a class of Swift bugs that lives in handoffs between files (data flow, navigation reachability, round-trip integrity).
@@ -54,7 +52,7 @@ Eight skills total: six domain auditors, a router that orchestrates them, and a 
 | `ui-enhancer-radar` | Visual quality. 13 domains including iPad sheet sizing (audits caller-side `.sheet(...)` for missing `.presentationSizing(.page)` / `.presentationDetents([.large])` / project convenience modifiers), Button hit region (three-factor detector for `.buttonStyle(.plain)` + trailing chevron + Form/List context — the combination that collapses tap targets on iPad), color contrast, spacing, typography. |
 | `capstone-radar` | Aggregates findings from the others into a two-section report: "Fix Before Shipping" (release-blocking; A-F grade) and "Hygiene Backlog" (everything else; doesn't affect grade). Tracks velocity over time and celebrates fixes between runs. |
 | `radar-suite` | Router. Invokes individual skills, runs targeted pipelines (`--changed` selects skills from your git diff), or runs the full sweep (`--full`). |
-| `axis-classification` (foundation) | Runs implicitly before findings are emitted. Enforces the verification checklist (reachability trace, whole-file scan, branch enumeration, pattern citation lookup), the schema gate (rejects findings without file:line citations), and the 3-axis classification framework. You don't invoke it directly. Documented in [README-v2-detailed.md](README-v2-detailed.md) for readers who want the spec. |
+| `axis-classification` (foundation) | Runs implicitly before findings are emitted. Enforces the verification checklist (reachability trace, whole-file scan, branch enumeration, pattern citation lookup), the schema gate (rejects findings without file:line citations), and the 3-axis classification framework. You don't invoke it directly. |
 
 ## Install
 
@@ -78,7 +76,7 @@ After installing, try:
 
 This runs one skill on a narrow scope. Should finish in ~5 minutes and give you a real report to look at — small enough commitment to evaluate whether Radar Suite is worth a bigger run.
 
-The plugin manifest at `.claude-plugin/plugin.json` is the single source of truth for which skills ship; `.claude-plugin/verify-manifest.sh` detects drift between manifest and disk. If you cloned this repo and ran `./install.sh` between 2026-03-24 and 2026-04-10, your install was silently incomplete — re-run `install.sh` or switch to the plugin path. Details in [README-v2-detailed.md](README-v2-detailed.md#installed-between-2026-03-24-and-2026-04-10-re-run-installsh-or-switch-to-the-plugin).
+The plugin manifest at `.claude-plugin/plugin.json` is the single source of truth for which skills ship; `.claude-plugin/verify-manifest.sh` detects drift between manifest and disk. If you cloned this repo and ran `./install.sh` between 2026-03-24 and 2026-04-10, your install was silently incomplete — re-run `install.sh` or switch to the plugin path.
 
 ## Cost-aware run strategy
 
@@ -106,8 +104,6 @@ Three tiers, in order of token cost:
 **Cost-lowering strategies** (apply to any tier):
 - **Scope to a directory:** `/radar-suite ui-path --scope Sources/Features/Auth/` — skill reads only files under that path.
 - **Resume from checkpoint:** audits checkpoint after each phase; an interrupted session resumes from the last checkpoint rather than restarting.
-
-Detailed scoping for monorepos and modular codebases: [README-v2-detailed.md](README-v2-detailed.md#scoping-audits-to-specific-areas).
 
 ## Output format
 
@@ -177,13 +173,6 @@ That's the entire requirements list.
 ```
 
 Radar Suite is updated regularly; check the [CHANGELOG](CHANGELOG.md) before a release-blocking audit. Bug reports and false-positive flags help calibrate the next release.
-
-## Deeper documentation
-
-Two longer docs:
-
-- [README-v2-detailed.md](README-v2-detailed.md) — full reference: 3-axis classification spec, schema gate behavior, scoping strategies for monorepos, run-order recommendations, release history per skill (v2.0 → v2.3), and the design philosophy behind each radar's domain selection.
-- [README-newer-dev.md](README-newer-dev.md) — gentler walk-through for readers new to Claude Code skills and audit tooling. "What is a skill, here's a small first run" framing.
 
 ## License
 
