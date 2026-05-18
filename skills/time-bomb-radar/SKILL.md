@@ -475,6 +475,30 @@ guard let warranty = item.warranty,
 if expiration < Date() { ... }
 ```
 
+### Worked example: rolling-window counter with no per-incident timestamps
+
+A subtler shape of this pattern: the date threshold *should* shift a counter, but the data model has no way to represent the underlying events, so the threshold can never fire. The counter is correct on day 1 and silently wrong after the window passes.
+
+**Finding (RS-W11 — Monthly AppleCare 24-month rolling window has no per-incident timestamps)**
+
+| # | Finding | Urgency | Risk: Fix | Risk: No Fix | ROI | Blast Radius | Fix Effort |
+|---|---|---|---|---|---|---|---|
+| RS-W11 | Rolling 24-month ADH cap cannot decay because incident dates aren't stored | 🟡 HIGH | ⚪ Low | 🟡 High | 🟠 Excellent | 🟢 2 files | Small (option b) / Large (option a) |
+
+**Why it's a time bomb:** `ItemEnums.swift:1035` declares `AppleCarePlanType.monthlyRolling` ADH cap as `.rolling(months: 24, max: 2)`, but the stored counter `screenRepairsUsed: Int` is a scalar — there's no array of incident dates. `ExtendedWarranty.swift:269-272` already names the gap in a doc comment: *"The rolling-window math is best-effort without per-incident timestamps: the stored \*Used count is treated as in-window. This is honest enough for users on a single Monthly plan; users with multi-year history should be advised that the count is approximate."*
+
+A user on a 5-year-old Monthly plan with 4 historical screen repairs across that span sees *"4 used, 0 remaining"* forever, even though their first two incidents are outside the rolling 24-month window and should have decayed. The doc comment acknowledges this; no UI surfaces the warning to the user.
+
+**Why it passes tests:** Test fixtures use a fresh plan with 0–2 historical incidents. The window never has anything to decay. The bug is invisible until production data accrues a third or fourth incident, which by definition takes months to years.
+
+**Fix:**
+- **(a) Large** — Add per-incident timestamps as a new `[IncidentRecord]` array on `ExtendedWarranty` (Bucket A migration: new relationship to a new `@Model`). Have `remainingADH` filter by `Date() - 24 months`.
+- **(b) Small** — Surface a UI note for `monthlyRolling` rows: *"Counter does not auto-decay — manually reset when oldest incident is more than 24 months old."* Acknowledges the limitation the doc comment already names.
+
+Option (b) is the smaller fix and ships the warning the code already knows it owes the user. Option (a) is the correct long-term fix; defer it behind a migration spike.
+
+**Cite:** `Sources/Models/ExtendedWarranty.swift:269-291`, `Sources/Models/ItemEnums.swift:1035`.
+
 ---
 
 ## Pattern 6: Scheduled side effects from aged data
