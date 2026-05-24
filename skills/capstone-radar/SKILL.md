@@ -1113,6 +1113,27 @@ After writing the handoff YAML, also write findings to `.radar-suite/ledger.yaml
 - Capstone updates `impact_category` if its cross-skill view reveals a more accurate classification
 - Capstone does NOT overwrite companion skill findings -- it only adds or updates
 
+### Bug-Echo Handoff Prompt (Open → Fixed transitions)
+
+After writing the ledger, capstone walks each finding whose status changed from `open` to `fixed` during this session and applies the Bug-Echo Handoff protocol from `radar-suite-core.md`. Summary of the per-transition decision:
+
+1. Read finding's `pathway` field.
+   - Empty → set `bug_echo_status: none`, skip prompt.
+   - Non-empty → continue.
+2. Check session flag `bug_echo_suppress_session` in `.radar-suite/session-prefs.yaml`.
+   - True → set `bug_echo_status: suppressed`, skip prompt.
+   - False → emit prompt (see core spec for exact format).
+3. On user response:
+   - **Yes:** print manual invocation hint with seed (RS-NNN + pathway + fix-site). Set `bug_echo_status: pending`. When user returns results, write `echo_result` and update `bug_echo_status: completed`. Render `**Echo:** <result>` in the Detail block of the impact-organized report.
+   - **No:** set `bug_echo_status: declined`. Render `**Echo:** declined` in Detail block.
+   - **Skip all:** set session flag `bug_echo_suppress_session: true`. Set this finding's `bug_echo_status: suppressed`. Subsequent Fixed transitions this session skip silently.
+
+**When to walk Fixed transitions:** Capstone walks them at Step 10 (Output + Follow-up), after the ledger write completes and after the impact-organized report is rendered. This ensures the prompts come after the user has seen the grade and report — not interleaved with grading output.
+
+**Findings already at `completed`/`declined`/`none`/`suppressed`:** Skip. The protocol fires once per Open → Fixed transition.
+
+**Pathway-empty findings:** Companion radars are responsible for filling `pathway` at finding-emission time (see "Discipline" subsection in core spec). Capstone does NOT backfill missing pathways — that would require capstone to understand each domain's anti-pattern shapes, which it does not.
+
 ### Follow-up Options
 
 After presenting the report, offer:

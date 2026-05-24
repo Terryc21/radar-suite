@@ -51,6 +51,7 @@ inherits: radar-suite-core.md
 | `/radar-suite link RS-NNN --root-cause-of RS-NNN [RS-NNN...]` | Link findings as root cause/symptom |
 | `/radar-suite link RS-NNN --duplicate-of RS-NNN` | Mark finding as duplicate |
 | `/radar-suite link RS-NNN --supersedes RS-NNN` | Mark finding as superseding another |
+| `/radar-suite bug-echo RS-NNN` | Manually trigger the Bug-Echo Handoff prompt for a finding (bypasses Open→Fixed gate). See Bug-Echo Handoff in `radar-suite-core.md`. |
 
 ## Available Skills
 

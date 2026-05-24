@@ -824,6 +824,22 @@ findings:
     fix_applied: [description of fix if status=fixed]
     test_added: [test file path if applicable]
 
+    # Bug-echo handoff fields (optional — see Bug-Echo Handoff section)
+    pathway: [one-line string identifying the anti-pattern shape, e.g.
+              "worker endpoint /ai/identify, AIVideoResponse JSON shape" or
+              "missing [weak self] in Task closures within ViewModels".
+              Omit when finding is structural (test coverage, dead end, naming).
+              Used by capstone to decide whether to prompt a bug-echo sweep.]
+    bug_echo_status: pending|completed|declined|none|suppressed
+                     # pending: pathway present, not yet prompted
+                     # completed: bug-echo run, results in echo_result
+                     # declined: user said no at Fixed-transition prompt
+                     # none: no pathway (structural finding)
+                     # suppressed: skip-all-session was active when Fixed transition occurred
+    echo_result: [free-form string written by capstone after bug-echo runs,
+                  e.g. "2 siblings fixed at File.swift:120, Other.swift:45"
+                  or "no siblings found" or "declined"]
+
     # ========================================================================
     # AXIS CLASSIFICATION FIELDS (MANDATORY as of v1.1)
     # See skills/radar-suite-axis-classification/SKILL.md for full spec
@@ -911,6 +927,102 @@ Both scales may coexist in the same handoff. Capstone splits by `axis`, not by s
 3. ui-path-radar → ui-enhancer-radar: Pass dead-end views for visual audit
 4. All → capstone-radar: Pass `overall_grade` AND `axis_summary` for aggregation
 5. All → capstone-radar: Pass `checks_performed` for audit-coverage reporting
+
+---
+
+## Bug-Echo Handoff (cross-skill nudge)
+
+When a finding moves from `status: open` to `status: fixed` in the ledger, the fix may have siblings — other instances of the same anti-pattern elsewhere in the codebase. The bug-echo skill (separate repo: `Terryc21/bug-echo`) is designed for exactly this sweep. This section defines how radar-suite *prompts* the user to run bug-echo at the right moment, without invoking bug-echo programmatically.
+
+**Why a handoff and not direct invocation:** bug-echo's contract is reactive — it accepts a seed bug, infers the anti-pattern, validates against the pre-fix file, and scans for siblings. The seed shape is still settling; programmatic integration would lock in a contract we haven't stress-tested. The handoff is a workflow nudge: capstone prompts at Fixed-transition, the user runs `/skill bug-echo` manually, results are annotated back into the ledger.
+
+### The Pathway Gate
+
+A finding has *pathway shape* if the user can name ONE of:
+
+1. A worker endpoint, prompt template, or response JSON shape (AI Backend bugs)
+2. A SwiftData `@Model` property or relationship (data-model bugs)
+3. A fix-site code pattern that generalizes (e.g., "missing `[weak self]` in Task closures within ViewModels", "`try?` swallowing in error paths")
+4. A UI component type with a defined fix recipe (e.g., "Toolbar Done buttons on iOS-only", "Sheet without `.iPadPageSheet()`")
+
+A finding does NOT have pathway shape if it is:
+
+1. "Missing test coverage for X" — no pattern, just a coverage gap
+2. "This UI flow has a dead end" — structural, not a code pattern
+3. "Naming is inconsistent" — convention, not anti-pattern
+4. "Feature is undocumented" — meta, not code
+
+**Discipline (MANDATORY for all 5 companion radars):** At finding-emission time (not at Fixed time), fill the `pathway` field if and only if the finding meets the yes-shape criteria above. Leave empty for structural findings. The auditor who created the finding knows the shape; the auditor who marks it Fixed weeks later does not. Filling `pathway` at Open-time is load-bearing.
+
+### Capstone Prompt Trigger
+
+Capstone-radar owns the prompt. When capstone observes a finding move from `status: open` to `status: fixed` (during its own Fixed transitions in Step 10, or when consuming a companion handoff that contains a Fixed transition):
+
+1. Read the finding's `pathway` field.
+2. If `pathway` is empty: set `bug_echo_status: none`. Continue.
+3. If `pathway` is non-empty AND `bug_echo_status` is unset/`pending`:
+   - Check session state for `bug_echo_suppress_session` flag.
+   - If suppressed: set `bug_echo_status: suppressed`. Continue.
+   - Otherwise: emit the prompt below.
+4. If `bug_echo_status` is already `completed`/`declined`/`none`/`suppressed`: skip (this finding has been handled).
+
+**Prompt format:**
+
+```
+RS-NNN (short_title) — moved to Fixed
+
+  Pathway: <pathway field text>
+
+  Run bug-echo to scan for siblings?
+  1. Yes — describe how to invoke bug-echo with this seed
+  2. No — log decline
+  3. Skip all bug-echo prompts this session
+```
+
+**Response handling:**
+
+- **1 (Yes):** Print the manual invocation hint:
+  ```
+  Run: /skill bug-echo
+  Seed: RS-NNN
+  Pathway: <pathway field text>
+  Fix-site: <file:line from finding>
+
+  When bug-echo finishes, return the result line and I'll annotate RS-NNN.
+  ```
+  Set `bug_echo_status: pending` (waiting for user to paste results).
+  When the user returns with results, write to `echo_result` and update `bug_echo_status: completed`. Also write a `**Echo:** <result>` line to the finding's Detail block in any rendered table.
+
+- **2 (No):** Set `bug_echo_status: declined`. Write `**Echo:** declined` to Detail block. Continue.
+
+- **3 (Skip all):** Set session flag `bug_echo_suppress_session: true` in `.radar-suite/session-prefs.yaml` (not persisted across sessions — resets next radar-suite invocation). Set this finding's `bug_echo_status: suppressed`. All subsequent Fixed transitions in this session skip the prompt silently.
+
+### Detail Block Rendering
+
+When capstone (or any radar) renders a finding's Detail block, include these lines when present:
+
+```
+**Pathway:** worker endpoint /ai/identify, AIVideoResponse JSON shape
+**Echo:** 2 siblings fixed at File.swift:120, Other.swift:45
+```
+
+Omit both lines when their fields are empty. The `**Echo:**` line replaces an inline Status-column annotation (the Status column stays at `Fixed`, the echo provenance lives in Detail).
+
+### Manual Trigger
+
+Users can manually trigger the bug-echo prompt for any finding via the suite-level command:
+
+```
+/radar-suite bug-echo RS-NNN
+```
+
+This bypasses the Fixed-transition gate (works on findings still Open, or on findings where `bug_echo_status` was previously `declined`/`suppressed`). Useful when the user realizes after the fact that a finding warrants a sibling sweep.
+
+### What this section does NOT do
+
+- It does NOT invoke bug-echo programmatically. The user runs `/skill bug-echo` themselves.
+- It does NOT define bug-echo's own contract (seed shape, output format). Those live in the bug-echo repo.
+- It does NOT block status transitions. A user who declines bug-echo still has a Fixed finding; nothing is gated on echo results.
 
 ---
 
