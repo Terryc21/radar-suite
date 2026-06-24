@@ -14,6 +14,7 @@ Built while shipping [Stuffolio](https://stuffolio.app) (Universal iOS/iPadOS/ma
 - **Why:** Linters find single-file pattern bugs efficiently. Radar Suite finds cross-file behavior bugs that don't show up in any one file. **Both belong in a thorough audit; neither replaces the other.**
 - **Install:** Two `/plugin` commands in Claude Code; then `/radar-suite` is available in any project.
 - **Try first:** `/radar-suite ui-enhancer --scope <small directory>` — ~5 min, one report to look at.
+- **Worked examples:** [anonymized before/after findings](skills/radar-suite-axis-classification/coaching-examples-generic.md) — what a finding looks like, with the full schema (axis, audience, before/after, suggested fix, tradeoffs, verification log).
 - **Honest limits:** [What it can't catch](#honest-limits) section enumerates structural blind spots.
 - **Maturity:** v2.1.1 shipped; used through real App Store submission cycles on a 600-file Swift codebase; CHANGELOG tracks every release.
 
