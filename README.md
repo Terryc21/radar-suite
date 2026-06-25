@@ -6,7 +6,7 @@
 
 Use Radar Suite **alongside** your existing linter / SwiftLint / pattern-based audits — they find different things. A thorough pre-release audit runs both. See [What Radar Suite is for vs what linters are for](#what-radar-suite-is-for-vs-what-linters-are-for).
 
-Built while shipping [Stuffolio](https://stuffolio.app) (Universal iOS/iPadOS/macOS app, currently build 33). Free, open source, Apache 2.0.
+Built while shipping [Stuffolio](https://stuffolio.app) (Universal iOS/iPadOS/macOS app), through real App Store submission cycles. radar-suite itself is free, open source, Apache 2.0.
 
 ## TL;DR
 
