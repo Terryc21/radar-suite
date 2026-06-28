@@ -1,7 +1,7 @@
 ---
 name: ui-enhancer-radar
-description: 'Systematic iOS/SwiftUI UI audit with design intent interview, 13-domain analysis (including Color Audit with adaptive Color Profile, iPad Sheet Sizing caller-side audit, and Button Hit Region three-factor interaction audit), element compaction, cross-view consistency checks, layout reorganization, design-aware push-back, App Store guardrails, and incremental apply with revert safety. Run /ui-enhancer-radar help for all commands. Triggers: "enhance this UI", "ui enhancer radar", "improve this view", "screen review", "ux audit", "ipad sheet truncation", "button not tappable on iPad".'
-version: 3.4.0  # Color Audit (Domain 11) + iPad sheet sizing (12) + button hit region (13) + visual inspection gate + App Store guardrails + view profile + refinement loop + cross-view consistency
+description: 'Systematic iOS/SwiftUI UI audit with design intent interview, 14-domain analysis (including Color Audit with adaptive Color Profile, iPad Sheet Sizing caller-side audit, Button Hit Region three-factor interaction audit, and Silent Picker menu-presentation audit), element compaction, cross-view consistency checks, layout reorganization, design-aware push-back, App Store guardrails, and incremental apply with revert safety. Run /ui-enhancer-radar help for all commands. Triggers: "enhance this UI", "ui enhancer radar", "improve this view", "screen review", "ux audit", "ipad sheet truncation", "button not tappable on iPad", "picker does nothing".'
+version: 3.6.0  # Domain 9 externalized to reference/ (proof-of-pattern for inline-domain migration) + Color Audit (11) + iPad sheet sizing (12) + button hit region (13) + silent picker (14) + visual inspection gate + App Store guardrails + view profile + refinement loop + cross-view consistency
 author: Terry Nyberg
 license: MIT
 allowed-tools: [Read, Grep, Glob, Bash, Write, Edit, AskUserQuestion]
@@ -13,7 +13,7 @@ metadata:
 
 # UI Enhancer Radar
 
-> **Quick Ref:** Screenshot + code analysis of any iOS/SwiftUI view. Design intent interview (sacred elements, aggressiveness), 13-domain analysis with layout reorganization, Color Audit (adaptive Color Profile), iPad Sheet Sizing caller-side audit, and Button Hit Region three-factor audit, element compaction (compact vs remove vs keep), cross-view consistency checks, design-aware refinement with push-back and App Store guardrails, incremental apply with revert safety (git or file backup), visual verification guidance, and files-changed summary.
+> **Quick Ref:** Screenshot + code analysis of any iOS/SwiftUI view. Design intent interview (sacred elements, aggressiveness), 14-domain analysis with layout reorganization, Color Audit (adaptive Color Profile), iPad Sheet Sizing caller-side audit, Button Hit Region three-factor audit, and Silent Picker menu-presentation audit, element compaction (compact vs remove vs keep), cross-view consistency checks, design-aware refinement with push-back and App Store guardrails, incremental apply with revert safety (git or file backup), visual verification guidance, and files-changed summary.
 
 <ui-enhancer-radar>
 
@@ -38,6 +38,7 @@ You are performing a systematic UI enhancement on a specific iOS/SwiftUI view, a
 | `/ui-enhancer-radar color` | Color audit only (inventory, flatness, consistency) |
 | `/ui-enhancer-radar ipad-sheets` | iPad sheet sizing audit only (caller-side `.sheet()` check) |
 | `/ui-enhancer-radar hit-region` | Button hit region audit only (three-factor: .plain + Form/List + trailing chevron) |
+| `/ui-enhancer-radar silent-picker` | Silent Picker audit only (menu Picker, no .pickerStyle, custom non-Form container) |
 | `/ui-enhancer-radar compare` | Compare before/after screenshots for progress |
 | `/ui-enhancer-radar revert` | Undo all changes back to last checkpoint |
 | `/ui-enhancer-radar batch [path]` | Audit all views in a directory, rank by severity |
@@ -58,7 +59,7 @@ You are performing a systematic UI enhancement on a specific iOS/SwiftUI view, a
 UI Enhancer — Available Commands
 
 FULL AUDIT
-  /ui-enhancer-radar              Full 13-domain audit with interview
+  /ui-enhancer-radar              Full 14-domain audit with interview
 
 SINGLE DOMAIN (skip interview, run one domain)
   /ui-enhancer-radar space        Space efficiency analysis
@@ -129,13 +130,13 @@ Store as: `USER_EXPERIENCE`, `FIX_MODE`, `PRESENCE_MODE`. Apply to ALL output fo
 
 **Experience-adapted explanations for UI Enhancer:**
 
-- **Beginner**: "UI Enhancer is like having a professional designer review every screen in your app. It checks 13 different things — spacing, colors, accessibility, layout efficiency, iPad sheet sizing, button hit regions, and more — then suggests specific improvements. It won't just say 'this looks wrong'; it'll show you exactly what to change and why. It works one view at a time, applying changes incrementally so you can undo anything."
+- **Beginner**: "UI Enhancer is like having a professional designer review every screen in your app. It checks 14 different things — spacing, colors, accessibility, layout efficiency, iPad sheet sizing, button hit regions, and more — then suggests specific improvements. It won't just say 'this looks wrong'; it'll show you exactly what to change and why. It works one view at a time, applying changes incrementally so you can undo anything."
 
-- **Intermediate**: "UI Enhancer performs a 13-domain analysis of SwiftUI views: layout, spacing, color accessibility, typography, element compaction, cross-view consistency, iPad sheet sizing, button hit regions, and more. It interviews you about design intent first, then audits against Apple HIG and your app's design system. Changes are applied incrementally with revert safety."
+- **Intermediate**: "UI Enhancer performs a 14-domain analysis of SwiftUI views: layout, spacing, color accessibility, typography, element compaction, cross-view consistency, iPad sheet sizing, button hit regions, and more. It interviews you about design intent first, then audits against Apple HIG and your app's design system. Changes are applied incrementally with revert safety."
 
-- **Experienced**: "13-domain SwiftUI UI audit with design intent interview, adaptive color profiles, element compaction, cross-view consistency checks, iPad sheet sizing caller-side audit, button hit region three-factor audit, layout reorganization, App Store guardrails, and incremental apply with revert safety. Run `/ui-enhancer-radar help` for the full command list."
+- **Experienced**: "14-domain SwiftUI UI audit with design intent interview, adaptive color profiles, element compaction, cross-view consistency checks, iPad sheet sizing caller-side audit, button hit region three-factor audit, silent picker menu-presentation audit, layout reorganization, App Store guardrails, and incremental apply with revert safety. Run `/ui-enhancer-radar help` for the full command list."
 
-- **Senior/Expert**: "13-domain view audit: layout, color, typography, spacing, compaction, consistency, accessibility, iPad sheet sizing, button hit region. Interview → analyze → apply incrementally."
+- **Senior/Expert**: "14-domain view audit: layout, color, typography, spacing, compaction, consistency, accessibility, iPad sheet sizing, button hit region, silent picker. Interview → analyze → apply incrementally."
 
 Store the experience level as `USER_EXPERIENCE` and apply to ALL output for the session.
 
@@ -185,7 +186,7 @@ questions:
     "question": "Which aspects matter most right now?",
     "header": "Priority",
     "options": [
-      {"label": "All domains (Recommended)", "description": "Full 13-domain analysis"},
+      {"label": "All domains (Recommended)", "description": "Full 14-domain analysis"},
       {"label": "Visual \u2014 layout and hierarchy", "description": "Space, visual weight, information density"},
       {"label": "Interaction \u2014 usability", "description": "Touch targets, discoverability, feedback"},
       {"label": "Technical \u2014 performance and compliance", "description": "Dark mode, perf, HIG, design system"}
@@ -316,7 +317,7 @@ The aggressiveness setting affects all findings throughout the audit:
 | **Aggressive** | Minimize to HIG minimum | Remove unless `[PRESERVE]` | Remove | Remove |
 
 The interview determines:
-- Which domains to run (all 13, or a focused subset)
+- Which domains to run (all 14, or a focused subset)
 - Severity weighting (user-reported problems get Critical minimum)
 - Whether to include competitive comparison
 - Which elements are sacred (`[PRESERVE]` tag)
@@ -473,6 +474,7 @@ Before grading a view, produce this checklist showing what was actually inspecte
 | 11. Color Audit | ? | (file:line) | |
 | 12. iPad Sheet Sizing | ? | (file:line) | |
 | 13. Button Hit Region | ? | (file:line) | |
+| 14. Silent Picker | ? | (file:line) | (candidates — verify on device) |
 ```
 
 Rules:
@@ -777,133 +779,30 @@ grep -n "accessibilityReduceMotion" <view_file>.swift
 
 ### Domain 9: Design System Compliance `enumerate-required`
 
-**Goal:** The view should follow the project's established design system.
+**Goal:** The view should follow the project's established design system. Compare it against the project's documented rules and flag both off-pattern usage (custom UI where a standard component/modifier exists, off-palette colors, non-`@ScaledMetric` icons, sheets not using `SheetContainer`) AND missing-for-consistency gaps (a feature most sibling views enable but this one doesn't).
 
-**How it works:**
-1. Read `CLAUDE.md` for project-level design rules
-2. Read any design system files (`DESIGN_SYSTEM.md`, `StuffolioStyleGuide.swift`, etc.)
-3. Compare the view against documented patterns
+**Why this is project-specific:** Domain 9 has no fixed ruleset — its rules ARE the project's design system. With no design-system source (`conventions.yaml` / `CLAUDE.md` rules / `DESIGN_SYSTEM.md` / style guide), it skips entirely and recommends establishing one. It never invents rules.
 
-| Check | What to Look For | Common Fix |
-|-------|-----------------|------------|
-| Color palette | Colors outside the approved palette | Replace with design system colors |
-| Spacing values | Non-standard spacing/padding | Use `Spacing.*` constants |
-| Component usage | Custom components where standard ones exist | Replace with `SheetHeader`, `SemanticIconCircle`, etc. |
-| Card styles | Cards not using `.stuffolioCard()` or `.actionCard()` | Apply standard modifiers |
-| Icon style | Inconsistent icon rendering or sizing | Use `@ScaledMetric` and standard patterns |
-| Section structure | Sections not using `CollapsibleSection` | Adopt standard section component |
-| Sheet pattern | Sheets not using `SheetContainer` + `SheetHeader` | Apply standard sheet pattern |
-| **Unused component capabilities** | Custom UI that duplicates a feature already available in a shared component | Enable the existing parameter instead of building separate UI |
+**Reference:** `references/domain-9-design-system-compliance.md` — full checks 9a–9e, unused-capability check, cross-view consistency pass, finding format, exclusions, acceptance criteria, synthetic fixture.
 
-**Unused capability check (run for every view):**
+**Detection steps (summary — full bodies in the reference):**
 
-When the view uses a shared component (e.g., `ContentIllustratedHeader`, `SheetHeader`, `CompactSheetHeader`), read that component's `init` parameters. If the component supports a feature via a parameter that the view isn't using — but the view builds separate custom UI for the same feature — flag it:
+1. Read the design-system source (config → docs). If none exists, skip with a single "no design system found" note.
+2. **9a** color palette — flag colors outside the approved palette.
+3. **9b** component usage — custom header/container UI where a shared component exists.
+4. **9c** modifier usage — card-like UI without `.stuffolioCard()` / `.actionCard()`.
+5. **9d** sheet pattern — sheets not using `SheetContainer` + `SheetHeader`.
+6. **9e** icon sizing — fixed icon frames without `@ScaledMetric`.
+7. **Unused-capability check** — view builds custom UI for a feature a shared component already exposes via a parameter → enable the parameter, delete the custom UI.
+8. **Cross-view consistency** — using the Adaptive View Profile, flag features most sibling views enable that this view lacks; always framed as a recommendation with a skip option.
 
-> "[ComponentName] already supports [feature] via `parameterName: true`, but this view builds a separate [custom element] instead. Enable the parameter and remove the custom UI."
+**Project-convention awareness:** sources rules from `.radar-suite/conventions.yaml` (`approved_palette`, `spacing_namespace`, `card_modifiers`, `sheet_container`, `shared_components`) if present, else greps `CLAUDE.md` / `DESIGN_SYSTEM.md` / `Sources/Views/Components/`. No source → skip the domain.
 
-**How to check:**
-1. Identify shared components used in the view (headers, containers, cards)
-2. Read each component's `init` signature — look for `Bool` parameters defaulting to `false`, optional closures defaulting to `nil`
-3. Compare unused parameters against custom UI in the view that serves the same purpose
-4. If there's a match, recommend enabling the parameter over keeping the custom UI
+**Severity default:** 🟢 MEDIUM (drift, not breakage). Elevates to 🟡 HIGH when the violation breaks a load-bearing accessibility rule the design system encodes (colorblind-palette rule, Dynamic Type via `@ScaledMetric`), when 5+ views share the off-pattern shape (systemic), or when a missing empty/loading/error state leaves a real flow with no feedback. Never CRITICAL on its own.
 
-**Note:** This domain is project-specific. If no design system docs are found, skip this domain and note that establishing a design system would benefit consistency.
+**Exclusions (skip without flagging):** no design-system source exists; dev-only harness / `#Preview` / fixture; a documented, sanctioned exception; platform-guarded chrome correct for its platform. Full list in the reference.
 
-> **CRITICAL: Do NOT delegate Domain 9 checks to Explore subagents.** Run each check directly using Grep/Read tools.
-
-#### Automated Detection
-
-**Check 9a: Color palette violations**
-```bash
-# Step 1: Read the project's approved palette from CLAUDE.md or DESIGN_SYSTEM.md
-# Step 2: Find all color references in the view file
-grep -n "\.foregroundStyle(\.\|\.foregroundColor(\.\|\.background(\.\|\.tint(\.\|Color\." <view_file>.swift
-
-# Step 3: Compare against approved palette — flag any color not in the list
-# Common violations: .green (if forbidden), .yellow (if sf3aYellow required), custom hex colors
-```
-
-**Check 9b: Component usage — custom UI duplicating shared components**
-```bash
-# Step 1: Find the project's shared components
-grep -rn "struct.*: View" Sources/Views/Components/ --include="*.swift" | head -20
-
-# Step 2: For each shared component, check if the view uses it
-grep -n "SheetContainer\|SheetHeader\|ContentIllustratedHeader\|SemanticIconCircle\|CollapsibleSection" <view_file>.swift
-
-# Step 3: If the view has custom header/container code but doesn't use the shared component → flag
-# Look for custom VStack headers that could be SheetHeader:
-grep -n "VStack.*{" <view_file>.swift | head -5
-# Check if there's a custom title + icon + dismiss pattern that SheetContainer already provides
-```
-
-**Check 9c: Modifier usage — missing standard modifiers**
-```bash
-# Check for .stuffolioCard() / .stuffolioSection() usage
-grep -n "stuffolioCard\|stuffolioSection\|actionCard" <view_file>.swift
-
-# If the view has card-like UI without standard modifiers → flag
-grep -n "\.background.*RoundedRectangle\|\.clipShape.*RoundedRectangle\|cornerRadius" <view_file>.swift
-```
-
-**Check 9d: Sheet pattern compliance**
-```bash
-# If the view is presented as a sheet, check for SheetContainer + SheetHeader
-grep -n "SheetContainer\|SheetHeader\|CompactSheetHeader" <view_file>.swift
-
-# If neither found, check if it's a sheet (has .toolbar with cancellationAction or NavigationStack)
-grep -n "cancellationAction\|NavigationStack" <view_file>.swift
-# Sheet without SheetContainer → flag
-```
-
-**Check 9e: Icon sizing — @ScaledMetric**
-```bash
-# Find fixed icon sizes (should use @ScaledMetric)
-grep -n "\.frame(width:.*height:" <view_file>.swift | grep -i "image\|icon\|symbol"
-grep -n "@ScaledMetric" <view_file>.swift
-
-# Flag: icon frames without @ScaledMetric (won't scale with Dynamic Type)
-```
-
-#### Cross-View Consistency Additions (What's Missing?)
-
-**Goal:** Detect features or controls that *should* be present based on what sibling views include. The skill checks not just what to remove or change, but what to *add* for consistency.
-
-**How it works:**
-1. Identify shared components used in the current view (e.g., `ContentIllustratedHeader`, `SheetContainer`)
-2. Grep the codebase for all other callers of the same component
-3. Compare which optional parameters/features each caller enables
-4. If a majority of sibling views enable a feature that this view doesn't, flag it as a potential addition
-
-**What to check:**
-
-| Pattern | How to Detect | Recommendation Format |
-|---|---|---|
-| **Missing header controls** | Component used with `showThemeToggle: true` in 6/8 views but not here | "[N] of [total] views with [Component] enable [parameter]. Add it for consistency?" |
-| **Missing keyboard toolbar** | iOS form/input view without `ToolbarItemGroup(placement: .keyboard)` | "This view has text inputs but no keyboard Done button" |
-| **Missing dismiss button** | Sheet without close/done on macOS | "macOS sheets need an explicit dismiss button" |
-| **Missing empty state** | List/collection with no `if items.isEmpty` handler | "This view shows a list but has no empty state" |
-| **Missing pull-to-refresh** | Scrollable data view without `.refreshable` | "Data views should support pull-to-refresh on iOS" |
-| **Missing loading state** | Async data fetch with no loading indicator | "Data loads asynchronously but no ProgressView shown" |
-| **Missing error state** | Async operation with no error UI | "Network/data operations have no error feedback" |
-
-**How to present findings:**
-
-Always frame as a recommendation with design-intent acknowledgment:
-
-```
-"[N] of [total] views with [ComponentName] enable [feature]. This view doesn't.
- - Add [feature] (Recommended) — matches [N/total] sibling views for consistency
- - Skip — intentionally omitted for this view (e.g., [possible reason])"
-```
-
-**Possible reasons to skip (provide the relevant one):**
-- Settings views may omit theme toggle because theme *is* a setting on that page
-- Modal sheets may omit help because the parent view already provides context
-- Simple utility views may not need pull-to-refresh if data is local-only
-- Single-purpose sheets may not need customization controls
-
-**Detection requires the Adaptive View Profile** (see below). On first audit, there's no baseline — the skill records what this view uses. On subsequent audits, the profile provides the sibling comparison data.
+> **CRITICAL: Do NOT delegate Domain 9 to Explore subagents.** The conformance comparison needs the project docs and the view file held together; a subagent that reads only the view loses the baseline and produces false positives.
 
 ---
 
@@ -1289,6 +1188,51 @@ The View Profile is a persistent file that grows with each audit, enabling cross
 
 ---
 
+### Domain 14: Silent Picker `enumerate-required`
+
+**Goal:** For every `Picker(...)` call site, detect the two-factor interaction bug where a menu-style `Picker` with **no explicit `.pickerStyle(...)`** sits in a **custom (non-`Form`/`List`) container** — a `DisclosureGroup` body, a `ScrollView`+`VStack` screen, or a card with cleared row chrome. The picker renders as an enabled pop-up button but its menu **never presents on tap**. The user taps and nothing happens; the accessibility tree reports a healthy `AXPopUpButton`. No crash, no warning, no anti-pattern token.
+
+**Why this is two-factor:** a style-less `Picker` is idiomatic. Custom containers are legal. The *interaction* — automatic menu presentation inside cleared-row-chrome / non-Form containers — is what fails, at runtime only.
+
+**Cousin of Domain 13, not a duplicate:** both yield a control that's visually present and accessibility-enabled but dead on tap. But Domain 13 is `Button` + chevron + `.buttonStyle(.plain)` collapsing the *hit region* (tap misses); Domain 14 is `Picker` + no `.pickerStyle` + custom container failing to *present the menu* (tap lands, nothing opens). Domain 13's detector greps `Button`/`chevron`/`buttonStyle` and walks straight past `Picker` — which is exactly why this shipped with Domain 13 already in place.
+
+**Reference:** `references/domain-14-silent-picker.md` — full heuristic, container classification, false-positive list, on-device verify protocol, acceptance criteria.
+
+**Detection steps:**
+
+1. Enumerate every `Picker(...)` in `Sources/` (both `Picker("Title", selection:)` and `Picker(selection:) { } label: { }` forms)
+2. Skip any Picker with an explicit `.pickerStyle(...)` of any kind — the style is the fix
+3. Reject `DatePicker` / `ColorPicker` / `PhotosPicker` false positives (the bare `Picker(` grep matches them)
+4. Classify the container: genuine `Form`/`List` row with intact chrome → **skip**; `DisclosureGroup` body, `ScrollView`+`VStack` screen, or cleared-row-chrome / custom-card context → **candidate**
+5. Emit as a ⚠️ **candidate**, NOT a confirmed bug — static analysis proves the risk, not the deadness
+
+**Candidates require on-device verification.** Build, run, tap each flagged picker. Menu opens → false positive (some custom containers do present correctly), note and leave. Menu does not open → confirmed, apply Fix A.
+
+**Recommended fixes (offer both):**
+
+- **Fix A (preferred):** add `.pickerStyle(.menu)` — one line, lowest risk, verified to restore presentation.
+- **Fix B (only for nested tiers):** rebuild on `Menu { Button… } label: { … }` — needed only when a picker reveals a sub-picker (two-tier), which `Picker` can't express cleanly.
+
+**Severity:** 🟡 HIGH default (control ignores taps — reads as broken). Elevates to 🔴 CRITICAL on critical paths (add-item, edit-item, save, payment) — a dead control in the primary add/edit flow is a textbook **App Store Guideline 2.1** rejection ("a control that does nothing") — or when 3+ pickers in one view hierarchy share the pattern.
+
+**Exclusions:**
+- Any explicit `.pickerStyle(...)` (`.menu`, `.segmented`, `.wheel`, `.inline`, `.radioGroup`, custom)
+- `Picker` in a genuine `Form`/`List` row with intact chrome
+- `DatePicker`, `ColorPicker`, `PhotosPicker`
+- Already rebuilt on `Menu { }`
+
+**Output row format:**
+
+| File:line | Picker | Style | Container | Status | Fix A | Fix B |
+|---|---|---|---|---|---|---|
+| `Sources/Views/Forms/WarrantyFormView+BasicSections.swift:193` | `"Acquired From"` | none (menu) | DisclosureGroup/VStack, cleared chrome | ⚠️ verify on device | `+ .pickerStyle(.menu)` | `Menu { }` rebuild |
+
+**Pattern sweep follow-up:** this bug travels in packs (origin case: 7 sites across 4 files). After the first confirmed fix, sweep for the same shape: `Picker` + no `.pickerStyle` + (cleared-chrome modifier OR `DisclosureGroup` body OR `ScrollView`/`VStack` screen).
+
+**Do NOT delegate Domain 14's candidate confirmation to static reasoning.** The container classification can be delegated, but "is the menu actually dead?" requires a real tap on a real device/sim. Emit candidates; verify on-device before asserting any picker is broken.
+
+---
+
 ## Phase 6: Generate Report
 
 ### Report Structure
@@ -1331,6 +1275,7 @@ The View Profile is a persistent file that grows with each audit, enabling cross
 | 11. Color Audit | 5/10 | Monochromatic sections, inconsistent opacities |
 | 12. iPad Sheet Sizing | 9/10 | Uses .iPadPageSheet() convention |
 | 13. Button Hit Region | 6/10 | One .plain + chevron in Form section needs .contentShape(Rectangle()) |
+| 14. Silent Picker | 7/10 | One menu Picker in a DisclosureGroup card lacks .pickerStyle(.menu) — verify on device |
 | **Overall** | **6.4/10** | (Domain 10 excluded from average when N/A) |
 
 ### Before/After ASCII Mockup

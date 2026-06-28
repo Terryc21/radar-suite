@@ -6,6 +6,52 @@ Format: [skill-name vX.Y.Z] for legacy per-skill entries, [plugin vX.Y.Z] for un
 
 ---
 
+## 2026-06-27 — [ui-enhancer-radar v3.6.0] Domain 9 externalized (inline-domain migration proof-of-pattern)
+
+### What shipped
+
+**ui-enhancer-radar v3.6.0: Domain 9 (Design System Compliance) moved out of SKILL.md into `references/domain-9-design-system-compliance.md`.**
+
+- Pure refactor — no behavior change. Domain 9 was the largest inline domain (~130 lines). It now follows the per-file structure already used by domains 12–14: SKILL.md carries a ~40-line stub (goal, why-project-specific, detection-step summary, severity, exclusions, no-delegation warning) that points to the reference file for the full checks (9a–9e), unused-capability check, cross-view consistency pass, finding format, and acceptance criteria.
+- The reference file was upgraded to the depth domains 12–14 have but domains 1–11 lacked: explicit exclusions list, finding-format table, severity-elevation rules, acceptance criteria, and a **portable synthetic fixture** (a self-contained `FixtureView` with an expected-verdict table) replacing reliance on a private-repo origin case. Includes the "skip the whole domain when no design-system source exists — never invent rules" gate as a first-class acceptance criterion.
+- SKILL.md always-loaded footprint dropped 2,914 → 2,811 lines. Every activation (including single-domain runs like `/ui-enhancer-radar silent-picker`) now loads ~100 fewer lines; Domain 9's full body loads on demand only when that domain runs.
+- `/ui-enhancer-radar design-system` single-domain command already existed; no command change needed.
+
+**Why:** addresses skill-reviewer finding #1 from the v3.5.0 review ("SKILL.md is a 2,914-line 'index' that holds the spec; only domains 12–14 are externalized while 1–11 live inline"). Domain 9 was chosen as the **proof-of-pattern** — the largest inline domain, and the one that exercises the full template (config-awareness, skip-when-no-baseline, fixture). It establishes the skeleton for migrating domains 1–8, 10, 11 in future releases, to be done opportunistically (externalize a domain when it next needs real work, bringing it up to the 12–14 depth bar in the same pass) rather than as one big mechanical split.
+
+**Files:**
+- New: `skills/ui-enhancer-radar/references/domain-9-design-system-compliance.md` — full domain spec with checks 9a–9e, unused-capability check, cross-view consistency, finding format, exclusions, acceptance criteria, synthetic fixture
+- Modified: `skills/ui-enhancer-radar/SKILL.md` — inline Domain 9 block (~130 lines) replaced with a ~40-line stub; version 3.5.0 → 3.6.0
+- Modified: `skills/ui-enhancer-radar/VERSION` — 3.5.0 → 3.6.0
+
+---
+
+## 2026-06-27 — [ui-enhancer-radar v3.5.0] Domain 14: Silent Picker (menu presentation)
+
+### What shipped
+
+**ui-enhancer-radar v3.5.0: Domain 14 added — Silent Picker, menu-presentation audit.**
+
+- Detects the dead-on-tap bug: a menu-style `Picker` with **no explicit `.pickerStyle(...)`** placed in a **custom (non-`Form`/`List`) container** — a `DisclosureGroup` body, a `ScrollView`+`VStack` screen, or a card with cleared row chrome (`.listRowBackground(.clear)` / `.listRowInsets` / a project row-style modifier) — renders as an enabled `AXPopUpButton` but its menu never presents on tap. The user taps and nothing happens; no crash, no warning, no anti-pattern token.
+- Two-factor detection: a style-less `Picker` is idiomatic, custom containers are legal — the *interaction* (automatic menu presentation in cleared-row-chrome / non-Form containers) is what fails, at runtime only.
+- **Cousin of Domain 13, not a duplicate.** Both produce a control that's visually present and accessibility-enabled but dead on tap. Domain 13 is `Button` + chevron + `.buttonStyle(.plain)` collapsing the *hit region* (tap misses the action); Domain 14 is `Picker` + no `.pickerStyle` + custom container failing to *present the menu* (tap lands, nothing opens). Domain 13's detector greps `Button`/`chevron`/`buttonStyle` and never inspects `Picker` — which is exactly why the Silent Picker bug shipped with Domain 13 already in place.
+- **Emits candidates, not verdicts.** Static analysis proves the *risk*, not the *deadness* — only an on-device tap confirms it. Each candidate carries a mandatory "verify on device" step; a candidate whose menu opens is a false positive (some custom containers do present correctly).
+- Offers two fixes per finding: (A, preferred) add `.pickerStyle(.menu)` — one line, lowest risk, verified to restore presentation; (B, only for nested tiers) rebuild on `Menu { Button… }` when a picker reveals a sub-picker, which `Picker` can't express cleanly.
+- Severity default: HIGH. Elevates to CRITICAL on critical paths (add-item, edit-item, save, payment) — a dead control in the primary add/edit flow is a textbook **App Store Guideline 2.1 (App Completeness)** rejection ("a control that does nothing") — or when 3+ pickers in one view hierarchy share the pattern.
+- New subcommand: `/ui-enhancer-radar silent-picker` for single-domain runs.
+- Exclusions: any explicit `.pickerStyle(...)`, `Picker` in a genuine Form/List row with intact chrome, `DatePicker` / `ColorPicker` / `PhotosPicker` false positives, pickers already rebuilt on `Menu { }`.
+- Pattern sweep follow-up: this bug travels in packs (origin case had 7 sites across 4 files). After a first confirmed fix, sweep for the same shape.
+
+**Origin:** Stuffolio session 2026-06-27, build 54. User reported the Condition picker in the Add Item form did nothing on tap. `ConditionPickerView` used a default-style `Picker("Condition", selection:)` `.labelsHidden()` inside `WarrantyFormView+BasicSections.swift`'s `Section → DisclosureGroup → VStack` with `.warrantyFormSectionBody()` + `.warrantyFormSectionRowStyle()` (which clears `.listRowBackground` / insets / separator). The menu was completely dead; reproduced in plain Manual Entry (not AI-specific). The adjacent Category control worked because it's a custom `Button` + `.sheet` (`MultiCategoryPicker`), not a `Picker` — the call-site diff was the tell. Two-tier Condition fixed via `Menu` rebuild (Stufflio commit `32e8eb10`); bug-echo found 6 siblings (Acquired From, Room, Remind me, 3× Notification Settings) all fixed with a one-line `.pickerStyle(.menu)` (commit `a2a64f2b`). Proof-of-mechanism verified on device: "Warranty Length" (`.pickerStyle(.menu)`) opened its menu; "Acquired From" (no style) was dead, then opened after adding `.pickerStyle(.menu)`. Existing v3.4.0 did not flag this — Domain 13's three-factor check looked only at `Button`/chevron/hit-region and had no `Picker`/`pickerStyle` logic. Domain 14 closes that gap.
+
+**Files:**
+- New: `skills/ui-enhancer-radar/references/domain-14-silent-picker.md` — full heuristic, container classification, false-positive list, on-device verify protocol, both fix options, project-convention loader, acceptance criteria
+- Modified: `skills/ui-enhancer-radar/SKILL.md` — new Domain 14 section, new `silent-picker` subcommand, audit-table rows, updated description (13-domain → 14-domain) and version (3.4.0 → 3.5.0)
+- Modified: `skills/ui-enhancer-radar/VERSION` — 3.4.0 → 3.5.0
+- Modified: `README.md` — ui-enhancer-radar row notes Silent Picker audit (14 domains)
+
+---
+
 ## 2026-04-22 — [ui-enhancer-radar v3.4.0] Domain 13: Button hit region (three-factor)
 
 ### What shipped
