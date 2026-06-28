@@ -725,11 +725,23 @@ Run `git log -1 --format="%H %s %an %ai" -- {file}` for each regression file.
 
 ## Step 9: Ship Recommendation
 
+> **⚠️ Grades are NECESSARY, NOT SUFFICIENT.** The companion skills + own scans
+> read source code; they are blind to the "compiles + passes tests + looks fine in
+> the simulator, but bombs on the real surface" bug class — dead code never called,
+> CloudKit **production-only** failures, and **platform-parity** gaps (works on iOS,
+> broken on macOS). A clean unified grade does NOT prove the app actually works for
+> a real user. Before issuing SHIP, confirm a **manual real-surface smoke test** has
+> been run since the last code change: every feature once on **macOS + a real iOS
+> device + a real iCloud/Production account**. If it hasn't, label the result
+> "SHIP — pending real-surface smoke test" and make that the top blocker. (Origin:
+> a B-grade SHIP would have shipped empty CloudKit shares to every user, 2026-06-08.)
+
 | Recommendation | Criteria |
 |----------------|----------|
-| **SHIP** | No CRITICALs, <=2 HIGHs, overall B- or above, no Incompletes |
+| **SHIP** | No CRITICALs, <=2 HIGHs, overall B- or above, no Incompletes, **AND real-surface smoke test confirmed done** |
 | **CONDITIONAL SHIP** | No CRITICALs, 3-5 HIGHs, overall C+ or above, no Incompletes |
 | **DO NOT SHIP** | Any Incomplete, OR any CRITICAL, OR >5 HIGHs, OR overall C or below |
+| **SHIP — pending smoke test** | Grade qualifies but the manual macOS + real-device + real-iCloud smoke test isn't confirmed since the last change |
 
 Any Incomplete = automatic **DO NOT SHIP** — no exceptions.
 

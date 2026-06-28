@@ -554,6 +554,14 @@ Glob pattern="**/ModelName+*.swift" path="Sources/"
 
 **Do not say "migration infrastructure exists" without reading the schema file.** That's the same as saying "backup exists" without reading BackupItem.
 
+**CloudKit schema is a SEPARATE migration surface from SwiftData (often missed):**
+The SwiftData `VersionedSchema` checks above do NOT cover raw-CloudKit sync. If the app syncs via manual `CKDatabase`/`CKRecord` (i.e. SwiftData's `cloudKitDatabase: .none`), the CloudKit Production schema is its own thing that the simulator never validates. Check:
+1. **Does the Production CloudKit schema contain every record type the app writes?** Production does NOT auto-create record types on write — Development DOES. A type exercised only in Dev is absent in Prod until "Deploy Schema Changes" is run in the Dashboard → writes fail silently for real users. Enumerate every `CKRecord(recordType: "X")` and confirm `X` is deployed to Prod.
+2. **Any `CKQuery(predicate: NSPredicate(value: true))` fetch-all?** It sorts on the system `recordName` field, which is NOT queryable by default in the Prod schema (it IS in Dev → masks the bug). In Prod it throws "Field 'recordName' is not marked queryable" → silent empty read. Durable fix: enumerate the zone via `CKFetchRecordZoneChangesOperation` (no index needed, custom zones only) OR mark `recordName` queryable in the Dashboard.
+3. **CloudKit "Deploy Schema Changes" is irreversible** — additive (new types/indexes/fields) is safe; deleting/retyping a live field or migrating zones is Bucket-B-class (schedule a spike, don't do reactively). Reviewing the deploy diff is mandatory.
+
+**Origin:** Stuffolio 2026-06-08 — Legacy Wishes sharing types were never deployed to Prod + reads used `CKQuery(predicate:true)`; beneficiaries silently saw empty shares. The simulator (Dev environment) showed it working the whole time.
+
 ### Domain 7: Cross-Model Consistency `enumerate-required`
 
 **Minimum model requirement:** This domain requires reading at least 3 models to be meaningful. When auditing a single model, this domain outputs one of:

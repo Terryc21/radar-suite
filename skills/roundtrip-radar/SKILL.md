@@ -519,6 +519,8 @@ Example:
 8. **Collection narrowing** `enumerate-required` — collections silently reduced to single elements at handoff points (see detection guide below)
 9. **Tests** `enumerate-required` — update broken tests, add tests for P0-P1 fixes where logic is testable
 10. **Bridge parity** `enumerate-required` — multiple consumers of the same model type must read the same fields (see detection guide below)
+11. **CloudKit production-only failures** `mixed` — code that works in Dev/simulator but fails for real users in Production (see detection guide below)
+12. **Dead writers** `grep-sufficient` — a function that does real work (sync/save/write/upload) but has ZERO callers, so a feature compiles + looks done while silently doing nothing (see detection guide below)
 
 ### Verification Template (MANDATORY per workflow)
 
@@ -623,6 +625,42 @@ Rules:
 **Cross-cutting accumulator integration:** After finding a bridge parity issue, add the model type to the cross-cutting pattern accumulator. In subsequent workflows, automatically check any new consumer of that type against the established field matrix.
 
 **Origin:** Found in Stuffolio Apr 2026 -- `ScoutSession` had 3 consumers building notes. `ScoutMergeView` and `StuffScoutBridge` included all 6 narrative fields. `ExistingItemScoutFlow.buildNotesFromScout()` included only 3. The outlier was written before the other fields were added and never updated. No type error, no crash, no test failure -- users simply lost Historical Context, Collector Notes, and Research Tips when saving via that code path.
+
+### CloudKit Production-Only Failure Detection Guide
+
+**What it is:** CloudKit code that works in the Development environment (debug builds, simulator) but fails for real users in Production. The simulator masks the bug because Development is permissive; Production is strict. The flow "works on my machine" and ships broken.
+
+**Why it matters:** Invisible to the compiler, unit tests, and any simulator run. Only real users on the Production CloudKit environment hit it — typically as a SILENT empty result (no crash, no error), so it reads as "feature does nothing" rather than "feature errored."
+
+**Detection patterns:**
+
+| Pattern | Code Signature | Production Failure |
+|---------|---------------|---------------------|
+| `recordName` not queryable | `CKQuery(recordType:, predicate: NSPredicate(value: true))` then `records(matching:)` | A fetch-all query forces a sort on the system `recordName` field, NOT queryable by default in the **Production** schema (it IS in Development → masks it). Throws "Field 'recordName' is not marked queryable" → caught → silent empty result. **DURABLE FIX: enumerate the zone via `CKFetchRecordZoneChangesOperation` (no index needed) — BUT only on CUSTOM zones, not the default zone.** Default-zone code must mark `recordName` queryable in the Dashboard or migrate to a custom zone. |
+| Type assumed to exist | `CKRecord(recordType: "Foo")` written where `Foo` may not be in the deployed Prod schema | **Production does NOT auto-create record types on write; Development DOES.** A type exercised only in Dev is absent in Prod until "Deploy Schema Changes" is run. Write fails silently for real users. Verify every written type is in the Prod schema. |
+| Partial-failure swallow | `case .partialFailure: ... return []` | Discards the records that DID succeed → blanks the whole list on one bad record. Collect per-record successes instead (zone enumeration does this naturally). |
+| `try?` hides prod error | `try? await db.records(...)` / `try? await container.accountStatus()` | Collapses a prod-only failure (or `.couldNotDetermine`/`.temporarilyUnavailable`) into nil → treated as "empty" or "not signed in." Use do/catch + surface to Sentry. |
+
+**Distinguish:** flag the read paths a beneficiary/recipient hits FIRST (highest impact — silent empty UI for the receiver). Owner-side and sync paths are lower but still real.
+
+**Origin:** Stuffolio 2026-06-08 — Legacy Wishes beneficiaries silently received empty shares (3 stacked causes: schema never deployed to Prod, the data-sync writer was never called, and the reads used `CKQuery(predicate:true)` which failed "not queryable" in Prod). The core inventory pull (`CloudSyncManager`) used the same query on the default zone — works ONLY because that one index happens to be deployed; a regression would silently empty every user's inventory on a new device.
+
+### Dead Writer Detection Guide
+
+**What it is:** A function whose name implies it does important work (sync/upload/save/persist/write/send/submit/schedule/export/backup) but has ZERO call sites in production code. The feature compiles, looks done, and silently does nothing — because the UI action calls a *different* function (often a stub), or the wiring was simply forgotten.
+
+**Why it matters:** The inverse of an unreachable view — here a live READ path depends on a WRITE that nothing performs. Invisible to the compiler (the function is valid) and to tests (nobody tests a function nobody calls). The user-facing symptom is a feature that "doesn't work" with no error.
+
+**Detection method:**
+
+1. Find functions named with a does-real-work verb: `func (sync|upload|save|persist|write|send|submit|push|commit|schedule|export|backup)[A-Z]...`. Scan Managers, Services, AI/network layers, **and Models** (model methods can be writers too).
+2. For each, grep the whole source tree for call sites (`\bfuncName\(`), excluding the definition and tests.
+3. **Zero callers = candidate.** Then judge: genuinely dead (delete it) vs. forgotten wiring (a user-facing feature depends on it — wire it). The dangerous case is when a live read path consumes the state this writer was supposed to produce.
+4. Watch for grep-blind invocation (dynamic dispatch, `#selector`, protocol witness, public API) before declaring dead.
+
+**Mechanical version:** a build-script grep — find `func (sync|upload|save|persist|write|send|submit|push|commit|schedule|export|backup)[A-Z]...` declarations, then grep the tree for call sites; zero callers (excluding the definition + tests) = candidate. Emit `file:line: warning:`, bypass via a `// orphan-ok: <reason>` comment on the declaration.
+
+**Origin:** Stuffolio 2026-06-08 — `syncLegacyDataToCloudKit` uploaded share data but had ZERO callers (beneficiaries got empty shares; `createShare` wrote only an empty root). Same pattern in `InsuranceProfile.scheduleItem` — the only writer of `scheduledItemIDs`, never wired to UI, so the coverage-alert exclusion that reads `isItemScheduled` was permanently inert → users got un-silenceable high-value alerts.
 
 ### Issue Rating Criteria
 
