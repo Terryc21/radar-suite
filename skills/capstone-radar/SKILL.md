@@ -3,7 +3,7 @@ name: capstone-radar
 description: 'Unified A-F grading and ship/no-ship decisions for the 6-skill radar family (5 companions + capstone). Aggregates handoffs from data-model, ui-path, roundtrip, time-bomb, and ui-enhancer; owns 5 grep-reliable domains; tracks velocity; celebrates improvements. Triggers: "capstone radar", "can I ship", "grade codebase", "/capstone-radar".'
 version: 3.2.0  # axis-split grading + staleness decay + dependency graph + tier awareness + hygiene backlog + time-bomb consumption + impact-based organization
 author: Terry Nyberg
-license: MIT
+license: Apache-2.0
 inherits: radar-suite-core.md
 ---
 

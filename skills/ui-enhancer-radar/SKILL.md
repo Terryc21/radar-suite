@@ -3,7 +3,7 @@ name: ui-enhancer-radar
 description: 'Systematic iOS/SwiftUI UI audit with design intent interview, 14-domain analysis (including Color Audit with adaptive Color Profile, iPad Sheet Sizing caller-side audit, Button Hit Region three-factor interaction audit, and Silent Picker menu-presentation audit), element compaction, cross-view consistency checks, layout reorganization, design-aware push-back, App Store guardrails, and incremental apply with revert safety. Run /ui-enhancer-radar help for all commands. Triggers: "enhance this UI", "ui enhancer radar", "improve this view", "screen review", "ux audit", "ipad sheet truncation", "button not tappable on iPad", "picker does nothing".'
 version: 3.6.0  # Domain 9 externalized to reference/ (proof-of-pattern for inline-domain migration) + Color Audit (11) + iPad sheet sizing (12) + button hit region (13) + silent picker (14) + visual inspection gate + App Store guardrails + view profile + refinement loop + cross-view consistency
 author: Terry Nyberg
-license: MIT
+license: Apache-2.0
 allowed-tools: [Read, Grep, Glob, Bash, Write, Edit, AskUserQuestion]
 inherits: radar-suite-core.md
 metadata:

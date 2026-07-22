@@ -3,7 +3,7 @@ name: ui-path-radar
 description: 'UI path tracer for SwiftUI/UIKit apps. 5-layer audit with 34 issue categories and 19 automated checks: discover entry points, trace flows, detect dead ends and broken promises, evaluate UX impact, verify data wiring. Supports targeted trace, diff against previous audits, and handoff to planning skills. Triggers: "trace UI paths", "find dead ends", "/ui-path-radar".'
 version: 2.2.0  # orphan feature detection (was 2.1.0)
 author: Terry Nyberg
-license: MIT
+license: Apache-2.0
 allowed-tools: [Read, Grep, Glob, Bash, Edit, Write, AskUserQuestion]
 inherits: radar-suite-core.md
 metadata:

@@ -3,7 +3,7 @@ name: time-bomb-radar
 description: 'Finds deferred operations that crash on aged data -- code that passes every test but breaks weeks or months after release. Covers cascade deletes, cache expiry, trial paths, background accumulation, date-threshold transitions, and scheduled side effects. Triggers: "time bomb", "time-bomb", "/time-bomb-radar", "aged data", "deferred deletion".'
 version: 2.2.0  # +Pattern 7 cascade delete with live child references (was 2.1.0)
 author: Terry Nyberg
-license: MIT
+license: Apache-2.0
 allowed-tools: [Read, Grep, Glob, Bash, Edit, Write, AskUserQuestion]
 inherits: radar-suite-core.md
 metadata:

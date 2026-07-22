@@ -3,7 +3,7 @@ name: roundtrip-radar
 description: 'Per-journey code audit tracing data through complete user flows for bugs, data safety, performance, and round-trip completeness. Discovers workflows, audits each end-to-end, rolls up cross-cutting issues, and supports natural-language flow tracing. Triggers: "roundtrip audit", "trace user journey", "/roundtrip-radar".'
 version: 2.1.0  # axis classification protocol + named bug-class guides (Collection Narrowing, Bridge Parity)
 author: Terry Nyberg
-license: MIT
+license: Apache-2.0
 allowed-tools: [Read, Grep, Glob, Bash, Edit, Write, AskUserQuestion]
 inherits: radar-suite-core.md
 ---

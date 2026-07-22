@@ -3,7 +3,7 @@ name: data-model-radar
 description: 'Audits SwiftData/Core Data model layer for field completeness, serialization gaps, relationship integrity, semantic ambiguity, dead fields, and migration safety. Finds model-layer bugs that manifest as workflow bugs. Triggers: "audit models", "model radar", "/data-model-radar".'
 version: 2.3.0  # Domain 3a/3b cross-context mutation and stale object checks
 author: Terry Nyberg
-license: MIT
+license: Apache-2.0
 allowed-tools: [Read, Grep, Glob, Bash, Edit, Write, AskUserQuestion]
 inherits: radar-suite-core.md
 metadata:

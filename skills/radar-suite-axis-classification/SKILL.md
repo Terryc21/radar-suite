@@ -3,7 +3,7 @@ name: radar-suite-axis-classification
 description: 'Shared axis classification framework for all radar-suite skills. Every finding must be classified as axis_1 (bug), axis_2 (scatter), or axis_3 (dead/smelly) before emission, with mandatory coaching fields and file:line citations to existing patterns in the audited codebase. Triggers: invoked by every radar before emitting findings.'
 version: 2.1.0  # schema gate regex format + source-root introspection check + audience tagging override rules + rejected_no_citation tracking (initial creation was 2.0.0 on 2026-04-10)
 author: Terry Nyberg
-license: MIT
+license: Apache-2.0
 allowed-tools: [Read, Grep, Glob]
 inherits: radar-suite-core.md
 metadata:

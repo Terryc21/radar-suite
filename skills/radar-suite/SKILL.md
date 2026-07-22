@@ -3,7 +3,7 @@ name: radar-suite
 description: 'Unified entry point for the 6-skill radar family (5 companions + capstone). Routes to individual skills, runs targeted (Tier 2) or full (Tier 3) audit sequences, owns the unified ledger, and provides cross-skill operations (status, verify, ledger, link, deferred, fresh/no-fresh). Triggers: "radar suite", "full audit", "run all radars", "/radar-suite".'
 version: 3.0.0  # time-bomb integration + Fresh Scan Check + Stale-Deferred Check + Link command + Verify command + impact-based ledger filtering
 author: Terry Nyberg
-license: MIT
+license: Apache-2.0
 inherits: radar-suite-core.md
 ---
 
