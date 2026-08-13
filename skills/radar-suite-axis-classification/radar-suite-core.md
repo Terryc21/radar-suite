@@ -14,20 +14,30 @@ Ask all setup questions in ONE `AskUserQuestion` call with 4 questions:
 - **Intermediate** — Standard terms, explain non-obvious
 - **Beginner** — Plain language, define terms
 
-**Question 2: "Table format?"**
-- **Full tables (Recommended)** — 8-column Issue Rating Tables
-- **Compact tables** — 3-column with details below
+**Question 2: "How much detail should each finding show?"**
+- **Full detail (Recommended)** — Every finding rated across all its columns, so you can compare them at a glance
+- **Just the essentials** — A short row per finding, with the rating details listed underneath
 
-**Question 3: "Fix handling?"**
-- **Auto-fix safe items (Recommended)** — Apply isolated, low-blast-radius fixes automatically
-- **Review first** — Present all findings, approve each wave
-- **Batch mode** — Approve all fixes in each wave at once
+**Question 3: "When I find something I can safely fix, what should I do?"**
+- **Fix it and tell me (Recommended)** — Apply the low-risk, self-contained fixes as I go
+- **Ask me every time** — Show you each finding and wait for approval before changing anything
+- **Ask me once per batch** — Group related fixes and ask for one approval per group
 
 **Question 4: "Explain what this skill does?"**
 - **No, let's go (Recommended)** — Skip explanation
 - **Yes, briefly** — 3-5 sentence explanation
 
 Store as: `USER_EXPERIENCE`, `TABLE_FORMAT`, `FIX_MODE`. Apply to ALL output for session.
+
+🛑 **Ask about the OUTCOME in the user's words, never the mechanism in the skill's words.** The
+variable names above (`TABLE_FORMAT`, `FIX_MODE`) and the values behind them are internal — they
+must never appear in a prompt. Specifically: do NOT reintroduce **column counts** ("8-column",
+"3-column") into Q2, and do NOT label a Q3 option **"Batch mode"**. A column count is not a choice
+anyone can make before seeing a table, and "batch mode" names an internal mode rather than what
+happens to the user. Q1 (experience level) and Q4 (explain the skill) were already outcome-framed
+and are unchanged. *(Corrected 2026-08-13 after a spot-check of every question-asking skill in this
+installation: 6 of 7 surfaces already followed this principle; these two questions were the sole
+exception.)*
 
 **Batch mode behavior:** When enabled, group findings by `group_hint` and present one approval prompt per group instead of per-finding. User can still override individual items by typing "except [N]".
 
