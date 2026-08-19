@@ -874,7 +874,7 @@ findings:
       Honest tradeoffs. When the better approach is overkill vs when it is the right call.
 
     verification_log:     # REQUIRED — pattern_citation_lookup entry is mandatory
-      - check: reachability_trace | whole_file_scan | branch_enumeration | pattern_citation_lookup | source_root_introspection
+      - check: reachability_trace | whole_file_scan | branch_enumeration | pattern_citation_lookup | source_root_introspection | full_path_trace
         result: "concrete outcome of the check"
 
 # Checks performed (MANDATORY as of v1.1 — replaces silent absence of failure)
