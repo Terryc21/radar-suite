@@ -696,7 +696,7 @@ one line, without recording that they made it.
 | Pattern | Code Signature | Server-Side Failure |
 |---------|---------------|---------------------|
 | Per-participant permission write | `participant.permission = .readWrite` / `.readOnly` on a share whose `publicPermission != .none` | **Silently discarded.** The server governs a link-joined member's access by share-level `publicPermission` only. The save succeeds, no error, and the participant's own fresh fetch still returns the old value. Fix: write `publicPermission` (household-wide), or move to `publicPermission = .none` + invited private participants. |
-| Nil-coalescing on CloudKit identity | `identity.nameComponents?.formatted() ?? "Unknown"` | **Guard never fires.** For a public participant the server withholds identity and `formatted()` returns an **EMPTY STRING, not nil** — it sails through `??` into UI interpolation (`"Export 's Items"`, `"'s Household"`). Fix: fall through on **emptiness**, not nil, and degrade name → email → placeholder. |
+| Nil-only guard on CloudKit identity | ANY nil-only guard over an identity read — `?? "Unknown"`, `if let name = identity.nameComponents?.formatted()`, `guard let ... else` | **Guard never fires.** For a public participant the server withholds identity and `formatted()` returns an **EMPTY STRING, not nil** — it binds successfully and sails through into UI interpolation (`"Export 's Items"`, `"'s Household"`) or into a key (`"name:"`). Fix: fall through on **emptiness**, not nil, and degrade name → email → placeholder. ⚠️ **Match on the nil-only *semantics*, not the `??` spelling** — an `if let`/`guard let` over the same expression is the identical defect and is easy to miss when grepping for `??`. |
 | Identity read with no both-absent branch | A name→email fallback chain with a single terminal placeholder, rendered into possessives or list rows | CloudKit can withhold **both** identity and email, so every member collapses to the same literal placeholder — the household reads as belonging to a person named "Unknown" and no member is distinguishable. An emptiness-aware helper is necessary but **not sufficient**; the both-absent case needs its own UI treatment. |
 | Permission displayed from the wrong field | UI binds a role chip / edit gate to `participant.permission` | **UI lie.** Effective access is the **higher** of `publicPermission` and any individual grant. Reading the per-participant field reproduces the dropped-write bug as a display that contradicts what the user can actually do. |
 
@@ -713,8 +713,13 @@ one line, without recording that they made it.
    `publicPermission` alongside nonzero hits for `participant.permission =` is itself the
    finding** — it means the code manages per-member roles on a share whose join mode was never
    considered.
-2. For every CloudKit identity read, check the guard: `?? ` alone is insufficient; require an
-   emptiness test. This check is mechanical and has the highest hit rate of the four.
+2. For every CloudKit identity read, check the guard: nil-handling alone is insufficient; require an
+   emptiness test. This check is mechanical and has the highest hit rate of the four. **Grep all
+   three spellings** — `?? `, `if let`, and `guard let` — over `nameComponents`, `formatted()`,
+   `lookupInfo`, and `userIdentity`. Searching only for `??` misses the binding forms.
+   ⚠️ **Identity-as-KEY is a separate sweep from identity-as-DISPLAY.** A codebase that fixed its
+   display helper may still mint identity keys through an uncorrected fallback chain; the display
+   fix does not propagate to it. Check both, in both directions.
 3. Trace which field the **UI** reads for role/permission display, independently of which field
    the **writer** sets. A mismatch between them is the "UI lie" pattern.
 4. **Before diagnosing any of this, grep the repo for a sibling manager that already solved
