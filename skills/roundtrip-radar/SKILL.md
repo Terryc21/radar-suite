@@ -241,6 +241,7 @@ roundtrip-radar's findings are organized by what part of the round-trip path is 
 | Inconsistent serialization across paths (CSV, backup, CloudKit) | axis_1_bug | Stays axis_1 — ONE path loses user data |
 | Serialization paths duplicated across multiple managers | axis_2_scatter | Stays axis_2 — correct but hard to maintain |
 | Serialization call reaches a dead branch (e.g., guard always true) | axis_3_dead_code | Stays axis_3 |
+| CloudKit sharing contract violation (write dropped or identity withheld server-side) | axis_1_bug | Stays axis_1 — the trace terminates at the server boundary by construction, not from opacity, so the full-path rule's axis_2_scatter fallback does NOT apply (see § Full-path verification rule, external-boundary clause). Reclassify to axis_3_smelly only if no user-visible surface consumes the affected permission or identity |
 
 ### Full-path verification rule (roundtrip-specific)
 
@@ -261,6 +262,28 @@ verification_log:
   - check: pattern_citation_lookup
     result: "found existing round-trip pattern at Sources/Managers/BackupManager.swift:NNN which correctly serializes room"
 ```
+
+**External-boundary exception.** A path that reaches an external system (a sync server, a payment
+processor, a third-party API), and resumes on the other side, is **traced — not opaque**. The
+`axis_2_scatter` fallback above applies to paths that cannot be followed *within the codebase*,
+not to paths that leave it. Mark the crossing explicitly and keep the finding's category axis:
+
+```yaml
+verification_log:
+  - check: full_path_trace
+    path:
+      - FamilySharingView.swift:NNN (owner sets Member Access to Viewer)
+      - FamilySharingManager.swift:NNN (participant.permission = ckPermission)
+      - [SERVER BOUNDARY: CKShare save succeeds; server discards the write]
+      - FamilySharingView.swift:NNN (participant still renders as Editor)
+    result: "path traced to the server boundary and resumed on the read side; terminates at an
+             external system, NOT from opacity — axis_1_bug stands. Confidence: needs-runtime
+             (2-account round-trip required to observe the server's actual behavior)"
+```
+
+Distinguish this from a genuine gap: a `[SERVER BOUNDARY]` marker asserts you traced the code up
+to the call and picked the path back up after it. If you could not find the read side either, that
+is opacity — use `[GAP: ...]` and take `axis_2_scatter`.
 
 If any hop cannot be found (e.g., "no persistence call in this workflow"), the path entry documents the gap:
 ```yaml
@@ -644,6 +667,87 @@ Rules:
 **Distinguish:** flag the read paths a beneficiary/recipient hits FIRST (highest impact — silent empty UI for the receiver). Owner-side and sync paths are lower but still real.
 
 **Origin:** Stuffolio 2026-06-08 — Legacy Wishes beneficiaries silently received empty shares (3 stacked causes: schema never deployed to Prod, the data-sync writer was never called, and the reads used `CKQuery(predicate:true)` which failed "not queryable" in Prod). The core inventory pull (`CloudSyncManager`) used the same query on the default zone — works ONLY because that one index happens to be deployed; a regression would silently empty every user's inventory on a new device.
+
+### CloudKit Sharing Contract Detection Guide
+
+**What it is:** CloudKit **sharing** code where the Swift is locally correct — it compiles, the
+value is assigned, no error is thrown — but the CloudKit server silently refuses the write or
+withholds the data. Distinct from the Production-Only guide above: that one is about
+**schema/query** failures (a type or index missing in Prod). This one is about **server-side
+contracts on `CKShare`** that hold in every environment, Development included, so no amount of
+Dev testing surfaces them.
+
+**Why it matters:** These fail *successfully*. `try await db.save(share)` returns without
+throwing, the local object shows the new value, and the owner's UI confirms a change that never
+landed. Because the source reads correct, a static audit reports the subsystem CLEAN — which is
+worse than a missed bug, since "no finding" is indistinguishable from "verified safe." Four
+sharing bugs shipped past clean audits on one codebase before this axis existed.
+
+**The contract underneath all four patterns:** a recipient who joins a share by tapping an
+invite **link** (while `publicPermission != .none`) is a CloudKit **public participant**
+(`role == .publicUser`). Apple's rule (CKShare.h): *"In order to modify the list of
+participants, a share must have publicPermission set to CKShareParticipantPermissionNone."*
+Public and private participants cannot be mixed on one share. So **link-only invites and
+per-member roles are mutually exclusive** — a design choice most codebases make implicitly, in
+one line, without recording that they made it.
+
+**Detection patterns:**
+
+| Pattern | Code Signature | Server-Side Failure |
+|---------|---------------|---------------------|
+| Per-participant permission write | `participant.permission = .readWrite` / `.readOnly` on a share whose `publicPermission != .none` | **Silently discarded.** The server governs a link-joined member's access by share-level `publicPermission` only. The save succeeds, no error, and the participant's own fresh fetch still returns the old value. Fix: write `publicPermission` (household-wide), or move to `publicPermission = .none` + invited private participants. |
+| Nil-coalescing on CloudKit identity | `identity.nameComponents?.formatted() ?? "Unknown"` | **Guard never fires.** For a public participant the server withholds identity and `formatted()` returns an **EMPTY STRING, not nil** — it sails through `??` into UI interpolation (`"Export 's Items"`, `"'s Household"`). Fix: fall through on **emptiness**, not nil, and degrade name → email → placeholder. |
+| Identity read with no both-absent branch | A name→email fallback chain with a single terminal placeholder, rendered into possessives or list rows | CloudKit can withhold **both** identity and email, so every member collapses to the same literal placeholder — the household reads as belonging to a person named "Unknown" and no member is distinguishable. An emptiness-aware helper is necessary but **not sufficient**; the both-absent case needs its own UI treatment. |
+| Permission displayed from the wrong field | UI binds a role chip / edit gate to `participant.permission` | **UI lie.** Effective access is the **higher** of `publicPermission` and any individual grant. Reading the per-participant field reproduces the dropped-write bug as a display that contradicts what the user can actually do. |
+
+**Two traps that ride along with the fix:**
+
+1. **Never write `publicPermission = .none` to mean "view only."** It stops the invite link
+   resolving and drops pending participants. `.readOnly` is the view-only value.
+2. **A "heal" that force-restores `.readWrite`** will silently re-promote a deliberately
+   view-only household on the next invite handout. Heal only the unjoinable `.none` case.
+
+**Detection method:**
+
+1. Grep for `CKShare` / `publicPermission` / `\.permission =` / `participant`. **Zero hits for
+   `publicPermission` alongside nonzero hits for `participant.permission =` is itself the
+   finding** — it means the code manages per-member roles on a share whose join mode was never
+   considered.
+2. For every CloudKit identity read, check the guard: `?? ` alone is insufficient; require an
+   emptiness test. This check is mechanical and has the highest hit rate of the four.
+3. Trace which field the **UI** reads for role/permission display, independently of which field
+   the **writer** sets. A mismatch between them is the "UI lie" pattern.
+4. **Before diagnosing any of this, grep the repo for a sibling manager that already solved
+   it.** These bugs recur per-manager; the fix usually already exists elsewhere in the same
+   codebase and was simply never propagated.
+
+**Confidence and verdict:** every finding here is `needs-runtime` at best from static reading —
+the server's behavior cannot be observed by grep, so never emit one as `verified`. Record in the
+`verification_log` what a 2-account round-trip would show, so the finding names its own missing
+evidence rather than reading as a confirmed bug. The
+diagnostic signature of a real dropped write: the save succeeds, and the participant's own fresh
+server fetch still returns the old permission — immediately, after force-quit, and after a long
+wait. A 15-minute wait ruling out propagation lag is the tell. Confirm in 30 seconds by logging
+`participant.role.rawValue` on a freshly fetched share: `.publicUser` makes the diagnosis
+certain.
+
+⚠️ **Do not blame the read path first.** In the canonical incident the entire participant read
+chain was correct and faithfully reporting the server's true state; suspecting a stale cache
+burned a full session. Verify whether the OWNER'S OWN next fetch reflects the change — that
+isolates save-side from read-side in one step.
+
+⚠️ **A blank member name is NOT a failed join.** It reads like one on-device. Check
+`Status: Accepted` and whether shared items actually arrive.
+
+**Origin:** Stuffolio, four defects over six weeks, one root cause. 2026-07-05 — a legacy
+share's "Allow Family Input" was switched ON and the recipient stayed View Only. 2026-08-05 — an
+owner→viewer permission change never reached the participant, ever; it cost a full session, and
+the fix already existed in a sibling manager in the same repo. 2026-08-05 and 08-07 — the same
+empty-string defect logged twice from two devices; member rows rendered nameless and a button
+read "Export 's Items". 2026-08-14 — every identity collapsed to the literal "Unknown" because
+CloudKit withheld both identity and email; the emptiness-aware helper was working correctly and
+still produced an unusable screen. Each shipped past an audit that reported CloudKit clean,
+because each one's Swift reads correct.
 
 ### Dead Writer Detection Guide
 
