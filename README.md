@@ -2,12 +2,15 @@
 
 ![Last commit](https://img.shields.io/github/last-commit/Terryc21/radar-suite) ![Stars](https://img.shields.io/github/stars/Terryc21/radar-suite?style=flat) ![Issues](https://img.shields.io/github/issues/Terryc21/radar-suite) ![Release](https://img.shields.io/github/v/release/Terryc21/radar-suite) ![License](https://img.shields.io/github/license/Terryc21/radar-suite) ![Claude Code Plugin](https://img.shields.io/badge/Claude%20Code-Plugin-blueviolet)
 
-**Your linter says every file is fine. Then a backup restores without one of its relationships.**
+**Your linter says every file is fine. Then a user swipes down on a half-filled form and loses
+everything they typed.**
 
-No single file is wrong. Each one's view of the data is locally correct, so there is nothing for a
-pattern check to flag. Radar Suite follows your data from screen to database and back, and reports
-where the loop stops closing — every finding citing a real `file:line`, rated on a severity table,
-with a capstone that turns the pile into a ship-or-don't-ship grade.
+No single file is wrong. The sheet presents correctly, the fields hold their values, dismiss
+dismisses. Each file is right on its own terms, so there is nothing for a pattern check to flag.
+What is missing lives between them. Radar Suite reads those files together and follows your data
+through the whole path, reporting where the loop stops closing. Every finding cites a real
+`file:line`, is rated on a severity table, and feeds a capstone that turns the pile into a
+ship-or-don't-ship grade.
 
 It runs **alongside** SwiftLint and your existing audits, not instead of them — they catch different
 things ([why](LINTERS.md)). Built while shipping [Stuffolio](https://stuffolio.app) through real App
@@ -30,9 +33,8 @@ Store submission cycles. Free, open source, Apache 2.0.
 A linter reads one file at a time and checks it against a rule catalog — force unwraps, missing
 `@MainActor`, deprecated APIs. Fast, precise, and it will find things Radar Suite won't.
 
-Radar Suite reads files *together*. It starts from what the user sees and follows the data through
-views, view models, managers and persistence to check the loop actually closes. That catches bugs
-living in the handoff between files, which no single-file rule can see.
+Radar Suite starts from what the user sees and follows the data through views, view models,
+managers and persistence, checking the loop actually closes.
 
 Keep your linter. This layers on top.
 
