@@ -9,9 +9,9 @@ No single file is wrong. The sheet presents correctly, the fields hold their val
 dismisses. Each file is right on its own terms, so there is nothing for a pattern check to flag.
 What is missing lives between them.
 
-It runs **alongside** SwiftLint and your existing audits, not instead of them — they catch different
-things ([why](LINTERS.md)). Built while shipping [Stuffolio](https://stuffolio.app) through real App
-Store submission cycles. Free, open source, Apache 2.0.
+Radar Suite runs **alongside** SwiftLint and your existing audits, not instead of them — they catch
+different things ([why](LINTERS.md)). Built while shipping [Stuffolio](https://stuffolio.app) through
+real App Store submission cycles. Free, open source, Apache 2.0.
 
 *5 min read · [what it can't catch](#honest-limits) · [alongside your linter](LINTERS.md) · [worked examples](skills/radar-suite-axis-classification/coaching-examples-generic.md) · [changelog](CHANGELOG.md)*
 
