@@ -2,43 +2,41 @@
 
 ![Last commit](https://img.shields.io/github/last-commit/Terryc21/radar-suite) ![Stars](https://img.shields.io/github/stars/Terryc21/radar-suite?style=flat) ![Issues](https://img.shields.io/github/issues/Terryc21/radar-suite) ![Release](https://img.shields.io/github/v/release/Terryc21/radar-suite) ![License](https://img.shields.io/github/license/Terryc21/radar-suite) ![Claude Code Plugin](https://img.shields.io/badge/Claude%20Code-Plugin-blueviolet)
 
-**Audit skills for Claude Code that find a different class of iOS/macOS bugs from what linters and pattern checkers catch — by tracing how data flows through your app across files, not by checking individual files against a rule list.** Every finding cites a real `file:line` in your code and is rated on a 9-column severity table. A capstone skill aggregates findings into a ship-or-don't-ship grade.
+**Your linter says every file is fine. Then a backup restores without one of its relationships.**
 
-Use Radar Suite **alongside** your existing linter / SwiftLint / pattern-based audits — they find different things. A thorough pre-release audit runs both. See [What Radar Suite is for vs what linters are for](#what-radar-suite-is-for-vs-what-linters-are-for).
+No single file is wrong. Each one's view of the data is locally correct, so there is nothing for a
+pattern check to flag. Radar Suite follows your data from screen to database and back, and reports
+where the loop stops closing — every finding citing a real `file:line`, rated on a severity table,
+with a capstone that turns the pile into a ship-or-don't-ship grade.
 
-Built while shipping [Stuffolio](https://stuffolio.app) (Universal iOS/iPadOS/macOS app), through real App Store submission cycles. radar-suite itself is free, open source, Apache 2.0.
+It runs **alongside** SwiftLint and your existing audits, not instead of them — they catch different
+things ([why](LINTERS.md)). Built while shipping [Stuffolio](https://stuffolio.app) through real App
+Store submission cycles. Free, open source, Apache 2.0.
+
+*5 min read · [what it can't catch](#honest-limits) · [alongside your linter](LINTERS.md) · [worked examples](skills/radar-suite-axis-classification/coaching-examples-generic.md) · [changelog](CHANGELOG.md)*
 
 ## TL;DR
 
-- **What:** 8 skills (6 domain auditors + a router + a foundation skill) that trace behavior across files to find a class of Swift bugs that lives in handoffs between files (data flow, navigation reachability, round-trip integrity).
-- **Why:** Linters find single-file pattern bugs efficiently. Radar Suite finds cross-file behavior bugs that don't show up in any one file. **Both belong in a thorough audit; neither replaces the other.**
+- **What:** 8 skills — 6 auditors, a router that picks the right one, and a shared foundation — that read files together to find Swift bugs living in the handoff between them: data that goes missing, screens you can reach but not leave, round trips that don't survive the return journey.
+- **Why:** A linter reads one file and finds what is wrong inside it. Radar Suite reads files together and finds what is wrong between them. **Both belong in a thorough audit; neither replaces the other.**
 - **Install:** Two `/plugin` commands in Claude Code; then `/radar-suite` is available in any project.
 - **Try first:** `/radar-suite ui-enhancer --scope <small directory>` — ~5 min, one report to look at.
 - **Worked examples:** [anonymized before/after findings](skills/radar-suite-axis-classification/coaching-examples-generic.md) — what a finding looks like, with the full schema (axis, audience, before/after, suggested fix, tradeoffs, verification log).
 - **Honest limits:** [What it can't catch](#honest-limits) section enumerates structural blind spots.
 - **Maturity:** v2.1.1 shipped; used through real App Store submission cycles on a 600-file Swift codebase; CHANGELOG tracks every release.
 
-## What Radar Suite is for vs what linters are for
+## Alongside your linter, not instead of it
 
-Radar Suite and linters are complementary, not competitive. They look at code through different lenses and find different classes of bugs. A thorough pre-release audit runs both — neither alone is sufficient.
+A linter reads one file at a time and checks it against a rule catalog — force unwraps, missing
+`@MainActor`, deprecated APIs. Fast, precise, and it will find things Radar Suite won't.
 
-**Pattern-based tools (SwiftLint, custom linters, single-file audit skills)** check individual files against a rule catalog: force unwraps, missing `@MainActor`, `try?` swallowing errors, deprecated APIs, naming conventions, style. They're fast, precise, run on every save, and catch a real and important class of bugs cheaply. **They will find issues Radar Suite won't** — anything that lives inside one file's text and can be expressed as a grep pattern.
+Radar Suite reads files *together*. It starts from what the user sees and follows the data through
+views, view models, managers and persistence to check the loop actually closes. That catches bugs
+living in the handoff between files, which no single-file rule can see.
 
-**Radar Suite** traces behavior across files. It starts from what the user sees (a screen, a flow, a backup round-trip) and follows the data through views, view models, managers, and persistence to verify the loop actually closes. It catches bugs that live in the *handoff* between files: data flow gaps, navigation dead ends, round-trip integrity loss. **It will find issues linters won't** — anything that requires reading multiple files together to spot.
+Keep your linter. This layers on top.
 
-Concrete example of the difference: a SwiftData `@Model` with a non-optional inverse relationship is correctly declared. SwiftLint and any pattern audit will say it's fine, because the declaration is fine. A backup→restore→edit→save cycle that loses one of those relationships in the round trip is a bug, but no single file is wrong — each file's view of the data is locally correct. Radar Suite catches the silent loss by reading the round-trip path; the linter has no reason to flag it because there's nothing in any individual file to flag.
-
-Useful framing: pattern-based tools are the building inspector confirming each bolt is torqued to spec. Radar Suite is the home inspector who turns on the shower and checks where the water actually goes. **The inspection isn't complete without both.**
-
-| What linters do better | What Radar Suite does better |
-|---|---|
-| Run on every save (cheap, fast) | Run before release (deeper, slower) |
-| Catch style and pattern violations | Catch behavior and data-flow bugs |
-| Single-file context | Cross-file traces |
-| Hundreds of well-understood rules | Domain-specific behavior verification |
-| Mature ecosystem | New approach, narrower scope |
-
-If your project already uses SwiftLint or another pattern-based audit, keep it. Radar Suite layers on top.
+**[The full comparison, with a worked example →](LINTERS.md)**
 
 ## What's in the bundle
 
