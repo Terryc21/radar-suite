@@ -7,10 +7,7 @@ everything they typed.**
 
 No single file is wrong. The sheet presents correctly, the fields hold their values, dismiss
 dismisses. Each file is right on its own terms, so there is nothing for a pattern check to flag.
-What is missing lives between them. Radar Suite reads those files together and follows your data
-through the whole path, reporting where the loop stops closing. Every finding cites a real
-`file:line`, is rated on a severity table, and feeds a capstone that turns the pile into a
-ship-or-don't-ship grade.
+What is missing lives between them.
 
 It runs **alongside** SwiftLint and your existing audits, not instead of them — they catch different
 things ([why](LINTERS.md)). Built while shipping [Stuffolio](https://stuffolio.app) through real App
