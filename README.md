@@ -174,6 +174,10 @@ That's the entire requirements list.
 
 Radar Suite is updated regularly; check the [CHANGELOG](CHANGELOG.md) before a release-blocking audit. Bug reports and false-positive flags help calibrate the next release.
 
+## Privacy
+
+radar-suite collects no data of its own. It has no server, no accounts, no telemetry and no analytics, and it sends nothing to its author. It reads source files in the project you point it at and writes audit reports and handoff files under `.agents/research/` and `.agents/ui-audit/` in that project. It makes no network requests. The optional `install.sh` only creates symlinks in `~/.claude/skills/`. Anything it saves stays on your own machine. What you ask it to read is processed by Claude in your own session, under your own Anthropic terms and settings. Anthropic's plugin directory may show the author aggregate install counts; those come from the directory, not from the plugin.
+
 ## License
 
 Apache 2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
